@@ -6,41 +6,43 @@
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
-body { margin:0; font-family:Arial; display:flex; height:100vh; }
-#login { margin:auto; }
-#chat { display:none; width:100%; }
+body { font-family: Arial; margin:0; }
 
-.sidebar {
-    width:250px;
-    background:#2f3136;
-    color:white;
-    padding:10px;
-}
-
-.user {
-    padding:10px;
-    cursor:pointer;
-}
-.user:hover {
-    background:#40444b;
-}
-
-.chat {
-    flex:1;
+#auth {
     display:flex;
     flex-direction:column;
+    width:300px;
+    margin:100px auto;
+}
+
+#chat { display:none; height:100vh; }
+
+.sidebar {
+    width:200px;
+    background:#2f3136;
+    color:white;
+    float:left;
+    height:100%;
+}
+
+.user { padding:10px; cursor:pointer; }
+
+.chat {
+    margin-left:200px;
+    display:flex;
+    flex-direction:column;
+    height:100%;
 }
 
 .messages {
     flex:1;
     padding:10px;
-    overflow-y:auto;
+    overflow:auto;
 }
 
 .input {
     display:flex;
 }
-
 input { flex:1; padding:10px; }
 button { padding:10px; }
 </style>
@@ -48,97 +50,113 @@ button { padding:10px; }
 
 <body>
 
-<div id="login">
-    <h2>Вход</h2>
+<div id="auth">
+    <h2>Авторизация</h2>
+
     <input id="username" placeholder="username">
+    <input id="password" placeholder="password" type="password">
+
+    <button onclick="register()">Регистрация</button>
     <button onclick="login()">Войти</button>
 </div>
 
 <div id="chat">
-    <div class="sidebar">
-        <h3>Пользователи</h3>
-        <div id="users"></div>
-    </div>
+
+    <div class="sidebar" id="users"></div>
 
     <div class="chat">
         <div class="messages" id="messages"></div>
+
         <div class="input">
-            <input id="messageInput">
-            <button onclick="send()">Отправить</button>
+            <input id="msg">
+            <button onclick="send()">send</button>
         </div>
     </div>
+
 </div>
 
 <script>
 const socket = io();
-
 let username = "";
-let currentChat = "";
+let current = "";
 
-function login() {
-    username = document.getElementById("username").value;
+/* ========== AUTH ========== */
 
-    if (username.length < 3) {
-        alert("Минимум 3 символа");
-        return;
-    }
+async function register() {
+    let res = await fetch("/register", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+            username: usernameInput().value,
+            password: passwordInput().value
+        })
+    });
 
-    document.getElementById("login").style.display = "none";
-    document.getElementById("chat").style.display = "flex";
-
-    socket.emit("join", username);
+    let data = await res.json();
+    alert(data.ok ? "OK" : "Ошибка");
 }
 
-socket.on("users", (list) => {
-    let usersDiv = document.getElementById("users");
-    usersDiv.innerHTML = "";
+async function login() {
+    let res = await fetch("/login", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+            username: usernameInput().value,
+            password: passwordInput().value
+        })
+    });
 
-    list.forEach(user => {
-        if (user !== username) {
-            usersDiv.innerHTML += `<div class="user" onclick="openChat('${user}')">${user}</div>`;
+    let data = await res.json();
+
+    if (data.ok) {
+        username = usernameInput().value;
+
+        document.getElementById("auth").style.display = "none";
+        document.getElementById("chat").style.display = "block";
+
+        socket.emit("join", username);
+    } else {
+        alert("неверный логин");
+    }
+}
+
+function usernameInput(){ return document.getElementById("username"); }
+function passwordInput(){ return document.getElementById("password"); }
+
+/* ========== CHAT ========== */
+
+socket.on("users", list => {
+    let box = document.getElementById("users");
+    box.innerHTML = "";
+
+    list.forEach(u => {
+        if (u !== username) {
+            box.innerHTML += `<div class="user" onclick="openChat('${u}')">${u}</div>`;
         }
     });
 });
 
-function openChat(user) {
-    currentChat = user;
-    document.getElementById("messages").innerHTML = `<b>Чат с ${user}</b><br>`;
-
-    socket.emit("get_history", user);
+function openChat(u){
+    current = u;
+    socket.emit("get_history", u);
 }
 
-socket.on("chat_history", (history) => {
-    let messages = document.getElementById("messages");
+socket.on("chat_history", msgs => {
+    let box = document.getElementById("messages");
+    box.innerHTML = "";
 
-    history.forEach(msg => {
-        addMessage(msg.from, msg.message);
+    msgs.forEach(m => {
+        box.innerHTML += `<div><b>${m.from}:</b> ${m.message}</div>`;
     });
 });
 
-function send() {
-    let input = document.getElementById("messageInput");
-    let msg = input.value;
-
-    if (!msg || !currentChat) return;
+function send(){
+    let msg = document.getElementById("msg").value;
 
     socket.emit("private_message", {
-        to: currentChat,
+        to: current,
         message: msg
     });
-
-    addMessage("Ты", msg);
-    input.value = "";
-}
-
-socket.on("private_message", (data) => {
-    if (data.from === currentChat) {
-        addMessage(data.from, data.message);
-    }
-});
-
-function addMessage(user, text) {
-    let messages = document.getElementById("messages");
-    messages.innerHTML += `<div><b>${user}:</b> ${text}</div>`;
 }
 </script>
 
