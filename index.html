@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Messenger PRO 3</title>
+<title>Messenger PRO 3.1</title>
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
@@ -39,7 +39,7 @@ button{
     cursor:pointer;
 }
 
-/* LAYOUT */
+/* CHAT */
 #chat{
     display:none;
     height:100vh;
@@ -96,18 +96,14 @@ button{
     justify-content:space-between;
 }
 
-.status{
-    font-size:12px;
-    opacity:0.7;
-}
-
-/* MSG */
+/* MESSAGES */
 .messages{
     flex:1;
     padding:15px;
     overflow:auto;
 }
 
+/* MSG */
 .msg{
     display:flex;
     margin:6px 0;
@@ -116,6 +112,7 @@ button{
 .me{justify-content:flex-end;}
 .other{justify-content:flex-start;}
 
+/* BUBBLE */
 .bubble{
     max-width:60%;
     padding:10px;
@@ -134,7 +131,7 @@ button{
     border:1px solid #333;
 }
 
-/* TIME + CHECKS */
+/* META */
 .meta{
     font-size:10px;
     opacity:0.6;
@@ -161,10 +158,10 @@ button{
     width:80px;
 }
 
-/* typing */
-.typing{
+/* STATUS */
+.status{
     font-size:12px;
-    opacity:0.6;
+    opacity:0.7;
 }
 </style>
 </head>
@@ -172,7 +169,7 @@ button{
 <body>
 
 <div id="auth">
-    <h2>Messenger PRO 3</h2>
+    <h2>Messenger PRO 3.1</h2>
     <input id="u">
     <input id="p" type="password">
     <button onclick="login()">Войти</button>
@@ -193,7 +190,7 @@ button{
         <div class="messages" id="messages"></div>
 
         <div class="input">
-            <input id="msg" placeholder="Сообщение">
+            <input id="msg">
             <button onclick="send()">➤</button>
         </div>
 
@@ -237,7 +234,7 @@ users.innerHTML+=`
 });
 });
 
-/* CHAT */
+/* OPEN */
 function openChat(u){
 current=u;
 chatName.innerText=u;
@@ -250,13 +247,6 @@ if(!msg.value||!current)return;
 
 socket.emit("private_message",{to:current,message:msg.value});
 
-render({
-from:username,
-message:msg.value,
-time:new Date(),
-status:"sent"
-});
-
 msg.value="";
 }
 
@@ -265,10 +255,30 @@ msg.onkeydown=e=>{
 if(e.key==="Enter")send();
 };
 
-/* TYPING */
-msg.oninput=()=>{
-socket.emit("typing",{from:username,to:current});
-};
+/* REALTIME RECEIVE */
+socket.on("private_message",m=>{
+
+if(m.from===current || m.from===username){
+render(m);
+
+socket.emit("mark_read",{
+from:m.from,
+to:username
+});
+}
+
+});
+
+/* READ UPDATE */
+socket.on("message_read",()=>{
+socket.emit("get_history",current);
+});
+
+/* HISTORY */
+socket.on("chat_history",msgs=>{
+messages.innerHTML="";
+msgs.forEach(render);
+});
 
 /* RENDER */
 function render(m){
@@ -288,14 +298,11 @@ if(m.status==="read")check="✓✓";
 messages.innerHTML+=`
 <div class="msg ${me?'me':'other'}">
 <div class="bubble">
-
 <div>${m.message}</div>
-
 <div class="meta">
 <span>${time}</span>
 <span>${check}</span>
 </div>
-
 </div>
 </div>`;
 
@@ -303,20 +310,14 @@ messages.scrollTop=messages.scrollHeight;
 }
 
 /* TYPING */
+msg.oninput=()=>{
+socket.emit("typing",{from:username,to:current});
+};
+
 socket.on("typing",d=>{
 if(d.from===current){
 status.innerText="печатает...";
 }
-});
-
-socket.on("stop_typing",()=>{
-status.innerText="";
-});
-
-/* HISTORY */
-socket.on("chat_history",msgs=>{
-messages.innerHTML="";
-msgs.forEach(render);
 });
 </script>
 

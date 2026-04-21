@@ -14,7 +14,7 @@ app.use(express.static(__dirname));
 
 mongoose.connect(config.MONGO_URL);
 
-/* ================= MODELS ================= */
+/* ================= DB ================= */
 
 const UserSchema = new mongoose.Schema({
     username: String,
@@ -28,8 +28,6 @@ const MessageSchema = new mongoose.Schema({
     to: String,
     message: String,
     time: { type: Date, default: Date.now },
-
-    // sent | delivered | read
     status: { type: String, default: "sent" }
 });
 
@@ -85,7 +83,8 @@ io.on("connection",(socket)=>{
 
         io.emit("users",{
             users,
-            online:Object.values(online)
+            online:Object.values(online),
+            lastSeen: Object.fromEntries(users.map(u=>[u.username,u.lastSeen]))
         });
     });
 
@@ -101,12 +100,15 @@ io.on("connection",(socket)=>{
             status:"sent"
         });
 
-        // deliver to recipient
+        // deliver immediately
         for(let id in online){
             if(online[id]===data.to){
                 io.to(id).emit("private_message",msg);
             }
         }
+
+        // also show to sender instantly
+        socket.emit("private_message",msg);
     });
 
     /* HISTORY */
@@ -116,7 +118,7 @@ io.on("connection",(socket)=>{
 
         // mark read
         await Message.updateMany(
-            {from:withUser,to:user},
+            {from:withUser,to:user,status:{$ne:"read"}},
             {$set:{status:"read"}}
         );
 
@@ -128,6 +130,21 @@ io.on("connection",(socket)=>{
         }).sort({time:1});
 
         socket.emit("chat_history",msgs);
+    });
+
+    /* MARK READ (REALTIME FIX) */
+    socket.on("mark_read", async (data)=>{
+
+        await Message.updateMany(
+            {from:data.from,to:data.to,status:{$ne:"read"}},
+            {$set:{status:"read"}}
+        );
+
+        for(let id in online){
+            if(online[id]===data.from){
+                io.to(id).emit("message_read",data);
+            }
+        }
     });
 
     /* TYPING */
@@ -165,10 +182,11 @@ io.on("connection",(socket)=>{
 
         io.emit("users",{
             users,
-            online:Object.values(online)
+            online:Object.values(online),
+            lastSeen: Object.fromEntries(users.map(u=>[u.username,u.lastSeen]))
         });
     });
 
 });
 
-server.listen(3000,()=>console.log("PRO 3 RUN"));
+server.listen(3000,()=>console.log("PRO 3.1 RUN"));
