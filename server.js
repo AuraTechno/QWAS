@@ -17,13 +17,9 @@ const io = new Server(server);
 app.use(express.json());
 app.use(express.static("public"));
 
-/* DB CONNECT (ONLY HERE) */
-mongoose.connect(config.MONGO_URL)
-.then(()=>console.log("Mongo connected"))
-.catch(err=>console.log("Mongo error",err));
+mongoose.connect(config.MONGO_URL);
 
-/* ONLINE MAP */
-let online = {}; // socket.id -> username
+let online = {};
 
 /* REGISTER */
 app.post("/register", async (req,res)=>{
@@ -34,10 +30,7 @@ app.post("/register", async (req,res)=>{
 
     const hash = await bcrypt.hash(password,10);
 
-    await User.create({
-        username,
-        password:hash
-    });
+    await User.create({username,password:hash});
 
     res.json({ok:true});
 });
@@ -66,15 +59,13 @@ io.use((socket,next)=>{
     try{
         const token = socket.handshake.auth.token;
         const data = jwt.verify(token,config.JWT_SECRET);
-
-        socket.username = data.username;
+        socket.username=data.username;
         next();
     }catch(e){
-        next(new Error("auth failed"));
+        next(new Error("auth"));
     }
 });
 
-/* SOCKET */
 io.on("connection",(socket)=>{
 
     online[socket.id]=socket.username;
@@ -110,31 +101,16 @@ io.on("connection",(socket)=>{
         socket.emit("chat_history",msgs);
     });
 
-    socket.on("disconnect",async ()=>{
+    socket.on("disconnect",()=>{
 
-        const user = socket.username;
-
-        if(user){
-            await User.updateOne(
-                {username:user},
-                {$set:{lastSeen:Date.now()}}
-            );
-        }
-
-        for(let id in online){
-            if(online[id]===user){
-                delete online[id];
-            }
-        }
-
+        delete online[socket.id];
         sendUsers();
     });
 
 });
 
-/* USERS UPDATE */
 async function sendUsers(){
-    const users = await User.find({}, "username avatar lastSeen");
+    const users = await User.find({}, "username");
 
     io.emit("users",{
         users,
@@ -142,6 +118,4 @@ async function sendUsers(){
     });
 }
 
-server.listen(config.PORT,()=>{
-    console.log("PRO STABLE 3.1 RUN");
-});
+server.listen(3000,()=>console.log("PRO 3.2 UI FIX RUN"));

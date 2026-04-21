@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>PRO STABLE 3.1</title>
+<title>PRO STABLE 3.2</title>
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
@@ -11,10 +11,56 @@ body{
     font-family:Arial;
     background:#0d0d0d;
     color:#fff;
+    overflow:hidden;
 }
 
-#chat{display:none;height:100vh;}
+/* ANIMATION SYSTEM */
+.fade{
+    opacity:0;
+    transform:scale(0.98);
+    transition:0.25s ease;
+}
 
+.show{
+    opacity:1;
+    transform:scale(1);
+}
+
+/* AUTH */
+#auth{
+    width:320px;
+    margin:120px auto;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    transition:0.3s;
+}
+
+input{
+    padding:12px;
+    border:none;
+    border-radius:10px;
+    background:#1a1a1a;
+    color:#fff;
+}
+
+button{
+    padding:12px;
+    border:none;
+    border-radius:10px;
+    background:#fff;
+    color:#000;
+    cursor:pointer;
+}
+
+/* CHAT */
+#chat{
+    display:none;
+    height:100vh;
+    transition:0.3s;
+}
+
+/* SIDEBAR */
 .sidebar{
     width:280px;
     background:#111;
@@ -26,12 +72,14 @@ body{
     padding:14px;
     border-bottom:1px solid #1f1f1f;
     cursor:pointer;
+    transition:0.2s;
 }
 
 .user:hover{
     background:#1a1a1a;
 }
 
+/* CHAT AREA */
 .chat{
     flex:1;
     display:flex;
@@ -43,44 +91,54 @@ body{
     border-bottom:1px solid #222;
 }
 
+/* MESSAGES */
 .messages{
     flex:1;
     padding:15px;
     overflow:auto;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
 }
 
+/* BUBBLES */
 .msg{
-    margin:6px 0;
     max-width:70%;
     padding:10px;
-    border-radius:10px;
+    border-radius:12px;
+    animation:pop 0.15s ease;
+}
+
+@keyframes pop{
+    from{transform:scale(0.95);opacity:0;}
+    to{transform:scale(1);opacity:1;}
 }
 
 .me{
-    margin-left:auto;
+    align-self:flex-end;
     background:#fff;
     color:#000;
 }
 
 .other{
+    align-self:flex-start;
     background:#1a1a1a;
     border:1px solid #333;
 }
 
+/* INPUT */
 .input{
     display:flex;
     border-top:1px solid #222;
 }
 
-input{
+.input input{
     flex:1;
     padding:14px;
     background:#111;
-    border:none;
-    color:#fff;
 }
 
-button{
+.input button{
     width:80px;
 }
 </style>
@@ -88,13 +146,27 @@ button{
 
 <body>
 
-<div id="chat">
+<!-- AUTH -->
+<div id="auth" class="fade show">
+
+    <h2>Вход</h2>
+
+    <input id="u" placeholder="username">
+    <input id="p" type="password" placeholder="password">
+
+    <button onclick="login()">Войти</button>
+    <button onclick="register()">Регистрация</button>
+
+</div>
+
+<!-- CHAT -->
+<div id="chat" class="fade">
 
     <div class="sidebar" id="users"></div>
 
     <div class="chat">
 
-        <div class="header" id="chatName"></div>
+        <div class="header" id="chatName">Чат</div>
 
         <div class="messages" id="messages"></div>
 
@@ -113,25 +185,57 @@ let token="";
 let username="";
 let current="";
 
-/* LOGIN AUTO */
-username=prompt("username");
+/* ANIMATION HELPERS */
+function show(el){
+el.style.display="flex";
+setTimeout(()=>el.classList.add("show"),10);
+}
 
+function hide(el){
+el.classList.remove("show");
+setTimeout(()=>el.style.display="none",300);
+}
+
+/* REGISTER */
+function register(){
+fetch("/register",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({username:u.value,password:p.value})
+});
+}
+
+/* LOGIN */
+function login(){
 fetch("/login",{
 method:"POST",
 headers:{"Content-Type":"application/json"},
-body:JSON.stringify({username,password:"123"})
+body:JSON.stringify({username:u.value,password:p.value})
 })
 .then(r=>r.json())
 .then(d=>{
 
-token=d.token;
+if(!d.ok){
+alert("error");
+return;
+}
 
-chat.style.display="flex";
+token=d.token;
+username=u.value;
+
+/* плавный переход */
+hide(auth);
+show(chat);
 
 socket.io.opts.auth={token};
 socket.connect();
 
+socket.on("connect",()=>{
+socket.emit("join",username);
 });
+
+});
+}
 
 /* USERS */
 socket.on("users",data=>{
@@ -148,7 +252,7 @@ ${u.username}
 });
 });
 
-/* OPEN */
+/* OPEN CHAT */
 function openChat(u){
 current=u;
 chatName.innerText=u;
@@ -184,12 +288,10 @@ msgs.forEach(render);
 function render(m){
 
 let div=document.createElement("div");
-
 div.className="msg "+(m.from===username?"me":"other");
 div.innerText=m.message;
 
 messages.appendChild(div);
-
 messages.scrollTop=messages.scrollHeight;
 }
 </script>
