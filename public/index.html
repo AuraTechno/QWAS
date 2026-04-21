@@ -2,57 +2,536 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>QWAS</title>
+<title>QWAS Messenger</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>">
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
-body{margin:0;font-family:Arial;background:#111;color:#fff}
-#auth{width:300px;margin:100px auto;display:flex;flex-direction:column;gap:10px}
-input,button{padding:12px;border-radius:8px;border:none}
-button{background:#fff;font-weight:bold;cursor:pointer}
-button:disabled{opacity:0.5;cursor:not-allowed}
-#chat{display:none;height:100vh}
-.sidebar{width:250px;background:#000;overflow:auto}
-.user{padding:10px;border-bottom:1px solid #222;cursor:pointer;display:flex;align-items:center;gap:8px}
-.user:hover{background:#222}
-.user .online-dot{width:10px;height:10px;border-radius:50%;background:#00ff00}
-.user .offline-dot{width:10px;height:10px;border-radius:50%;background:#666}
-.chat{flex:1;display:flex;flex-direction:column}
-.header{padding:15px;background:#000;font-weight:bold}
-.messages{flex:1;padding:10px;overflow:auto;display:flex;flex-direction:column}
-.msg{padding:10px;margin:5px;border-radius:8px;max-width:70%;word-break:break-word}
-.me{background:#fff;color:#000;align-self:flex-end}
-.other{background:#222;align-self:flex-start}
-.meta{font-size:10px;opacity:.7;margin-top:4px;display:flex;justify-content:space-between}
-.status{color:#4CAF50}
-.input{display:flex;padding:10px;gap:10px}
-.input input{flex:1;padding:12px;border-radius:8px;border:none}
-.input button{width:80px}
-.typing-indicator{font-size:12px;color:#aaa;padding:4px 15px;min-height:20px}
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  background: #0a0a0a;
+  color: #fff;
+}
+
+#auth {
+  width: 360px;
+  margin: 100px auto;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 30px;
+  background: #1a1a1a;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+
+#auth h1 {
+  text-align: center;
+  margin-bottom: 20px;
+  font-size: 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+#auth input {
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid #333;
+  background: #0a0a0a;
+  color: #fff;
+  font-size: 16px;
+  transition: all 0.3s;
+}
+
+#auth input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+#auth button {
+  padding: 14px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-weight: bold;
+  font-size: 16px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+#auth button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+}
+
+#auth button:last-child {
+  background: #333;
+}
+
+#auth button:last-child:hover {
+  box-shadow: 0 5px 20px rgba(255, 255, 255, 0.1);
+}
+
+#chat {
+  display: none;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 300px;
+  background: #111;
+  border-right: 1px solid #222;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  padding: 20px 16px;
+  border-bottom: 1px solid #222;
+  background: #0a0a0a;
+}
+
+.sidebar-header h2 {
+  font-size: 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 5px;
+}
+
+.sidebar-header .user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid #222;
+}
+
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 18px;
+  color: white;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.user-avatar.small {
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+}
+
+.user-avatar.large {
+  width: 50px;
+  height: 50px;
+  font-size: 22px;
+}
+
+.user-info-text {
+  flex: 1;
+}
+
+.user-info-text .username {
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.user-info-text .status {
+  font-size: 12px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.users-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.user {
+  padding: 12px 16px;
+  border-bottom: 1px solid #1a1a1a;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: background 0.2s;
+  position: relative;
+}
+
+.user:hover {
+  background: #1a1a1a;
+}
+
+.user.selected {
+  background: #1e1e1e;
+  border-left: 3px solid #667eea;
+}
+
+.user .online-indicator {
+  position: absolute;
+  bottom: 12px;
+  right: 16px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #00ff00;
+  border: 2px solid #111;
+}
+
+.user .offline-indicator {
+  position: absolute;
+  bottom: 12px;
+  right: 16px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #666;
+  border: 2px solid #111;
+}
+
+.user-content {
+  flex: 1;
+}
+
+.user-name {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.user-status {
+  font-size: 12px;
+  color: #888;
+}
+
+.chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #0a0a0a;
+}
+
+.chat-header {
+  padding: 16px 20px;
+  background: #111;
+  border-bottom: 1px solid #222;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chat-header-info {
+  flex: 1;
+}
+
+.chat-header-info h3 {
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.chat-header-info .online-status {
+  font-size: 13px;
+  color: #888;
+}
+
+.messages-container {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.message {
+  display: flex;
+  gap: 10px;
+  max-width: 70%;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message.me {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.message-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 14px;
+  color: white;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.message-content {
+  flex: 1;
+}
+
+.message-bubble {
+  padding: 12px 16px;
+  border-radius: 18px;
+  word-break: break-word;
+  position: relative;
+}
+
+.message.me .message-bubble {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.message.other .message-bubble {
+  background: #1e1e1e;
+  color: #fff;
+  border-bottom-left-radius: 4px;
+}
+
+.message-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #888;
+  padding: 0 4px;
+}
+
+.message.me .message-meta {
+  justify-content: flex-end;
+}
+
+.message-status {
+  color: #4CAF50;
+}
+
+.message-time {
+  opacity: 0.7;
+}
+
+.typing-indicator {
+  padding: 8px 20px;
+  font-size: 13px;
+  color: #888;
+  font-style: italic;
+  min-height: 36px;
+}
+
+.message-input-container {
+  padding: 16px 20px;
+  background: #111;
+  border-top: 1px solid #222;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.message-input {
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: 24px;
+  border: 1px solid #333;
+  background: #0a0a0a;
+  color: #fff;
+  font-size: 15px;
+  transition: all 0.3s;
+}
+
+.message-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.message-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.send-button {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+  flex-shrink: 0;
+}
+
+.send-button:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+}
+
+.send-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.empty-state {
+  text-align: center;
+  color: #666;
+  padding: 40px 20px;
+}
+
+.empty-state-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+  opacity: 0.5;
+}
+
+.welcome-message {
+  text-align: center;
+  padding: 40px 20px;
+  color: #888;
+}
+
+.welcome-message h3 {
+  font-size: 24px;
+  margin-bottom: 10px;
+  color: #fff;
+}
+
+/* Скроллбар */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* Логаут кнопка */
+.logout-button {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #888;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.logout-button:hover {
+  background: #1a1a1a;
+  color: #fff;
+  border-color: #444;
+}
 </style>
 </head>
 
 <body>
 
 <div id="auth">
-<h2>QWAS</h2>
-<input id="u" placeholder="Username">
-<input id="p" type="password" placeholder="Password">
-<button onclick="login()">Login</button>
-<button onclick="register()">Register</button>
+  <h1>💬 QWAS</h1>
+  <input id="u" placeholder="Имя пользователя" autocomplete="off">
+  <input id="p" type="password" placeholder="Пароль">
+  <button onclick="login()">Войти</button>
+  <button onclick="register()">Создать аккаунт</button>
 </div>
 
 <div id="chat" style="display:none">
-<div class="sidebar" id="users"></div>
-<div class="chat">
-<div class="header" id="title">Выберите чат</div>
-<div class="messages" id="messages"></div>
-<div id="typingIndicator" class="typing-indicator"></div>
-<div class="input">
-<input id="msg" placeholder="Сообщение..." disabled>
-<button id="sendBtn" onclick="send()" disabled>Отправить</button>
-</div>
-</div>
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h2>💬 QWAS</h2>
+      <div class="user-info">
+        <div class="user-avatar" id="myAvatar">U</div>
+        <div class="user-info-text">
+          <div class="username" id="myUsername">username</div>
+          <div class="status">Онлайн</div>
+        </div>
+      </div>
+      <button class="logout-button" onclick="logout()">Выйти</button>
+    </div>
+    <div class="users-list" id="users"></div>
+  </div>
+  
+  <div class="chat-area">
+    <div class="chat-header" id="chatHeader" style="display: none;">
+      <div class="user-avatar small" id="chatAvatar">U</div>
+      <div class="chat-header-info">
+        <h3 id="chatUsername">Выберите чат</h3>
+        <div class="online-status" id="chatStatus"></div>
+      </div>
+    </div>
+    
+    <div class="messages-container" id="messages">
+      <div class="welcome-message">
+        <div class="empty-state-icon">💬</div>
+        <h3>Добро пожаловать в QWAS</h3>
+        <p>Выберите пользователя слева, чтобы начать общение</p>
+      </div>
+    </div>
+    
+    <div id="typingIndicator" class="typing-indicator"></div>
+    
+    <div class="message-input-container">
+      <input 
+        class="message-input" 
+        id="msg" 
+        placeholder="Напишите сообщение..." 
+        disabled
+        autocomplete="off"
+      >
+      <button class="send-button" id="sendBtn" onclick="send()" disabled>
+        ➤
+      </button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -60,10 +539,24 @@ let socket;
 let me = "";
 let current = "";
 let typingTimeout = null;
+let onlineUsers = new Map();
+
+// Функция получения аватарки (первая буква)
+function getAvatarLetter(username) {
+  return username ? username.charAt(0).toUpperCase() : '?';
+}
+
+// Функция создания аватарки
+function createAvatarElement(username, size = '') {
+  const div = document.createElement('div');
+  div.className = `user-avatar ${size}`;
+  div.textContent = getAvatarLetter(username);
+  return div;
+}
 
 /* === AUTH === */
 function register() {
-  const username = document.getElementById('u').value;
+  const username = document.getElementById('u').value.trim();
   const password = document.getElementById('p').value;
   
   if (!username || !password) {
@@ -87,7 +580,7 @@ function register() {
 }
 
 function login() {
-  const username = document.getElementById('u').value;
+  const username = document.getElementById('u').value.trim();
   const password = document.getElementById('p').value;
   
   if (!username || !password) {
@@ -110,8 +603,25 @@ function login() {
     me = username;
     document.getElementById('auth').style.display = "none";
     document.getElementById('chat').style.display = "flex";
+    
+    // Обновляем информацию о пользователе
+    document.getElementById('myAvatar').textContent = getAvatarLetter(me);
+    document.getElementById('myUsername').textContent = me;
+    
     connectSocket(d.token);
   });
+}
+
+function logout() {
+  if (socket) {
+    socket.disconnect();
+  }
+  me = "";
+  current = "";
+  document.getElementById('auth').style.display = "block";
+  document.getElementById('chat').style.display = "none";
+  document.getElementById('u').value = '';
+  document.getElementById('p').value = '';
 }
 
 /* === SOCKET === */
@@ -121,7 +631,7 @@ function connectSocket(token) {
   });
 
   socket.on("connect", () => {
-    console.log("✅ Connected to server");
+    console.log("✅ Connected to QWAS server");
   });
 
   socket.on("connect_error", (err) => {
@@ -131,6 +641,8 @@ function connectSocket(token) {
 
   socket.on("users", users => {
     console.log("📋 Users list:", users);
+    onlineUsers.clear();
+    users.forEach(u => onlineUsers.set(u.username, u.online));
     renderUsers(users);
   });
 
@@ -155,21 +667,21 @@ function connectSocket(token) {
     data.messages.forEach(id => {
       const el = document.getElementById(`msg-${id}`);
       if (el) {
-        const statusEl = el.querySelector('.status');
-        if (statusEl) statusEl.innerText = '✓✓';
+        const statusEl = el.querySelector('.message-status');
+        if (statusEl) statusEl.textContent = '✓✓';
       }
     });
   });
 
   socket.on("typing", data => {
     if (data.from === current) {
-      document.getElementById('typingIndicator').innerText = `${current} печатает...`;
+      document.getElementById('typingIndicator').textContent = `${current} печатает...`;
     }
   });
 
   socket.on("stop_typing", data => {
     if (data.from === current) {
-      document.getElementById('typingIndicator').innerText = "";
+      document.getElementById('typingIndicator').textContent = "";
     }
   });
 }
@@ -182,22 +694,42 @@ function renderUsers(users) {
   const otherUsers = users.filter(u => u.username !== me);
   
   if (otherUsers.length === 0) {
-    container.innerHTML = '<div style="padding:10px;color:#666">Нет пользователей</div>';
+    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">👥</div><p>Нет других пользователей</p></div>';
     return;
   }
   
   otherUsers.forEach(u => {
     const div = document.createElement("div");
     div.className = "user";
+    if (current === u.username) {
+      div.classList.add('selected');
+    }
     div.onclick = () => selectUser(u.username);
 
-    const dot = document.createElement("span");
-    dot.className = u.online ? "online-dot" : "offline-dot";
-    div.appendChild(dot);
-
-    const name = document.createElement("span");
-    name.innerText = u.username;
-    div.appendChild(name);
+    // Аватарка
+    const avatar = createAvatarElement(u.username, 'small');
+    div.appendChild(avatar);
+    
+    // Контент
+    const content = document.createElement('div');
+    content.className = 'user-content';
+    
+    const name = document.createElement('div');
+    name.className = 'user-name';
+    name.textContent = u.username;
+    
+    const status = document.createElement('div');
+    status.className = 'user-status';
+    status.textContent = u.online ? 'Онлайн' : 'Офлайн';
+    
+    content.appendChild(name);
+    content.appendChild(status);
+    div.appendChild(content);
+    
+    // Индикатор онлайн
+    const indicator = document.createElement('span');
+    indicator.className = u.online ? 'online-indicator' : 'offline-indicator';
+    div.appendChild(indicator);
 
     container.appendChild(div);
   });
@@ -207,12 +739,30 @@ function renderUsers(users) {
 function selectUser(username) {
   console.log("👤 Selected user:", username);
   current = username;
-  document.getElementById("title").innerText = `Чат с ${username}`;
-  document.getElementById("msg").disabled = false;
-  document.getElementById("sendBtn").disabled = false;
-  document.getElementById("messages").innerHTML = "";
-  document.getElementById("typingIndicator").innerText = "";
-
+  
+  // Обновляем UI
+  document.querySelectorAll('.user').forEach(el => {
+    el.classList.remove('selected');
+    const nameEl = el.querySelector('.user-name');
+    if (nameEl && nameEl.textContent === username) {
+      el.classList.add('selected');
+    }
+  });
+  
+  // Показываем хедер чата
+  document.getElementById('chatHeader').style.display = 'flex';
+  document.getElementById('chatAvatar').textContent = getAvatarLetter(username);
+  document.getElementById('chatUsername').textContent = username;
+  
+  const isOnline = onlineUsers.get(username) || false;
+  document.getElementById('chatStatus').textContent = isOnline ? 'Онлайн' : 'Офлайн';
+  
+  // Активируем поле ввода
+  document.getElementById('msg').disabled = false;
+  document.getElementById('sendBtn').disabled = false;
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('typingIndicator').textContent = "";
+  
   socket.emit("get_history", username);
 }
 
@@ -220,6 +770,12 @@ function selectUser(username) {
 function renderHistory(msgs) {
   const container = document.getElementById("messages");
   container.innerHTML = "";
+  
+  if (msgs.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">💭</div><p>Нет сообщений. Начните общение!</p></div>';
+    return;
+  }
+  
   msgs.forEach(msg => addMessageToChat(msg));
   scrollToBottom();
 }
@@ -227,37 +783,59 @@ function renderHistory(msgs) {
 function addMessageToChat(msg) {
   const container = document.getElementById("messages");
   
+  // Убираем заглушку если есть
+  if (container.children.length === 1 && container.children[0].classList.contains('empty-state')) {
+    container.innerHTML = '';
+  }
+  
   // Проверяем, нет ли уже такого сообщения
   if (document.getElementById(`msg-${msg._id}`)) {
     return;
   }
   
-  const div = document.createElement("div");
-  div.className = `msg ${msg.from === me ? "me" : "other"}`;
-  div.id = `msg-${msg._id}`;
-
-  const text = document.createElement("div");
-  text.innerText = msg.message;
-
-  const meta = document.createElement("div");
-  meta.className = "meta";
-
-  const time = document.createElement("span");
-  time.innerText = new Date(msg.createdAt).toLocaleTimeString().slice(0,5);
+  const isMe = msg.from === me;
+  const senderName = isMe ? me : msg.from;
   
-  const status = document.createElement("span");
-  status.className = "status";
-  if (msg.from === me) {
-    status.innerText = msg.status === "read" ? "✓✓" : "✓";
-  }
+  const messageDiv = document.createElement("div");
+  messageDiv.className = `message ${isMe ? "me" : "other"}`;
+  messageDiv.id = `msg-${msg._id}`;
 
+  // Аватарка отправителя
+  const avatar = createAvatarElement(senderName);
+  avatar.style.width = '32px';
+  avatar.style.height = '32px';
+  avatar.style.fontSize = '14px';
+  messageDiv.appendChild(avatar);
+  
+  // Контент сообщения
+  const content = document.createElement('div');
+  content.className = 'message-content';
+  
+  const bubble = document.createElement('div');
+  bubble.className = 'message-bubble';
+  bubble.textContent = msg.message;
+  
+  const meta = document.createElement('div');
+  meta.className = 'message-meta';
+  
+  const time = document.createElement('span');
+  time.className = 'message-time';
+  time.textContent = new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  
   meta.appendChild(time);
-  meta.appendChild(status);
   
-  div.appendChild(text);
-  div.appendChild(meta);
-  container.appendChild(div);
+  if (isMe) {
+    const status = document.createElement('span');
+    status.className = 'message-status';
+    status.textContent = msg.status === "read" ? "✓✓" : "✓";
+    meta.appendChild(status);
+  }
   
+  content.appendChild(bubble);
+  content.appendChild(meta);
+  messageDiv.appendChild(content);
+  
+  container.appendChild(messageDiv);
   scrollToBottom();
 }
 
@@ -274,7 +852,6 @@ function send() {
   const text = input.value.trim();
   
   if (!text || !current) {
-    console.log("❌ Cannot send: no text or no recipient");
     return;
   }
   
@@ -313,6 +890,9 @@ document.getElementById("msg").addEventListener("keypress", e => {
     send();
   }
 });
+
+// Фокус на поле ввода при загрузке
+document.getElementById('u').focus();
 
 </script>
 </body>
