@@ -137,4 +137,12 @@ io.to(id).emit(event,data);
 }
 }
 
+process.on("uncaughtException", (err) => {
+    console.log("🔥 UNCAUGHT ERROR:", err);
+});
+
+process.on("unhandledRejection", (err) => {
+    console.log("🔥 PROMISE ERROR:", err);
+});
+
 server.listen(3000,()=>console.log("OK"));
