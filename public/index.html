@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>PRO STABLE 7 UI+</title>
+<title>PRO STABLE 7 UI+ FIX</title>
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
@@ -25,12 +25,19 @@ gap:10px;
 text-align:center;
 }
 
+#auth div{
+font-size:18px;
+font-weight:bold;
+margin-bottom:10px;
+}
+
 #auth input{
 padding:12px;
 border:none;
 border-radius:10px;
 background:#1a1a1a;
 color:#fff;
+outline:none;
 }
 
 #auth button{
@@ -93,7 +100,7 @@ border:2px solid #111;
 background:#555;
 }
 
-/* CHAT AREA */
+/* CHAT */
 .chat{
 flex:1;
 display:flex;
@@ -161,6 +168,7 @@ padding:14px;
 background:#111;
 color:#fff;
 border:none;
+outline:none;
 }
 
 button{
@@ -168,6 +176,7 @@ width:80px;
 background:#fff;
 border:none;
 cursor:pointer;
+font-weight:bold;
 }
 </style>
 </head>
@@ -175,7 +184,7 @@ cursor:pointer;
 <body>
 
 <div id="auth">
-<div style="font-size:20px;font-weight:bold">Messenger PRO 7 UI+</div>
+<div>Messenger PRO 7 UI+</div>
 <input id="u" placeholder="username">
 <input id="p" type="password">
 <button onclick="login()">Войти</button>
@@ -213,7 +222,7 @@ function key(a,b){
 return CryptoJS.SHA256([a,b].sort().join("-")).toString();
 }
 
-/* ENC/DEC */
+/* ENC / DEC */
 function enc(t,k){
 return CryptoJS.AES.encrypt(t,k).toString();
 }
@@ -281,6 +290,12 @@ socket.on("stop_typing",()=>{
 chatName.innerText=current;
 });
 
+socket.on("read_update",()=>{
+document.querySelectorAll(".meta").forEach(m=>{
+m.innerText="✔✔";
+});
+});
+
 });
 }
 
@@ -305,8 +320,9 @@ to:username
 });
 }
 
-/* SEND E2E */
+/* SEND */
 function send(){
+
 if(!msg.value||!current)return;
 
 let k=key(username,current);
@@ -319,9 +335,19 @@ message:enc(msg.value,k)
 msg.value="";
 }
 
-/* TYPING */
+/* TYPING FIX */
+let typingTimer;
+
 function typing(){
+if(!current) return;
+
 socket.emit("typing",current);
+
+clearTimeout(typingTimer);
+
+typingTimer=setTimeout(()=>{
+socket.emit("stop_typing",current);
+},600);
 }
 
 /* RENDER */

@@ -20,6 +20,7 @@ app.use(express.static("public"));
 mongoose.connect(config.MONGO_URL);
 
 let online = {};
+let typingTimers = {};
 
 /* REGISTER */
 app.post("/register", async (req,res)=>{
@@ -45,14 +46,12 @@ app.post("/login", async (req,res)=>{
     if(!ok) return res.json({ok:false});
 
     const token = jwt.sign({username},config.JWT_SECRET,{expiresIn:"7d"});
-
     res.json({ok:true,token});
 });
 
 /* AVATAR */
 app.post("/avatar", async (req,res)=>{
     const {username,avatar}=req.body;
-
     await User.updateOne({username},{$set:{avatar}});
     res.json({ok:true});
 });
@@ -62,7 +61,7 @@ io.use((socket,next)=>{
     try{
         const token = socket.handshake.auth.token;
         const data = jwt.verify(token,config.JWT_SECRET);
-        socket.username=data.username;
+        socket.username = data.username;
         next();
     }catch(e){
         next(new Error("auth"));
@@ -72,7 +71,6 @@ io.use((socket,next)=>{
 io.on("connection",(socket)=>{
 
     online[socket.id]=socket.username;
-
     emitUsers();
 
     socket.on("join",emitUsers);
@@ -115,13 +113,16 @@ io.on("connection",(socket)=>{
         emitToUser(data.from,"read_update",data);
     });
 
-    /* TYPING */
+    /* TYPING FIX */
     socket.on("typing",(to)=>{
-        emitToUser(to,"typing",{from:socket.username});
-    });
 
-    socket.on("stop_typing",(to)=>{
-        emitToUser(to,"stop_typing",{from:socket.username});
+        emitToUser(to,"typing",{from:socket.username});
+
+        clearTimeout(typingTimers[socket.username]);
+
+        typingTimers[socket.username]=setTimeout(()=>{
+            emitToUser(to,"stop_typing",{from:socket.username});
+        },800);
     });
 
     socket.on("disconnect",async ()=>{
@@ -162,5 +163,5 @@ function emitToUser(username,event,data){
 }
 
 server.listen(3000,()=>{
-    console.log("PRO STABLE 7 UI+ RUN");
+    console.log("PRO STABLE 7 UI+ FIX RUN");
 });
