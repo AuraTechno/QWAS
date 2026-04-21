@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Messenger FINAL</title>
+<title>Messenger STABLE</title>
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
@@ -16,7 +16,7 @@ background:#0b0b0b;
 color:#fff;
 }
 
-/* AUTH */
+/* LOGIN */
 #auth{
 width:340px;
 margin:120px auto;
@@ -43,54 +43,25 @@ font-weight:bold;
 cursor:pointer;
 }
 
-/* APP */
+/* CHAT */
 #chat{
 display:none;
 height:100vh;
 }
 
-/* USERS */
 .sidebar{
-width:280px;
+width:260px;
 background:#111;
-border-right:1px solid #222;
 overflow:auto;
+border-right:1px solid #222;
 }
 
 .user{
-display:flex;
-align-items:center;
-gap:10px;
 padding:12px;
-border-bottom:1px solid #1f1f1f;
+border-bottom:1px solid #222;
 cursor:pointer;
-transition:.2s;
 }
 
-.user:hover{
-background:#1a1a1a;
-}
-
-.avatar{
-width:38px;
-height:38px;
-border-radius:50%;
-background:#333;
-display:flex;
-align-items:center;
-justify-content:center;
-font-weight:bold;
-}
-
-.online{
-width:8px;
-height:8px;
-border-radius:50%;
-background:#2ecc71;
-margin-left:auto;
-}
-
-/* CHAT */
 .chat{
 flex:1;
 display:flex;
@@ -113,14 +84,8 @@ gap:8px;
 
 .msg{
 max-width:70%;
-padding:10px 12px;
-border-radius:14px;
-animation:pop .15s ease;
-}
-
-@keyframes pop{
-from{transform:scale(0.95);opacity:0}
-to{transform:scale(1);opacity:1}
+padding:10px;
+border-radius:12px;
 }
 
 .me{
@@ -139,7 +104,6 @@ border:1px solid #333;
 font-size:10px;
 opacity:0.7;
 text-align:right;
-margin-top:3px;
 }
 
 /* INPUT */
@@ -148,23 +112,22 @@ display:flex;
 padding:10px;
 gap:8px;
 border-top:1px solid #222;
-background:#0f0f0f;
 }
 
 .input input{
 flex:1;
 padding:12px;
-border:none;
 border-radius:10px;
+border:none;
 background:#1a1a1a;
 color:#fff;
 }
 
 .input button{
 width:50px;
+background:#fff;
 border:none;
 border-radius:10px;
-background:#fff;
 cursor:pointer;
 }
 
@@ -173,7 +136,6 @@ cursor:pointer;
 
 <body>
 
-<!-- AUTH -->
 <div id="auth">
 <h3>LOGIN</h3>
 <input id="u" placeholder="username">
@@ -182,7 +144,6 @@ cursor:pointer;
 <button onclick="register()">Регистрация</button>
 </div>
 
-<!-- CHAT -->
 <div id="chat">
 
 <div class="sidebar" id="users"></div>
@@ -209,33 +170,36 @@ let token="";
 let username="";
 let current="";
 
-/* LOGIN */
-function login(){
+/* LOGIN (FIXED, NO HANG) */
+async function login(){
 
-fetch("/login",{
+try{
+
+const res = await fetch("/login",{
 method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({
 username:u.value,
 password:p.value
 })
-})
-.then(r=>r.json())
-.then(d=>{
+});
+
+const d = await res.json();
 
 if(!d.ok){
-alert("error");
+alert("error login");
 return;
 }
 
 token=d.token;
 username=u.value;
 
+/* UI SWITCH */
 auth.style.display="none";
 chat.style.display="flex";
 
-/* SOCKET */
-socket=io({
+/* SOCKET SAFE */
+socket = io({
 auth:{token},
 transports:["websocket","polling"]
 });
@@ -244,47 +208,43 @@ socket.on("connect",()=>{
 socket.emit("join");
 });
 
-/* USERS UI FIX */
-socket.on("users",data=>{
+/* USERS */
+socket.on("users",(data)=>{
 users.innerHTML="";
 
 data.forEach(u=>{
 users.innerHTML+=`
 <div class="user" onclick="openChat('${u.username}')">
-
-<div class="avatar">
-${u.username[0].toUpperCase()}
-</div>
-
-<div>${u.username}</div>
-
-<div class="online" style="opacity:${u.online?1:0.2}"></div>
-
+${u.username} ${u.online?"🟢":""}
 </div>`;
 });
 });
 
-/* REALTIME MESSAGE FIX */
-socket.on("new_message",m=>{
-if(m.from===current || m.to===current){
-render(m);
-}
-});
-
-/* HISTORY */
+/* CHAT */
 socket.on("chat_history",m=>{
 messages.innerHTML="";
 m.forEach(render);
 });
 
+/* REALTIME MSG */
+socket.on("new_message",(m)=>{
+if(m.from===current || m.to===current){
+render(m);
+}
+});
+
 /* READ */
 socket.on("read_update",()=>{
-document.querySelectorAll(".msg.me .meta").forEach(el=>{
-el.innerText="✔✔";
+document.querySelectorAll(".msg.me .meta").forEach(e=>{
+e.innerText="✔✔";
 });
 });
 
-});
+}catch(e){
+console.log(e);
+alert("login error");
+}
+
 }
 
 /* REGISTER */
@@ -314,7 +274,6 @@ to:username
 
 /* SEND */
 function send(){
-
 if(!msg.value||!current)return;
 
 socket.emit("private_message",{
