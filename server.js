@@ -14,12 +14,12 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.json({limit:"10mb"}));
+app.use(express.json());
 app.use(express.static("public"));
 
 mongoose.connect(config.MONGO_URL);
 
-let online = {}; // socket.id -> username
+let online = {};
 
 /* REGISTER */
 app.post("/register", async (req,res)=>{
@@ -54,18 +54,6 @@ app.post("/login", async (req,res)=>{
     res.json({ok:true,token});
 });
 
-/* UPDATE AVATAR */
-app.post("/avatar", async (req,res)=>{
-    const {username,avatar}=req.body;
-
-    await User.updateOne(
-        {username},
-        {$set:{avatar}}
-    );
-
-    res.json({ok:true});
-});
-
 /* SOCKET AUTH */
 io.use((socket,next)=>{
     try{
@@ -88,14 +76,13 @@ io.on("connection",(socket)=>{
         emitUsers();
     });
 
-    /* MESSAGE */
+    /* MESSAGE (ENCRYPTED ALREADY) */
     socket.on("private_message", async (data)=>{
 
         const msg = await Message.create({
             from:socket.username,
             to:data.to,
-            message:data.message,
-            status:"sent"
+            message:data.message
         });
 
         emitToUser(data.to,"private_message",msg);
@@ -127,30 +114,16 @@ io.on("connection",(socket)=>{
     });
 
     /* TYPING */
-    let typingTimeout;
-
     socket.on("typing",(to)=>{
-
         emitToUser(to,"typing",{from:socket.username});
-
-        clearTimeout(typingTimeout);
-
-        typingTimeout=setTimeout(()=>{
-            emitToUser(to,"stop_typing",{from:socket.username});
-        },1000);
     });
 
-    /* DISCONNECT */
     socket.on("disconnect",async ()=>{
 
-        const user = socket.username;
-
-        if(user){
-            await User.updateOne(
-                {username:user},
-                {$set:{lastSeen:Date.now()}}
-            );
-        }
+        await User.updateOne(
+            {username:socket.username},
+            {$set:{lastSeen:Date.now()}}
+        );
 
         delete online[socket.id];
 
@@ -159,20 +132,13 @@ io.on("connection",(socket)=>{
 
 });
 
-/* USERS */
-async function emitUsers(){
-
-    const users = await User.find({}, "username avatar lastSeen");
-
-    io.emit("users",{
-        users,
-        online:Object.values(online)
+function emitUsers(){
+    User.find({}, "username avatar lastSeen").then(users=>{
+        io.emit("users",{users});
     });
 }
 
-/* SEND TO USER */
 function emitToUser(username,event,data){
-
     for(let id in online){
         if(online[id]===username){
             io.to(id).emit(event,data);
@@ -181,5 +147,5 @@ function emitToUser(username,event,data){
 }
 
 server.listen(3000,()=>{
-    console.log("PRO STABLE 5 RUN");
+    console.log("PRO STABLE 5.1 E2E RUN");
 });

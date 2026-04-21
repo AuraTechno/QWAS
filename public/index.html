@@ -2,119 +2,106 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>PRO STABLE 5</title>
+<title>E2E Messenger</title>
 <script src="/socket.io/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
 
 <style>
 body{
-    margin:0;
-    font-family:Arial;
-    background:#0d0d0d;
-    color:#fff;
+margin:0;
+font-family:Arial;
+background:#0d0d0d;
+color:#fff;
 }
 
-/* AUTH */
 #auth{
-    width:320px;
-    margin:120px auto;
-    display:flex;
-    flex-direction:column;
-    gap:10px;
-}
-
-/* CHAT */
-#chat{
-    display:none;
-    height:100vh;
-}
-
-/* USERS */
-.sidebar{
-    width:280px;
-    background:#111;
-    border-right:1px solid #222;
-    overflow:auto;
-}
-
-.user{
-    display:flex;
-    gap:10px;
-    padding:12px;
-    border-bottom:1px solid #1f1f1f;
-    cursor:pointer;
-}
-
-.avatar{
-    width:35px;
-    height:35px;
-    border-radius:50%;
-    background:#333;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    overflow:hidden;
-}
-
-.avatar img{
-    width:100%;
-    height:100%;
-}
-
-/* CHAT */
-.chat{
-    flex:1;
-    display:flex;
-    flex-direction:column;
-}
-
-.header{
-    padding:15px;
-    border-bottom:1px solid #222;
-}
-
-/* MSG */
-.messages{
-    flex:1;
-    padding:15px;
-    overflow:auto;
-    display:flex;
-    flex-direction:column;
-    gap:8px;
-}
-
-.msg{
-    max-width:70%;
-    padding:10px;
-    border-radius:10px;
-}
-
-.me{
-    align-self:flex-end;
-    background:#fff;
-    color:#000;
-}
-
-.other{
-    background:#1a1a1a;
-    border:1px solid #333;
-}
-
-/* INPUT */
-.input{
-    display:flex;
-    border-top:1px solid #222;
+width:320px;
+margin:120px auto;
+display:flex;
+flex-direction:column;
+gap:10px;
 }
 
 input{
-    flex:1;
-    padding:14px;
-    background:#111;
-    color:#fff;
-    border:none;
+padding:12px;
+border:none;
+border-radius:10px;
+background:#1a1a1a;
+color:#fff;
 }
 
 button{
-    width:80px;
+padding:12px;
+border:none;
+border-radius:10px;
+background:#fff;
+color:#000;
+cursor:pointer;
+}
+
+#chat{
+display:none;
+height:100vh;
+}
+
+.sidebar{
+width:280px;
+background:#111;
+border-right:1px solid #222;
+overflow:auto;
+}
+
+.user{
+padding:14px;
+border-bottom:1px solid #1f1f1f;
+cursor:pointer;
+}
+
+.chat{
+flex:1;
+display:flex;
+flex-direction:column;
+}
+
+.header{
+padding:15px;
+border-bottom:1px solid #222;
+}
+
+.messages{
+flex:1;
+padding:15px;
+overflow:auto;
+display:flex;
+flex-direction:column;
+gap:8px;
+}
+
+.msg{
+max-width:70%;
+padding:10px;
+border-radius:10px;
+}
+
+.me{
+align-self:flex-end;
+background:#fff;
+color:#000;
+}
+
+.other{
+background:#1a1a1a;
+border:1px solid #333;
+}
+
+.input{
+display:flex;
+border-top:1px solid #222;
+}
+
+input.msg{
+flex:1;
+padding:14px;
 }
 </style>
 </head>
@@ -122,36 +109,53 @@ button{
 <body>
 
 <div id="auth">
-    <input id="u" placeholder="username">
-    <input id="p" type="password" placeholder="password">
-
-    <button onclick="login()">Войти</button>
-    <button onclick="register()">Регистрация</button>
+<input id="u" placeholder="username">
+<input id="p" type="password" placeholder="password">
+<button onclick="login()">Войти</button>
+<button onclick="register()">Регистрация</button>
 </div>
 
 <div id="chat">
 
-    <div class="sidebar" id="users"></div>
+<div class="sidebar" id="users"></div>
 
-    <div class="chat">
+<div class="chat">
 
-        <div class="header" id="chatName">Chat</div>
+<div class="header" id="chatName">Chat</div>
 
-        <div class="messages" id="messages"></div>
+<div class="messages" id="messages"></div>
 
-        <div class="input">
-            <input id="msg" oninput="typing()">
-            <button onclick="send()">➤</button>
-        </div>
+<div class="input">
+<input id="msg" class="msg">
+<button onclick="send()">➤</button>
+</div>
 
-    </div>
+</div>
+
 </div>
 
 <script>
+
 let socket;
 let token="";
 let username="";
 let current="";
+
+/* KEY */
+function getKey(a,b){
+return CryptoJS.SHA256([a,b].sort().join("-")).toString();
+}
+
+/* ENCRYPT */
+function enc(text,key){
+return CryptoJS.AES.encrypt(text,key).toString();
+}
+
+/* DECRYPT */
+function dec(text,key){
+let bytes=CryptoJS.AES.decrypt(text,key);
+return bytes.toString(CryptoJS.enc.Utf8);
+}
 
 /* LOGIN */
 function login(){
@@ -177,45 +181,23 @@ socket.on("connect",()=>{
 socket.emit("join");
 });
 
-/* USERS */
 socket.on("users",d=>{
 users.innerHTML="";
 d.users.forEach(u=>{
 if(u.username!==username){
-
-let av=u.avatar
-?`<img src="${u.avatar}">`
-:u.username[0];
-
 users.innerHTML+=`
 <div class="user" onclick="openChat('${u.username}')">
-<div class="avatar">${av}</div>
-<div>${u.username}</div>
+${u.username}
 </div>`;
 }
 });
 });
 
-/* MESSAGES */
 socket.on("private_message",render);
 
-/* HISTORY */
 socket.on("chat_history",msgs=>{
 messages.innerHTML="";
 msgs.forEach(render);
-});
-
-/* READ */
-socket.on("read_update",()=>{
-document.querySelectorAll(".meta").forEach(m=>{
-m.innerText="✔✔ read";
-});
-});
-
-/* TYPING */
-socket.on("typing",d=>{
-chatName.innerText=d.from+" печатает...";
-setTimeout(()=>chatName.innerText=current,1000);
 });
 
 });
@@ -237,37 +219,36 @@ chatName.innerText=u;
 socket.emit("get_history",u);
 }
 
-/* SEND */
+/* SEND (ENCRYPTED) */
 function send(){
+
 if(!msg.value)return;
+
+let key=getKey(username,current);
 
 socket.emit("private_message",{
 to:current,
-message:msg.value
+message:enc(msg.value,key)
 });
 
 msg.value="";
 }
 
-/* TYPING */
-function typing(){
-socket.emit("typing",current);
-}
-
-/* RENDER */
+/* RENDER (DECRYPT) */
 function render(m){
+
+let key=getKey(username,m.from===username?m.to:m.from);
+
+let text=dec(m.message,key);
 
 let div=document.createElement("div");
 div.className="msg "+(m.from===username?"me":"other");
-
-div.innerHTML=`
-${m.message}
-<div class="meta">${m.status}</div>
-`;
+div.innerText=text;
 
 messages.appendChild(div);
 messages.scrollTop=messages.scrollHeight;
 }
+
 </script>
 
 </body>
