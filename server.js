@@ -76,6 +76,11 @@ app.post("/login", async (req, res) => {
   }
 });
 
+// Health check endpoint для nginx
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", mongodb: mongoose.connection.readyState === 1 });
+});
+
 /* SOCKET AUTH */
 io.use((socket, next) => {
   try {
@@ -212,7 +217,8 @@ function send(user, event, data) {
   }
 }
 
-const PORT = 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+// Используем PORT из переменной окружения или 3000
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, '127.0.0.1', () => {
+  console.log(`🚀 Server running on http://127.0.0.1:${PORT}`);
 });
