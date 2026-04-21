@@ -2,8 +2,10 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>PRO STABLE 6</title>
+<title>PRO STABLE 6.1</title>
+
 <script src="/socket.io/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
 
 <style>
 body{
@@ -13,6 +15,7 @@ background:#0d0d0d;
 color:#fff;
 }
 
+/* AUTH */
 #auth{
 width:320px;
 margin:120px auto;
@@ -21,6 +24,7 @@ flex-direction:column;
 gap:10px;
 }
 
+/* CHAT */
 #chat{
 display:none;
 height:100vh;
@@ -126,7 +130,7 @@ width:80px;
 
 <div id="auth">
 <input id="u" placeholder="username">
-<input id="p" type="password" placeholder="password">
+<input id="p" type="password">
 <button onclick="login()">Войти</button>
 <button onclick="register()">Регистрация</button>
 </div>
@@ -147,6 +151,7 @@ width:80px;
 </div>
 
 </div>
+
 </div>
 
 <script>
@@ -155,6 +160,22 @@ let socket;
 let token="";
 let username="";
 let current="";
+
+/* KEY */
+function key(a,b){
+return CryptoJS.SHA256([a,b].sort().join("-")).toString();
+}
+
+/* ENC */
+function enc(t,k){
+return CryptoJS.AES.encrypt(t,k).toString();
+}
+
+/* DEC */
+function dec(t,k){
+let b=CryptoJS.AES.decrypt(t,k);
+return b.toString(CryptoJS.enc.Utf8);
+}
 
 /* LOGIN */
 function login(){
@@ -176,54 +197,35 @@ chat.style.display="flex";
 
 socket=io({auth:{token}});
 
-socket.on("connect",()=>{
-socket.emit("join");
-});
+socket.on("connect",()=>socket.emit("join"));
 
-/* USERS + AVATAR + STATUS */
 socket.on("users",data=>{
 users.innerHTML="";
-
 data.forEach(u=>{
+if(u.username!==username){
 
-let av = u.avatar
-? `<img src="${u.avatar}">`
-: u.username[0];
+let av=u.avatar
+?`<img src="${u.avatar}">`
+:u.username[0];
 
-let status = u.online ? "🟢 online" : "⚪ " + timeAgo(u.lastSeen);
+let st=u.online?"🟢":"⚪";
 
 users.innerHTML+=`
 <div class="user" onclick="openChat('${u.username}')">
 <div class="avatar">${av}</div>
 <div>
 <div>${u.username}</div>
-<div style="font-size:10px;opacity:0.6">${status}</div>
+<div style="font-size:10px">${st}</div>
 </div>
 </div>`;
+}
 });
 });
 
-/* CHAT */
 socket.on("private_message",render);
-socket.on("chat_history",msgs=>{
+socket.on("chat_history",m=>{
 messages.innerHTML="";
-msgs.forEach(render);
-});
-
-/* READ */
-socket.on("read_update",()=>{
-document.querySelectorAll(".meta").forEach(m=>{
-m.innerText="✔✔ read";
-});
-});
-
-/* TYPING */
-socket.on("typing",d=>{
-chatName.innerText=d.from+" печатает...";
-});
-
-socket.on("stop_typing",()=>{
-chatName.innerText=current;
+m.forEach(render);
 });
 
 });
@@ -238,38 +240,42 @@ body:JSON.stringify({username:u.value,password:p.value})
 });
 }
 
-/* CHAT OPEN */
+/* CHAT */
 function openChat(u){
 current=u;
 chatName.innerText=u;
 socket.emit("get_history",u);
 }
 
-/* SEND */
+/* SEND E2E */
 function send(){
-if(!msg.value)return;
+
+if(!msg.value||!current)return;
+
+let k=key(username,current);
 
 socket.emit("private_message",{
 to:current,
-message:msg.value
+message:enc(msg.value,k)
 });
 
 msg.value="";
 }
 
-/* TYPING */
-function typing(){
-socket.emit("typing",current);
-}
-
-/* RENDER */
+/* RENDER E2E */
 function render(m){
+
+let k=key(username,m.from===username?m.to:m.from);
+
+let text="";
+try{ text=dec(m.message,k); }
+catch{ text="🔒 encrypted"; }
 
 let div=document.createElement("div");
 div.className="msg "+(m.from===username?"me":"other");
 
 div.innerHTML=`
-${m.message}
+${text}
 <div class="meta">${m.status}</div>
 `;
 
@@ -277,11 +283,8 @@ messages.appendChild(div);
 messages.scrollTop=messages.scrollHeight;
 }
 
-/* TIME */
-function timeAgo(t){
-if(!t) return "long ago";
-let d=Math.floor((Date.now()-t)/60000);
-return d+"m ago";
+function typing(){
+socket.emit("typing",current);
 }
 
 </script>

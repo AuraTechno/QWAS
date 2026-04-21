@@ -29,7 +29,6 @@ app.post("/register", async (req,res)=>{
     if(exists) return res.json({ok:false});
 
     const hash = await bcrypt.hash(password,10);
-
     await User.create({username,password:hash});
 
     res.json({ok:true});
@@ -54,14 +53,11 @@ app.post("/login", async (req,res)=>{
     res.json({ok:true,token});
 });
 
-/* UPDATE AVATAR */
+/* AVATAR UPDATE */
 app.post("/avatar", async (req,res)=>{
     const {username,avatar}=req.body;
 
-    await User.updateOne(
-        {username},
-        {$set:{avatar}}
-    );
+    await User.updateOne({username},{ $set:{avatar} });
 
     res.json({ok:true});
 });
@@ -78,20 +74,15 @@ io.use((socket,next)=>{
     }
 });
 
-/* TYPING CONTROL */
-let typingUsers = {};
-
 io.on("connection",(socket)=>{
 
     online[socket.id]=socket.username;
 
     emitUsers();
 
-    socket.on("join",()=>{
-        emitUsers();
-    });
+    socket.on("join",()=>emitUsers());
 
-    /* MESSAGE */
+    /* MESSAGE (E2E ENCRYPTED ALREADY) */
     socket.on("private_message", async (data)=>{
 
         const msg = await Message.create({
@@ -118,7 +109,7 @@ io.on("connection",(socket)=>{
         socket.emit("chat_history",msgs);
     });
 
-    /* READ RECEIPTS */
+    /* READ */
     socket.on("read", async (data)=>{
 
         await Message.updateMany(
@@ -129,19 +120,11 @@ io.on("connection",(socket)=>{
         emitToUser(data.from,"read_update",data);
     });
 
-    /* TYPING (ANTI-SPAM) */
+    /* TYPING */
     socket.on("typing",(to)=>{
-
         emitToUser(to,"typing",{from:socket.username});
-
-        clearTimeout(typingUsers[socket.username]);
-
-        typingUsers[socket.username]=setTimeout(()=>{
-            emitToUser(to,"stop_typing",{from:socket.username});
-        },800);
     });
 
-    /* DISCONNECT */
     socket.on("disconnect",async ()=>{
 
         await User.updateOne(
@@ -156,7 +139,7 @@ io.on("connection",(socket)=>{
 
 });
 
-/* USERS WITH STATUS */
+/* USERS */
 async function emitUsers(){
 
     const users = await User.find({}, "username avatar lastSeen");
@@ -171,7 +154,7 @@ async function emitUsers(){
     io.emit("users",formatted);
 }
 
-/* SEND TO USER */
+/* SEND */
 function emitToUser(username,event,data){
     for(let id in online){
         if(online[id]===username){
@@ -181,5 +164,5 @@ function emitToUser(username,event,data){
 }
 
 server.listen(3000,()=>{
-    console.log("PRO STABLE 6 RUN");
+    console.log("PRO STABLE 6.1 RUN");
 });
