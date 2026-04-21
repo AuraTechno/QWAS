@@ -1,7 +1,5 @@
-require("dotenv").config();
-
 module.exports = {
-    MONGO_URL: process.env.MONGO_URL,
-    JWT_SECRET: process.env.JWT_SECRET,
-    PORT: process.env.PORT || 3000
+  // ВАЖНО: Замени PASSWORD на реальный пароль от MongoDB Atlas!
+  MONGO_URL: "mongodb+srv://server:bRtteM2rqijlDTsd@qwas.ijvw0zw.mongodb.net/messenger?retryWrites=true&w=majority",
+  JWT_SECRET: "secret_key_123"
 };

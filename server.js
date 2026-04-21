@@ -7,8 +7,8 @@ const jwt = require("jsonwebtoken");
 
 const config = require("./config");
 
-const User = require("./models/User");
-const Message = require("./models/Message");
+// Модели подключаем после проверки MongoDB
+let User, Message;
 
 const app = express();
 const server = http.createServer(app);
@@ -22,22 +22,90 @@ const io = new Server(server, {
 app.use(express.json());
 app.use(express.static("public"));
 
-// Добавим обработку ошибок подключения к MongoDB
-mongoose.connect(config.MONGO_URL, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => {
-  console.log("✅ MongoDB connected");
-}).catch(err => {
-  console.error("❌ MongoDB connection error:", err);
-});
-
 /* ONLINE USERS */
 const online = new Map();
+
+// Health check endpoint - работает даже без MongoDB
+app.get("/health", (req, res) => {
+  const mongoStatus = mongoose.connection.readyState;
+  const statusMap = {
+    0: "disconnected",
+    1: "connected",
+    2: "connecting",
+    3: "disconnecting"
+  };
+  
+  res.json({ 
+    status: "ok", 
+    mongodb: statusMap[mongoStatus] || "unknown",
+    online_users: online.size
+  });
+});
+
+// Статус сервера
+app.get("/status", (req, res) => {
+  res.json({
+    server: "running",
+    mongodb_connected: mongoose.connection.readyState === 1,
+    online_users: Array.from(online.keys())
+  });
+});
+
+/* Подключение к MongoDB с детальными логами */
+console.log("🔄 Connecting to MongoDB...");
+console.log("📝 URL:", config.MONGO_URL.replace(/:[^:@]+@/, ':****@')); // Скрываем пароль
+
+mongoose.set('strictQuery', false);
+
+mongoose.connect(config.MONGO_URL, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 5000, // 5 секунд на выбор сервера
+  socketTimeoutMS: 45000, // 45 секунд на операции
+})
+.then(() => {
+  console.log("✅ MongoDB connected successfully!");
+  
+  // Загружаем модели только после успешного подключения
+  User = require("./models/User");
+  Message = require("./models/Message");
+  
+  console.log("✅ Models loaded");
+})
+.catch(err => {
+  console.error("❌ MongoDB connection error:");
+  console.error("  Error name:", err.name);
+  console.error("  Error message:", err.message);
+  
+  if (err.message.includes("bad auth")) {
+    console.error("  🔐 Authentication failed! Check username/password in MONGO_URL");
+  } else if (err.message.includes("ENOTFOUND")) {
+    console.error("  🌐 DNS error! Check MongoDB cluster address");
+  } else if (err.message.includes("whitelist")) {
+    console.error("  🚫 IP not whitelisted! Add your server IP to MongoDB Atlas");
+  }
+});
+
+// Отслеживаем события подключения
+mongoose.connection.on('error', err => {
+  console.error('❌ MongoDB connection error:', err.message);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('⚠️ MongoDB disconnected');
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('✅ MongoDB reconnected');
+});
 
 /* REGISTER */
 app.post("/register", async (req, res) => {
   try {
+    if (!User) {
+      return res.status(503).json({ ok: false, error: "Database not ready" });
+    }
+    
     const { username, password } = req.body;
     
     if (!username || !password) {
@@ -60,6 +128,10 @@ app.post("/register", async (req, res) => {
 /* LOGIN */
 app.post("/login", async (req, res) => {
   try {
+    if (!User) {
+      return res.status(503).json({ ok: false, error: "Database not ready" });
+    }
+    
     const { username, password } = req.body;
 
     const user = await User.findOne({ username });
@@ -74,11 +146,6 @@ app.post("/login", async (req, res) => {
     console.error("Login error:", err);
     res.json({ ok: false, error: "Server error" });
   }
-});
-
-// Health check endpoint для nginx
-app.get("/health", (req, res) => {
-  res.json({ status: "ok", mongodb: mongoose.connection.readyState === 1 });
 });
 
 /* SOCKET AUTH */
@@ -101,15 +168,32 @@ io.on("connection", (socket) => {
   console.log(`✅ User connected: ${socket.username}`);
 
   online.set(socket.username, socket.id);
-  emitUsers();
+  
+  if (mongoose.connection.readyState === 1 && User) {
+    emitUsers();
+  } else {
+    // Отправляем базовый список онлайн пользователей
+    const onlineUsers = Array.from(online.keys()).map(u => ({
+      username: u,
+      online: true
+    }));
+    socket.emit("users", onlineUsers);
+  }
 
   socket.on("join", () => {
-    emitUsers();
+    if (mongoose.connection.readyState === 1 && User) {
+      emitUsers();
+    }
   });
 
   /* MESSAGE */
   socket.on("send_message", async (data) => {
     try {
+      if (!Message) {
+        socket.emit("error", "Database not ready");
+        return;
+      }
+      
       console.log(`📨 Message from ${socket.username} to ${data.to}: ${data.message}`);
 
       const msg = await Message.create({
@@ -122,18 +206,22 @@ io.on("connection", (socket) => {
       const full = await Message.findById(msg._id);
       console.log(`✅ Message saved: ${full._id}`);
 
-      // Отправляем получателю
       send(data.to, "new_message", full);
-      // Отправляем отправителю для отображения
       socket.emit("new_message", full);
     } catch (err) {
       console.error("Send message error:", err);
+      socket.emit("error", "Failed to send message");
     }
   });
 
   /* HISTORY */
   socket.on("get_history", async (user) => {
     try {
+      if (!Message) {
+        socket.emit("chat_history", []);
+        return;
+      }
+      
       console.log(`📜 Getting history between ${socket.username} and ${user}`);
 
       const msgs = await Message.find({
@@ -146,12 +234,15 @@ io.on("connection", (socket) => {
       socket.emit("chat_history", msgs);
     } catch (err) {
       console.error("Get history error:", err);
+      socket.emit("chat_history", []);
     }
   });
 
   /* READ */
   socket.on("read", async (data) => {
     try {
+      if (!Message) return;
+      
       console.log(`👁️ Marking as read: from ${data.from} to ${data.to}`);
 
       const msgs = await Message.find({
@@ -187,13 +278,17 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log(`❌ User disconnected: ${socket.username}`);
     online.delete(socket.username);
-    emitUsers();
+    if (mongoose.connection.readyState === 1 && User) {
+      emitUsers();
+    }
   });
 });
 
 /* EMIT USERS */
 async function emitUsers() {
   try {
+    if (!User) return;
+    
     const users = await User.find({}, "username avatar");
     
     io.emit("users", users.map(u => ({
@@ -213,12 +308,12 @@ function send(user, event, data) {
     io.to(id).emit(event, data);
     console.log(`📤 Sent ${event} to ${user}`);
   } else {
-    console.log(`⚠️ User ${user} is offline, message saved in DB`);
+    console.log(`⚠️ User ${user} is offline`);
   }
 }
 
-// Используем PORT из переменной окружения или 3000
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`🚀 Server running on http://127.0.0.1:${PORT}`);
+  console.log(`💚 Health check: http://127.0.0.1:${PORT}/health`);
 });
