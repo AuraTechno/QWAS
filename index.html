@@ -2,33 +2,42 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Мессенджер</title>
+<title>Messenger</title>
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
-body { font-family: Arial; margin:0; }
+body { margin:0; font-family:Arial; }
 
 #auth {
-    display:flex;
-    flex-direction:column;
     width:300px;
     margin:100px auto;
+    display:flex;
+    flex-direction:column;
 }
 
-#chat { display:none; height:100vh; }
+#chat {
+    display:none;
+    height:100vh;
+}
 
 .sidebar {
-    width:200px;
+    width:220px;
     background:#2f3136;
     color:white;
     float:left;
     height:100%;
 }
 
-.user { padding:10px; cursor:pointer; }
+.user {
+    padding:10px;
+    cursor:pointer;
+}
+.user:hover {
+    background:#40444b;
+}
 
 .chat {
-    margin-left:200px;
+    margin-left:220px;
     display:flex;
     flex-direction:column;
     height:100%;
@@ -37,24 +46,54 @@ body { font-family: Arial; margin:0; }
 .messages {
     flex:1;
     padding:10px;
-    overflow:auto;
+    overflow-y:auto;
+    background:#f2f2f2;
 }
 
 .input {
     display:flex;
 }
+
 input { flex:1; padding:10px; }
 button { padding:10px; }
+
+.msg {
+    margin:5px 0;
+    display:flex;
+}
+
+.me {
+    justify-content:flex-end;
+}
+
+.other {
+    justify-content:flex-start;
+}
+
+.bubble {
+    padding:8px 12px;
+    border-radius:10px;
+    max-width:60%;
+    color:white;
+}
+
+.me .bubble {
+    background:#4caf50;
+}
+
+.other .bubble {
+    background:#333;
+}
 </style>
 </head>
 
 <body>
 
 <div id="auth">
-    <h2>Авторизация</h2>
+    <h2>Регистрация / Вход</h2>
 
     <input id="username" placeholder="username">
-    <input id="password" placeholder="password" type="password">
+    <input id="password" type="password" placeholder="password">
 
     <button onclick="register()">Регистрация</button>
     <button onclick="login()">Войти</button>
@@ -69,7 +108,7 @@ button { padding:10px; }
 
         <div class="input">
             <input id="msg">
-            <button onclick="send()">send</button>
+            <button onclick="send()">Отправить</button>
         </div>
     </div>
 
@@ -77,60 +116,58 @@ button { padding:10px; }
 
 <script>
 const socket = io();
+
 let username = "";
 let current = "";
 
-/* ========== AUTH ========== */
+/* ================= AUTH ================= */
 
-async function register() {
+async function register(){
     let res = await fetch("/register", {
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({
-            username: usernameInput().value,
-            password: passwordInput().value
+        body:JSON.stringify({
+            username: username.value,
+            password: password.value
         })
     });
 
     let data = await res.json();
-    alert(data.ok ? "OK" : "Ошибка");
+    alert(data.ok ? "Успешно" : "Ошибка");
 }
 
-async function login() {
+async function login(){
     let res = await fetch("/login", {
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({
-            username: usernameInput().value,
-            password: passwordInput().value
+        body:JSON.stringify({
+            username: username.value,
+            password: password.value
         })
     });
 
     let data = await res.json();
 
-    if (data.ok) {
-        username = usernameInput().value;
+    if(data.ok){
+        username = document.getElementById("username").value;
 
-        document.getElementById("auth").style.display = "none";
-        document.getElementById("chat").style.display = "block";
+        document.getElementById("auth").style.display="none";
+        document.getElementById("chat").style.display="block";
 
         socket.emit("join", username);
     } else {
-        alert("неверный логин");
+        alert("Ошибка входа");
     }
 }
 
-function usernameInput(){ return document.getElementById("username"); }
-function passwordInput(){ return document.getElementById("password"); }
-
-/* ========== CHAT ========== */
+/* ================= USERS ================= */
 
 socket.on("users", list => {
     let box = document.getElementById("users");
     box.innerHTML = "";
 
     list.forEach(u => {
-        if (u !== username) {
+        if(u !== username){
             box.innerHTML += `<div class="user" onclick="openChat('${u}')">${u}</div>`;
         }
     });
@@ -141,22 +178,53 @@ function openChat(u){
     socket.emit("get_history", u);
 }
 
+/* ================= HISTORY ================= */
+
 socket.on("chat_history", msgs => {
     let box = document.getElementById("messages");
     box.innerHTML = "";
 
-    msgs.forEach(m => {
-        box.innerHTML += `<div><b>${m.from}:</b> ${m.message}</div>`;
-    });
+    msgs.forEach(m => render(m.from, m.message));
 });
+
+/* ================= SEND ================= */
 
 function send(){
     let msg = document.getElementById("msg").value;
+
+    if(!msg || !current) return;
 
     socket.emit("private_message", {
         to: current,
         message: msg
     });
+
+    render(username, msg);
+    document.getElementById("msg").value = "";
+}
+
+/* ================= RECEIVE ================= */
+
+socket.on("private_message", data => {
+    if(data.from === current){
+        render(data.from, data.message);
+    }
+});
+
+/* ================= RENDER ================= */
+
+function render(from, text){
+    let box = document.getElementById("messages");
+
+    let isMe = from === username;
+
+    box.innerHTML += `
+        <div class="msg ${isMe ? 'me' : 'other'}">
+            <div class="bubble">${from}: ${text}</div>
+        </div>
+    `;
+
+    box.scrollTop = box.scrollHeight;
 }
 </script>
 
