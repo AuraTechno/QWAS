@@ -51,18 +51,14 @@ app.get("/status", (req, res) => {
   });
 });
 
-/* Подключение к MongoDB с детальными логами */
+/* Подключение к MongoDB */
 console.log("🔄 Connecting to MongoDB...");
 console.log("📝 URL:", config.MONGO_URL.replace(/:[^:@]+@/, ':****@')); // Скрываем пароль
 
 mongoose.set('strictQuery', false);
 
-mongoose.connect(config.MONGO_URL, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 5000, // 5 секунд на выбор сервера
-  socketTimeoutMS: 45000, // 45 секунд на операции
-})
+// Убираем устаревшие опции - в Mongoose 6+ они не нужны
+mongoose.connect(config.MONGO_URL)
 .then(() => {
   console.log("✅ MongoDB connected successfully!");
   
@@ -178,6 +174,7 @@ io.on("connection", (socket) => {
       online: true
     }));
     socket.emit("users", onlineUsers);
+    socket.broadcast.emit("users", onlineUsers);
   }
 
   socket.on("join", () => {
@@ -280,6 +277,12 @@ io.on("connection", (socket) => {
     online.delete(socket.username);
     if (mongoose.connection.readyState === 1 && User) {
       emitUsers();
+    } else {
+      const onlineUsers = Array.from(online.keys()).map(u => ({
+        username: u,
+        online: true
+      }));
+      io.emit("users", onlineUsers);
     }
   });
 });
