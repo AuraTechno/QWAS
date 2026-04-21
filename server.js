@@ -3,6 +3,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const config = require("./config");
 
 const app = express();
 const server = http.createServer(app);
@@ -11,110 +12,165 @@ const io = new Server(server);
 app.use(express.json());
 app.use(express.static(__dirname));
 
-/* ================= DATABASE ================= */
+/* ================= DB ================= */
 
-mongoose.connect("mongodb+srv://server:bRtteM2rqijlDTsd@qwas.ijvw0zw.mongodb.net/messenger");
+mongoose.connect(config.MONGO_URL);
 
 const UserSchema = new mongoose.Schema({
     username: String,
-    password: String
+    password: String,
+    avatar: String
 });
 
 const MessageSchema = new mongoose.Schema({
     from: String,
     to: String,
     message: String,
-    time: { type: Date, default: Date.now }
+    time: { type: Date, default: Date.now },
+    status: { type: String, default: "sent" }
 });
 
 const User = mongoose.model("User", UserSchema);
 const Message = mongoose.model("Message", MessageSchema);
 
-/* ================= USERS ONLINE ================= */
+/* ================= PRESENCE ================= */
 
 let onlineUsers = {};
+let lastSeen = {};
 
-/* ================= AUTH API ================= */
+/* ================= AUTH ================= */
 
-// регистрация
-app.post("/register", async (req, res) => {
-    const { username, password } = req.body;
+app.post("/register", async (req,res)=>{
+    const {username,password}=req.body;
 
-    let exists = await User.findOne({ username });
-    if (exists) return res.json({ ok: false, msg: "Уже существует" });
+    const exists = await User.findOne({username});
+    if(exists) return res.json({ok:false});
 
-    let hash = await bcrypt.hash(password, 10);
+    const hash = await bcrypt.hash(password,10);
 
     await User.create({
         username,
-        password: hash
+        password:hash,
+        avatar:""
     });
 
-    res.json({ ok: true });
+    res.json({ok:true});
 });
 
-// вход
-app.post("/login", async (req, res) => {
-    const { username, password } = req.body;
+app.post("/login", async (req,res)=>{
+    const {username,password}=req.body;
 
-    let user = await User.findOne({ username });
-    if (!user) return res.json({ ok: false });
+    const user = await User.findOne({username});
+    if(!user) return res.json({ok:false});
 
-    let valid = await bcrypt.compare(password, user.password);
-    if (!valid) return res.json({ ok: false });
+    const ok = await bcrypt.compare(password,user.password);
+    if(!ok) return res.json({ok:false});
 
-    res.json({ ok: true });
+    res.json({ok:true});
+});
+
+/* ================= AVATAR ================= */
+
+app.post("/avatar", async (req,res)=>{
+    const {username,avatar}=req.body;
+
+    await User.updateOne(
+        {username},
+        {$set:{avatar}}
+    );
+
+    res.json({ok:true});
 });
 
 /* ================= SOCKET ================= */
 
-io.on("connection", (socket) => {
+io.on("connection",(socket)=>{
 
-    socket.on("join", (username) => {
-        onlineUsers[socket.id] = username;
-        io.emit("users", Object.values(onlineUsers));
+    socket.on("join", async (username)=>{
+
+        onlineUsers[socket.id]=username;
+
+        const users = await User.find({}, "username avatar");
+
+        io.emit("users",{
+            users,
+            online:Object.values(onlineUsers),
+            lastSeen
+        });
     });
 
-    socket.on("private_message", async (data) => {
+    socket.on("private_message", async (data)=>{
         const from = onlineUsers[socket.id];
-        const { to, message } = data;
 
-        await Message.create({
+        const msg = await Message.create({
             from,
-            to,
-            message
+            to:data.to,
+            message:data.message,
+            status:"sent"
         });
 
-        for (let id in onlineUsers) {
-            if (onlineUsers[id] === to) {
-                io.to(id).emit("private_message", {
-                    from,
-                    message
-                });
+        for(let id in onlineUsers){
+            if(onlineUsers[id]===data.to){
+                io.to(id).emit("private_message",msg);
             }
         }
     });
 
-    socket.on("get_history", async (withUser) => {
+    socket.on("get_history", async (withUser)=>{
         const user = onlineUsers[socket.id];
 
-        const messages = await Message.find({
-            $or: [
-                { from: user, to: withUser },
-                { from: withUser, to: user }
+        await Message.updateMany(
+            {from:withUser,to:user,status:{$ne:"read"}},
+            {$set:{status:"read"}}
+        );
+
+        const msgs = await Message.find({
+            $or:[
+                {from:user,to:withUser},
+                {from:withUser,to:user}
             ]
-        });
+        }).sort({time:1});
 
-        socket.emit("chat_history", messages);
+        socket.emit("chat_history",msgs);
     });
 
-    socket.on("disconnect", () => {
+    /* ================= TYPING ================= */
+
+    socket.on("typing",(data)=>{
+        for(let id in onlineUsers){
+            if(onlineUsers[id]===data.to){
+                io.to(id).emit("typing",{from:data.from});
+            }
+        }
+    });
+
+    socket.on("stop_typing",(data)=>{
+        for(let id in onlineUsers){
+            if(onlineUsers[id]===data.to){
+                io.to(id).emit("stop_typing");
+            }
+        }
+    });
+
+    /* ================= DISCONNECT ================= */
+
+    socket.on("disconnect",()=>{
+
+        const user = onlineUsers[socket.id];
+
+        if(user){
+            lastSeen[user]=Date.now();
+        }
+
         delete onlineUsers[socket.id];
-        io.emit("users", Object.values(onlineUsers));
+
+        io.emit("users",{
+            users:[],
+            online:Object.values(onlineUsers),
+            lastSeen
+        });
     });
 
 });
 
-server.listen(3000, () => {
-    console.log("Server running");
-});
+server.listen(3000,()=>console.log("RUN"));

@@ -2,199 +2,161 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Messenger</title>
+<title>Messenger PRO</title>
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
-body {
+body{
     margin:0;
     font-family:Arial;
-    background:#fff;
-    color:#000;
+    background:#000;
+    color:#fff;
 }
 
-/* ================= AUTH ================= */
-
-#auth {
+/* AUTH */
+#auth{
     width:320px;
-    margin:100px auto;
+    margin:120px auto;
     display:flex;
     flex-direction:column;
     gap:10px;
 }
 
-input {
+input{
     padding:12px;
-    border:1px solid #000;
-    outline:none;
-    background:#fff;
+    background:#000;
+    border:1px solid #fff;
+    color:#fff;
 }
 
-button {
+button{
     padding:12px;
-    border:1px solid #000;
-    background:#000;
-    color:#fff;
+    background:#fff;
+    color:#000;
+    border:none;
     cursor:pointer;
 }
 
-button:hover {
-    opacity:0.8;
-}
-
-#error {
-    color:red;
-    font-size:14px;
-}
-
-/* ================= CHAT LAYOUT ================= */
-
-#chat {
+/* CHAT */
+#chat{
     display:none;
     height:100vh;
 }
 
-/* LEFT PANEL */
-.sidebar {
+/* USERS */
+.sidebar{
     width:300px;
-    border-right:1px solid #000;
-    overflow-y:auto;
+    border-right:1px solid #fff;
+    overflow:auto;
 }
 
-.user {
+.user{
     display:flex;
-    align-items:center;
     gap:10px;
     padding:15px;
-    border-bottom:1px solid #000;
+    border-bottom:1px solid #222;
     cursor:pointer;
 }
 
-.user:hover {
-    background:#000;
-    color:#fff;
-}
-
 /* AVATAR */
-.avatar {
+.avatar{
     width:40px;
     height:40px;
     border-radius:50%;
-    background:#ccc;
+    overflow:hidden;
+    background:#333;
     display:flex;
     align-items:center;
     justify-content:center;
-    font-weight:bold;
-    overflow:hidden;
 }
 
-.avatar img {
+.avatar img{
     width:100%;
     height:100%;
     object-fit:cover;
 }
 
 /* CHAT */
-.chat {
+.chat{
     flex:1;
     display:flex;
     flex-direction:column;
 }
 
-.header {
+.header{
     padding:15px;
-    border-bottom:1px solid #000;
+    border-bottom:1px solid #fff;
     display:flex;
-    justify-content:space-between;
     align-items:center;
+    gap:10px;
 }
 
-.messages {
+.messages{
     flex:1;
     padding:10px;
-    overflow-y:auto;
+    overflow:auto;
 }
 
-.msg {
+.msg{
     display:flex;
-    margin:8px 0;
+    margin:6px 0;
 }
 
-.me {
-    justify-content:flex-end;
-}
+.me{justify-content:flex-end;}
+.other{justify-content:flex-start;}
 
-.other {
-    justify-content:flex-start;
-}
-
-.bubble {
+.bubble{
     max-width:60%;
     padding:10px;
-    border:1px solid #000;
+}
+
+/* ME */
+.me .bubble{
+    background:#fff;
+    color:#000;
+}
+
+/* OTHER */
+.other .bubble{
+    background:#000;
+    color:#fff;
+    border:1px solid #fff;
 }
 
 /* INPUT */
-.input {
+.input{
     display:flex;
-    border-top:1px solid #000;
+    border-top:1px solid #fff;
 }
 
-.input input {
+.input input{
     flex:1;
     border:none;
+    background:#000;
+    color:#fff;
     padding:15px;
 }
 
-.input button {
-    border:none;
-    border-left:1px solid #000;
-}
-
-/* ================= SETTINGS ================= */
-
-#settings {
-    position:fixed;
-    top:0;
-    right:0;
-    width:300px;
-    height:100%;
-    background:#fff;
-    border-left:1px solid #000;
-    display:none;
-    padding:20px;
-}
-
-/* ================= MOBILE ================= */
-
-@media(max-width:768px){
-    .sidebar {
-        width:120px;
-    }
-
-    .bubble {
-        max-width:80%;
-    }
+/* STATUS */
+.status{
+    font-size:12px;
+    opacity:0.7;
 }
 </style>
 </head>
 
 <body>
 
-<!-- ========== AUTH ========== -->
+<!-- AUTH -->
 <div id="auth">
-    <h2>Вход / Регистрация</h2>
-
-    <div id="error"></div>
-
-    <input id="username" placeholder="username">
-    <input id="password" type="password" placeholder="password">
-
-    <button onclick="register()">Регистрация</button>
+    <h2>Login</h2>
+    <input id="u">
+    <input id="p" type="password">
     <button onclick="login()">Войти</button>
+    <button onclick="register()">Регистрация</button>
 </div>
 
-<!-- ========== CHAT ========== -->
+<!-- CHAT -->
 <div id="chat">
 
     <div class="sidebar" id="users"></div>
@@ -202,191 +164,87 @@ button:hover {
     <div class="chat">
 
         <div class="header">
-            <span id="chatName">Чат</span>
-            <button onclick="openSettings()">⚙</button>
+            <div class="avatar" id="chatAvatar"></div>
+            <div>
+                <div id="chatName"></div>
+                <div class="status" id="status"></div>
+            </div>
         </div>
 
         <div class="messages" id="messages"></div>
 
         <div class="input">
-            <input id="msg" placeholder="Написать сообщение...">
-            <button onclick="send()">➤</button>
+            <input id="msg">
         </div>
 
     </div>
 </div>
 
-<!-- ========== SETTINGS ========== -->
-<div id="settings">
-    <h3>Настройки</h3>
-
-    <p id="myName"></p>
-
-    <input type="file" id="avatarInput">
-    <button onclick="saveAvatar()">Сохранить аватар</button>
-
-    <button onclick="closeSettings()">Закрыть</button>
-</div>
-
 <script>
-const socket = io();
+const socket=io();
 
-let username = "";
-let current = "";
+let username="";
+let current="";
 
-/* ================= AUTH ================= */
-
-function showError(msg){
-    document.getElementById("error").innerText = msg;
+/* AUTH */
+function register(){
+fetch("/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u.value,password:p.value})})
 }
 
-async function register(){
-    let res = await fetch("/register", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-            username: username.value,
-            password: password.value
-        })
-    });
-
-    let data = await res.json();
-
-    if(!data.ok) showError("Ошибка регистрации");
-    else showError("Успешно ✔");
+function login(){
+fetch("/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u.value,password:p.value})})
+.then(r=>r.json()).then(d=>{
+if(d.ok){
+username=u.value;
+auth.style.display="none";
+chat.style.display="flex";
+socket.emit("join",username);
+}
+});
 }
 
-async function login(){
-    let res = await fetch("/login", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-            username: username.value,
-            password: password.value
-        })
-    });
-
-    let data = await res.json();
-
-    if(!data.ok){
-        showError("Неверный логин или пароль");
-        return;
-    }
-
-    username = document.getElementById("username").value;
-
-    document.getElementById("auth").style.display="none";
-    document.getElementById("chat").style.display="flex";
-
-    socket.emit("join", username);
+/* USERS */
+socket.on("users",data=>{
+users.innerHTML="";
+data.users.forEach(u=>{
+if(u.username!==username){
+users.innerHTML+=`
+<div class="user" onclick="openChat('${u.username}','${u.avatar||''}')">
+<div class="avatar">${u.avatar?`<img src="${u.avatar}">`:u.username[0]}</div>
+<div>${u.username}</div>
+</div>`;
 }
-
-/* ================= USERS ================= */
-
-socket.on("users", list => {
-    let box = document.getElementById("users");
-    box.innerHTML = "";
-
-    list.forEach(u => {
-        if(u !== username){
-            box.innerHTML += `
-            <div class="user" onclick="openChat('${u}')">
-                ${avatarHTML(u)}
-                <span>${u}</span>
-            </div>`;
-        }
-    });
+});
 });
 
-function openChat(u){
-    current = u;
-    document.getElementById("chatName").innerText = u;
-    socket.emit("get_history", u);
+/* OPEN CHAT */
+function openChat(u,a){
+current=u;
+chatName.innerText=u;
+chatAvatar.innerHTML=a?`<img src="${a}">`:u[0];
+socket.emit("get_history",u);
 }
 
-/* ================= MESSAGES ================= */
-
-socket.on("chat_history", msgs => {
-    let box = document.getElementById("messages");
-    box.innerHTML = "";
-
-    msgs.forEach(m => render(m.from, m.message));
+/* HISTORY */
+socket.on("chat_history",msgs=>{
+messages.innerHTML="";
+msgs.forEach(render);
 });
 
-function send(){
-    let msg = document.getElementById("msg").value;
-    if(!msg || !current) return;
+/* SEND */
+msg.onkeydown=e=>{if(e.key==="Enter"){
+socket.emit("private_message",{to:current,message:msg.value});
+render({from:username,message:msg.value,time:new Date()});
+msg.value="";
+}}
 
-    socket.emit("private_message", {
-        to: current,
-        message: msg
-    });
-
-    render(username, msg);
-    document.getElementById("msg").value = "";
-}
-
-/* ENTER SEND */
-document.getElementById("msg").addEventListener("keypress", e=>{
-    if(e.key==="Enter") send();
-});
-
-/* ================= SOCKET ================= */
-
-socket.on("private_message", data => {
-    if(data.from === current){
-        render(data.from, data.message);
-    }
-});
-
-/* ================= RENDER ================= */
-
-function render(from, text){
-    let box = document.getElementById("messages");
-    let isMe = from === username;
-
-    box.innerHTML += `
-    <div class="msg ${isMe?'me':'other'}">
-        <div class="bubble">${from}: ${text}</div>
-    </div>`;
-
-    box.scrollTop = box.scrollHeight;
-}
-
-/* ================= AVATAR ================= */
-
-function avatarHTML(user){
-    let img = localStorage.getItem("avatar_"+user);
-
-    if(img){
-        return `<div class="avatar"><img src="${img}"></div>`;
-    }
-
-    return `<div class="avatar">${user[0].toUpperCase()}</div>`;
-}
-
-/* ================= SETTINGS ================= */
-
-function openSettings(){
-    document.getElementById("settings").style.display="block";
-    document.getElementById("myName").innerText = username;
-}
-
-function closeSettings(){
-    document.getElementById("settings").style.display="none";
-}
-
-function saveAvatar(){
-    let file = document.getElementById("avatarInput").files[0];
-
-    if(!file) return;
-
-    let reader = new FileReader();
-    reader.onload = function(){
-        localStorage.setItem("avatar_"+username, reader.result);
-        alert("Аватар сохранён");
-    };
-    reader.readAsDataURL(file);
+/* RENDER */
+function render(m){
+let me=m.from===username;
+messages.innerHTML+=`
+<div class="msg ${me?'me':'other'}">
+<div class="bubble">${m.message}</div>
+</div>`;
 }
 </script>
 
