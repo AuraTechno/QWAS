@@ -19,9 +19,7 @@ app.use(express.static("public"));
 
 mongoose.connect(config.MONGO_URL);
 
-let online = {};
-
-/* REGISTER */
+/* AUTH */
 app.post("/register", async (req,res)=>{
     const {username,password}=req.body;
 
@@ -35,7 +33,6 @@ app.post("/register", async (req,res)=>{
     res.json({ok:true});
 });
 
-/* LOGIN */
 app.post("/login", async (req,res)=>{
     const {username,password}=req.body;
 
@@ -62,15 +59,21 @@ io.use((socket,next)=>{
         socket.username=data.username;
         next();
     }catch(e){
-        next(new Error("auth"));
+        next(new Error("auth failed"));
     }
 });
+
+let online = {};
 
 io.on("connection",(socket)=>{
 
     online[socket.id]=socket.username;
 
-    sendUsers();
+    emitUsers();
+
+    socket.on("join",()=>{
+        emitUsers();
+    });
 
     socket.on("private_message", async (data)=>{
 
@@ -89,12 +92,12 @@ io.on("connection",(socket)=>{
         socket.emit("private_message",msg);
     });
 
-    socket.on("get_history", async (withUser)=>{
+    socket.on("get_history", async (user)=>{
 
         const msgs = await Message.find({
             $or:[
-                {from:socket.username,to:withUser},
-                {from:withUser,to:socket.username}
+                {from:socket.username,to:user},
+                {from:user,to:socket.username}
             ]
         }).sort({time:1});
 
@@ -104,12 +107,13 @@ io.on("connection",(socket)=>{
     socket.on("disconnect",()=>{
 
         delete online[socket.id];
-        sendUsers();
+        emitUsers();
     });
 
 });
 
-async function sendUsers(){
+/* USERS BROADCAST */
+async function emitUsers(){
     const users = await User.find({}, "username");
 
     io.emit("users",{
@@ -118,4 +122,6 @@ async function sendUsers(){
     });
 }
 
-server.listen(3000,()=>console.log("PRO 3.2 UI FIX RUN"));
+server.listen(3000,()=>{
+    console.log("FIXED CHAT RUN");
+});

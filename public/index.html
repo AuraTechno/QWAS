@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>PRO STABLE 3.2</title>
+<title>Messenger FIX</title>
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
@@ -11,29 +11,14 @@ body{
     font-family:Arial;
     background:#0d0d0d;
     color:#fff;
-    overflow:hidden;
 }
 
-/* ANIMATION SYSTEM */
-.fade{
-    opacity:0;
-    transform:scale(0.98);
-    transition:0.25s ease;
-}
-
-.show{
-    opacity:1;
-    transform:scale(1);
-}
-
-/* AUTH */
 #auth{
     width:320px;
     margin:120px auto;
     display:flex;
     flex-direction:column;
     gap:10px;
-    transition:0.3s;
 }
 
 input{
@@ -53,14 +38,12 @@ button{
     cursor:pointer;
 }
 
-/* CHAT */
 #chat{
     display:none;
     height:100vh;
-    transition:0.3s;
 }
 
-/* SIDEBAR */
+/* LEFT USERS */
 .sidebar{
     width:280px;
     background:#111;
@@ -72,14 +55,9 @@ button{
     padding:14px;
     border-bottom:1px solid #1f1f1f;
     cursor:pointer;
-    transition:0.2s;
 }
 
-.user:hover{
-    background:#1a1a1a;
-}
-
-/* CHAT AREA */
+/* CHAT */
 .chat{
     flex:1;
     display:flex;
@@ -91,7 +69,6 @@ button{
     border-bottom:1px solid #222;
 }
 
-/* MESSAGES */
 .messages{
     flex:1;
     padding:15px;
@@ -101,17 +78,10 @@ button{
     gap:8px;
 }
 
-/* BUBBLES */
 .msg{
     max-width:70%;
     padding:10px;
-    border-radius:12px;
-    animation:pop 0.15s ease;
-}
-
-@keyframes pop{
-    from{transform:scale(0.95);opacity:0;}
-    to{transform:scale(1);opacity:1;}
+    border-radius:10px;
 }
 
 .me{
@@ -121,12 +91,10 @@ button{
 }
 
 .other{
-    align-self:flex-start;
     background:#1a1a1a;
     border:1px solid #333;
 }
 
-/* INPUT */
 .input{
     display:flex;
     border-top:1px solid #222;
@@ -134,8 +102,6 @@ button{
 
 .input input{
     flex:1;
-    padding:14px;
-    background:#111;
 }
 
 .input button{
@@ -146,27 +112,21 @@ button{
 
 <body>
 
-<!-- AUTH -->
-<div id="auth" class="fade show">
-
-    <h2>Вход</h2>
-
+<div id="auth">
     <input id="u" placeholder="username">
     <input id="p" type="password" placeholder="password">
 
     <button onclick="login()">Войти</button>
     <button onclick="register()">Регистрация</button>
-
 </div>
 
-<!-- CHAT -->
-<div id="chat" class="fade">
+<div id="chat">
 
     <div class="sidebar" id="users"></div>
 
     <div class="chat">
 
-        <div class="header" id="chatName">Чат</div>
+        <div class="header" id="chatName">Chat</div>
 
         <div class="messages" id="messages"></div>
 
@@ -179,22 +139,10 @@ button{
 </div>
 
 <script>
-const socket=io();
-
+let socket;
 let token="";
 let username="";
 let current="";
-
-/* ANIMATION HELPERS */
-function show(el){
-el.style.display="flex";
-setTimeout(()=>el.classList.add("show"),10);
-}
-
-function hide(el){
-el.classList.remove("show");
-setTimeout(()=>el.style.display="none",300);
-}
 
 /* REGISTER */
 function register(){
@@ -223,34 +171,49 @@ return;
 token=d.token;
 username=u.value;
 
-/* плавный переход */
-hide(auth);
-show(chat);
+/* UI SWITCH */
+auth.style.display="none";
+chat.style.display="flex";
 
-socket.io.opts.auth={token};
-socket.connect();
+/* SOCKET INIT — ВАЖНО */
+socket = io({
+auth:{token}
+});
 
+/* СТАБИЛЬНЫЙ CONNECT */
 socket.on("connect",()=>{
-socket.emit("join",username);
+socket.emit("join");
 });
-
-});
-}
 
 /* USERS */
 socket.on("users",data=>{
+
 users.innerHTML="";
 
 data.users.forEach(u=>{
 if(u.username!==username){
-
 users.innerHTML+=`
 <div class="user" onclick="openChat('${u.username}')">
 ${u.username}
 </div>`;
 }
 });
+
 });
+
+socket.on("private_message",m=>{
+if(m.from===current||m.from===username){
+render(m);
+}
+});
+
+socket.on("chat_history",msgs=>{
+messages.innerHTML="";
+msgs.forEach(render);
+});
+
+});
+}
 
 /* OPEN CHAT */
 function openChat(u){
@@ -270,19 +233,6 @@ message:msg.value
 
 msg.value="";
 }
-
-/* RECEIVE */
-socket.on("private_message",m=>{
-if(m.from===current||m.from===username){
-render(m);
-}
-});
-
-/* HISTORY */
-socket.on("chat_history",msgs=>{
-messages.innerHTML="";
-msgs.forEach(render);
-});
 
 /* RENDER */
 function render(m){
