@@ -14,12 +14,12 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.json());
+app.use(express.json({limit:"10mb"}));
 app.use(express.static("public"));
 
 mongoose.connect(config.MONGO_URL);
 
-let online = {};
+let online = {}; // socket.id -> username
 
 /* REGISTER */
 app.post("/register", async (req,res)=>{
@@ -54,6 +54,18 @@ app.post("/login", async (req,res)=>{
     res.json({ok:true,token});
 });
 
+/* UPDATE AVATAR */
+app.post("/avatar", async (req,res)=>{
+    const {username,avatar}=req.body;
+
+    await User.updateOne(
+        {username},
+        {$set:{avatar}}
+    );
+
+    res.json({ok:true});
+});
+
 /* SOCKET AUTH */
 io.use((socket,next)=>{
     try{
@@ -66,6 +78,9 @@ io.use((socket,next)=>{
     }
 });
 
+/* TYPING CONTROL */
+let typingUsers = {};
+
 io.on("connection",(socket)=>{
 
     online[socket.id]=socket.username;
@@ -76,13 +91,14 @@ io.on("connection",(socket)=>{
         emitUsers();
     });
 
-    /* MESSAGE (ENCRYPTED ALREADY) */
+    /* MESSAGE */
     socket.on("private_message", async (data)=>{
 
         const msg = await Message.create({
             from:socket.username,
             to:data.to,
-            message:data.message
+            message:data.message,
+            status:"sent"
         });
 
         emitToUser(data.to,"private_message",msg);
@@ -102,7 +118,7 @@ io.on("connection",(socket)=>{
         socket.emit("chat_history",msgs);
     });
 
-    /* READ */
+    /* READ RECEIPTS */
     socket.on("read", async (data)=>{
 
         await Message.updateMany(
@@ -113,11 +129,19 @@ io.on("connection",(socket)=>{
         emitToUser(data.from,"read_update",data);
     });
 
-    /* TYPING */
+    /* TYPING (ANTI-SPAM) */
     socket.on("typing",(to)=>{
+
         emitToUser(to,"typing",{from:socket.username});
+
+        clearTimeout(typingUsers[socket.username]);
+
+        typingUsers[socket.username]=setTimeout(()=>{
+            emitToUser(to,"stop_typing",{from:socket.username});
+        },800);
     });
 
+    /* DISCONNECT */
     socket.on("disconnect",async ()=>{
 
         await User.updateOne(
@@ -132,12 +156,22 @@ io.on("connection",(socket)=>{
 
 });
 
-function emitUsers(){
-    User.find({}, "username avatar lastSeen").then(users=>{
-        io.emit("users",{users});
-    });
+/* USERS WITH STATUS */
+async function emitUsers(){
+
+    const users = await User.find({}, "username avatar lastSeen");
+
+    const formatted = users.map(u=>({
+        username:u.username,
+        avatar:u.avatar,
+        lastSeen:u.lastSeen,
+        online:Object.values(online).includes(u.username)
+    }));
+
+    io.emit("users",formatted);
 }
 
+/* SEND TO USER */
 function emitToUser(username,event,data){
     for(let id in online){
         if(online[id]===username){
@@ -147,5 +181,5 @@ function emitToUser(username,event,data){
 }
 
 server.listen(3000,()=>{
-    console.log("PRO STABLE 5.1 E2E RUN");
+    console.log("PRO STABLE 6 RUN");
 });

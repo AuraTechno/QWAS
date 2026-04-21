@@ -2,9 +2,8 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>E2E Messenger</title>
+<title>PRO STABLE 6</title>
 <script src="/socket.io/socket.io.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
 
 <style>
 body{
@@ -22,28 +21,12 @@ flex-direction:column;
 gap:10px;
 }
 
-input{
-padding:12px;
-border:none;
-border-radius:10px;
-background:#1a1a1a;
-color:#fff;
-}
-
-button{
-padding:12px;
-border:none;
-border-radius:10px;
-background:#fff;
-color:#000;
-cursor:pointer;
-}
-
 #chat{
 display:none;
 height:100vh;
 }
 
+/* USERS */
 .sidebar{
 width:280px;
 background:#111;
@@ -52,11 +35,32 @@ overflow:auto;
 }
 
 .user{
-padding:14px;
+display:flex;
+gap:10px;
+padding:12px;
 border-bottom:1px solid #1f1f1f;
 cursor:pointer;
+align-items:center;
 }
 
+.avatar{
+width:35px;
+height:35px;
+border-radius:50%;
+background:#333;
+display:flex;
+align-items:center;
+justify-content:center;
+overflow:hidden;
+font-size:14px;
+}
+
+.avatar img{
+width:100%;
+height:100%;
+}
+
+/* CHAT */
 .chat{
 flex:1;
 display:flex;
@@ -94,14 +98,26 @@ background:#1a1a1a;
 border:1px solid #333;
 }
 
+.meta{
+font-size:10px;
+opacity:0.6;
+}
+
 .input{
 display:flex;
 border-top:1px solid #222;
 }
 
-input.msg{
+input{
 flex:1;
 padding:14px;
+background:#111;
+color:#fff;
+border:none;
+}
+
+button{
+width:80px;
 }
 </style>
 </head>
@@ -126,12 +142,11 @@ padding:14px;
 <div class="messages" id="messages"></div>
 
 <div class="input">
-<input id="msg" class="msg">
+<input id="msg" oninput="typing()">
 <button onclick="send()">➤</button>
 </div>
 
 </div>
-
 </div>
 
 <script>
@@ -140,22 +155,6 @@ let socket;
 let token="";
 let username="";
 let current="";
-
-/* KEY */
-function getKey(a,b){
-return CryptoJS.SHA256([a,b].sort().join("-")).toString();
-}
-
-/* ENCRYPT */
-function enc(text,key){
-return CryptoJS.AES.encrypt(text,key).toString();
-}
-
-/* DECRYPT */
-function dec(text,key){
-let bytes=CryptoJS.AES.decrypt(text,key);
-return bytes.toString(CryptoJS.enc.Utf8);
-}
 
 /* LOGIN */
 function login(){
@@ -181,23 +180,50 @@ socket.on("connect",()=>{
 socket.emit("join");
 });
 
-socket.on("users",d=>{
+/* USERS + AVATAR + STATUS */
+socket.on("users",data=>{
 users.innerHTML="";
-d.users.forEach(u=>{
-if(u.username!==username){
+
+data.forEach(u=>{
+
+let av = u.avatar
+? `<img src="${u.avatar}">`
+: u.username[0];
+
+let status = u.online ? "🟢 online" : "⚪ " + timeAgo(u.lastSeen);
+
 users.innerHTML+=`
 <div class="user" onclick="openChat('${u.username}')">
-${u.username}
+<div class="avatar">${av}</div>
+<div>
+<div>${u.username}</div>
+<div style="font-size:10px;opacity:0.6">${status}</div>
+</div>
 </div>`;
-}
 });
 });
 
+/* CHAT */
 socket.on("private_message",render);
-
 socket.on("chat_history",msgs=>{
 messages.innerHTML="";
 msgs.forEach(render);
+});
+
+/* READ */
+socket.on("read_update",()=>{
+document.querySelectorAll(".meta").forEach(m=>{
+m.innerText="✔✔ read";
+});
+});
+
+/* TYPING */
+socket.on("typing",d=>{
+chatName.innerText=d.from+" печатает...";
+});
+
+socket.on("stop_typing",()=>{
+chatName.innerText=current;
 });
 
 });
@@ -212,41 +238,50 @@ body:JSON.stringify({username:u.value,password:p.value})
 });
 }
 
-/* CHAT */
+/* CHAT OPEN */
 function openChat(u){
 current=u;
 chatName.innerText=u;
 socket.emit("get_history",u);
 }
 
-/* SEND (ENCRYPTED) */
+/* SEND */
 function send(){
-
 if(!msg.value)return;
-
-let key=getKey(username,current);
 
 socket.emit("private_message",{
 to:current,
-message:enc(msg.value,key)
+message:msg.value
 });
 
 msg.value="";
 }
 
-/* RENDER (DECRYPT) */
+/* TYPING */
+function typing(){
+socket.emit("typing",current);
+}
+
+/* RENDER */
 function render(m){
-
-let key=getKey(username,m.from===username?m.to:m.from);
-
-let text=dec(m.message,key);
 
 let div=document.createElement("div");
 div.className="msg "+(m.from===username?"me":"other");
-div.innerText=text;
+
+div.innerHTML=`
+${m.message}
+<div class="meta">${m.status}</div>
+`;
 
 messages.appendChild(div);
 messages.scrollTop=messages.scrollHeight;
+}
+
+/* TIME */
+function timeAgo(t){
+if(!t) return "long ago";
+let d=Math.floor((Date.now()-t)/60000);
+return d+"m ago";
 }
 
 </script>
