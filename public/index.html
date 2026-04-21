@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>PRO STABLE 7 FIX UI</title>
+<title>PRO STABLE 7 FIXED</title>
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
@@ -16,7 +16,7 @@ background:#0d0d0d;
 color:#fff;
 }
 
-/* LOGIN */
+/* AUTH */
 #auth{
 width:320px;
 margin:120px auto;
@@ -31,22 +31,20 @@ font-size:18px;
 font-weight:bold;
 }
 
-#auth input{
+#auth input, #auth button{
 width:100%;
 padding:14px;
-border:none;
 border-radius:10px;
-background:#1a1a1a;
-color:#fff;
-outline:none;
+border:none;
 box-sizing:border-box;
 }
 
+#auth input{
+background:#1a1a1a;
+color:#fff;
+}
+
 #auth button{
-width:100%;
-padding:14px;
-border:none;
-border-radius:10px;
 background:#fff;
 color:#000;
 font-weight:bold;
@@ -88,21 +86,13 @@ position:relative;
 overflow:hidden;
 }
 
-.avatar img{width:100%;height:100%;}
-
 .online-dot{
-width:8px;
-height:8px;
+width:8px;height:8px;
 background:#2ecc71;
 border-radius:50%;
 position:absolute;
-bottom:0;
-right:0;
+bottom:0;right:0;
 border:2px solid #111;
-}
-
-.offline-dot{
-background:#555;
 }
 
 /* CHAT */
@@ -117,6 +107,7 @@ padding:15px;
 border-bottom:1px solid #222;
 }
 
+/* MESSAGES */
 .messages{
 flex:1;
 padding:15px;
@@ -126,13 +117,12 @@ flex-direction:column;
 gap:8px;
 }
 
-/* MESSAGE */
 .msg{
 max-width:70%;
 padding:10px 12px;
 border-radius:14px;
-animation:pop .15s ease;
 word-wrap:break-word;
+animation:pop .15s ease;
 }
 
 @keyframes pop{
@@ -144,14 +134,12 @@ to{transform:scale(1);opacity:1}
 align-self:flex-end;
 background:#fff;
 color:#000;
-border-bottom-right-radius:4px;
 }
 
 .other{
 align-self:flex-start;
 background:#1a1a1a;
 border:1px solid #333;
-border-bottom-left-radius:4px;
 }
 
 .meta{
@@ -161,7 +149,7 @@ text-align:right;
 margin-top:4px;
 }
 
-/* INPUT BAR FIX */
+/* INPUT */
 .input{
 display:flex;
 border-top:1px solid #222;
@@ -176,20 +164,12 @@ border:none;
 outline:none;
 }
 
-/* SEND BUTTON FIX (без отступа справа) */
 button.send{
 width:80px;
-border:none;
 background:#fff;
-color:#000;
+border:none;
 cursor:pointer;
 font-weight:bold;
-margin:0;
-}
-
-/* REMOVE GAP ISSUES */
-.input button{
-margin:0;
 }
 
 </style>
@@ -216,7 +196,7 @@ margin:0;
 <div class="messages" id="messages"></div>
 
 <div class="input">
-<input id="msg" class="msg" oninput="typing()">
+<input id="msg" oninput="typing()">
 <button class="send" onclick="send()">➤</button>
 </div>
 
@@ -236,13 +216,12 @@ function key(a,b){
 return CryptoJS.SHA256([a,b].sort().join("-")).toString();
 }
 
-/* ENC / DEC */
 function enc(t,k){
 return CryptoJS.AES.encrypt(t,k).toString();
 }
+
 function dec(t,k){
-let b=CryptoJS.AES.decrypt(t,k);
-return b.toString(CryptoJS.enc.Utf8);
+return CryptoJS.AES.decrypt(t,k).toString(CryptoJS.enc.Utf8);
 }
 
 /* LOGIN */
@@ -267,39 +246,44 @@ socket=io({auth:{token}});
 
 socket.on("connect",()=>socket.emit("join"));
 
-socket.on("users",data=>{
-users.innerHTML="";
-data.forEach(u=>{
-if(u.username!==username){
-
-let av=u.avatar?`<img src="${u.avatar}">`:u.username[0];
-let dot=u.online?"online-dot":"offline-dot";
-
-users.innerHTML+=`
-<div class="user" onclick="openChat('${u.username}')">
-<div class="avatar">
-${av}
-<div class="${dot}"></div>
-</div>
-<div>
-<div>${u.username}</div>
-<div style="font-size:10px">${u.online?"online":"offline"}</div>
-</div>
-</div>`;
-}
-});
-});
-
 socket.on("private_message",render);
+
 socket.on("chat_history",m=>{
 messages.innerHTML="";
 m.forEach(render);
 });
 
-/* FIX READ UPDATE */
-socket.on("read_update",()=>{
-document.querySelectorAll(".meta").forEach(m=>{
+/* FIX TYPING */
+socket.on("typing",d=>{
+chatName.innerText = d.from + " печатает...";
+});
+
+socket.on("stop_typing",()=>{
+chatName.innerText = current;
+});
+
+/* FIX READ */
+socket.on("read_update",(data)=>{
+
+document.querySelectorAll(".msg.me .meta").forEach(m=>{
 m.innerText="✔✔";
+});
+
+});
+
+socket.on("users",data=>{
+users.innerHTML="";
+data.forEach(u=>{
+if(u.username!==username){
+
+users.innerHTML+=`
+<div class="user" onclick="openChat('${u.username}')">
+<div class="avatar"></div>
+<div>
+<div>${u.username}</div>
+</div>
+</div>`;
+}
 });
 });
 
@@ -315,10 +299,11 @@ body:JSON.stringify({username:u.value,password:p.value})
 });
 }
 
-/* OPEN CHAT */
+/* CHAT */
 function openChat(u){
 current=u;
 chatName.innerText=u;
+
 socket.emit("get_history",u);
 
 socket.emit("read",{
@@ -343,6 +328,7 @@ msg.value="";
 
 /* TYPING */
 let typingTimer;
+
 function typing(){
 if(!current) return;
 
