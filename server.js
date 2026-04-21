@@ -19,130 +19,142 @@ app.use(express.static("public"));
 
 mongoose.connect(config.MONGO_URL);
 
+/* USERS ONLINE */
 let online = {};
-let typingTimers = {};
 
-/* AUTH */
-io.use((socket,next)=>{
-try{
-const token=socket.handshake.auth.token;
-socket.username=jwt.verify(token,config.JWT_SECRET).username;
-next();
-}catch{
-next(new Error("auth"));
-}
+/* REGISTER */
+app.post("/register", async (req, res) => {
+    const { username, password } = req.body;
+
+    const exists = await User.findOne({ username });
+    if (exists) return res.json({ ok: false });
+
+    const hash = await bcrypt.hash(password, 10);
+    await User.create({ username, password: hash });
+
+    res.json({ ok: true });
 });
 
-io.on("connection",(socket)=>{
+/* LOGIN */
+app.post("/login", async (req, res) => {
+    const { username, password } = req.body;
 
-online[socket.id]=socket.username;
-emitUsers();
+    const user = await User.findOne({ username });
+    if (!user) return res.json({ ok: false });
 
-/* MESSAGE */
-socket.on("private_message",async(data)=>{
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) return res.json({ ok: false });
 
-const msg=await Message.create({
-from:socket.username,
-to:data.to,
-message:data.message,
-status:"sent"
+    const token = jwt.sign(
+        { username },
+        config.JWT_SECRET,
+        { expiresIn: "7d" }
+    );
+
+    res.json({ ok: true, token });
 });
 
-emitToUser(data.to,"private_message",msg);
-socket.emit("private_message",msg);
-
-});
-
-/* HISTORY */
-socket.on("get_history",async(user)=>{
-
-const msgs=await Message.find({
-$or:[
-{from:socket.username,to:user},
-{from:user,to:socket.username}
-]
-}).sort({time:1});
-
-socket.emit("chat_history",msgs);
-
-});
-
-/* 🔥 REAL TIME READ FIX */
-socket.on("read",async(data)=>{
-
-const updated=await Message.updateMany(
-{from:data.from,to:data.to,status:{$ne:"read"}},
-{$set:{status:"read"}}
-);
-
-/* 🔥 ВАЖНО: отправляем ID */
-const msgs=await Message.find({
-from:data.from,
-to:data.to,
-status:"read"
-});
-
-emitToUser(data.from,"read_update",{
-from:data.from,
-to:data.to,
-messages:msgs.map(m=>m._id)
-});
-
-});
-
-/* TYPING */
-socket.on("typing",(to)=>{
-
-emitToUser(to,"typing",{from:socket.username});
-
-clearTimeout(socket.typingTimer);
-
-socket.typingTimer=setTimeout(()=>{
-emitToUser(to,"stop_typing",{from:socket.username});
-},600);
-
-});
-
-/* DISCONNECT */
-socket.on("disconnect",()=>{
-
-delete online[socket.id];
-emitUsers();
-
-});
-
-});
-
-async function emitUsers() {
+/* SOCKET AUTH */
+io.use((socket, next) => {
     try {
-        const users = await User.find({}, "username avatar lastSeen");
+        const token = socket.handshake.auth.token;
+        const data = jwt.verify(token, config.JWT_SECRET);
+        socket.username = data.username;
+        next();
+    } catch {
+        next(new Error("auth"));
+    }
+});
 
-        io.emit("users",
-            users.map(u => ({
-                username: u.username,
-                avatar: u.avatar,
-                online: Object.values(online).includes(u.username)
-            }))
+io.on("connection", (socket) => {
+
+    online[socket.username] = true;
+
+    emitUsers();
+
+    /* JOIN */
+    socket.on("join", () => {
+        emitUsers();
+    });
+
+    /* MESSAGE */
+    socket.on("private_message", async (data) => {
+
+        const msg = await Message.create({
+            from: socket.username,
+            to: data.to,
+            message: data.message,
+            status: "sent"
+        });
+
+        emitToUser(data.to, "private_message", msg);
+        socket.emit("private_message", msg);
+    });
+
+    /* HISTORY */
+    socket.on("get_history", async (user) => {
+
+        const msgs = await Message.find({
+            $or: [
+                { from: socket.username, to: user },
+                { from: user, to: socket.username }
+            ]
+        }).sort({ createdAt: 1 });
+
+        socket.emit("chat_history", msgs);
+    });
+
+    /* READ */
+    socket.on("read", async (data) => {
+
+        await Message.updateMany(
+            { from: data.from, to: data.to },
+            { $set: { status: "read" } }
         );
-    } catch (err) {
-        console.log("emitUsers error:", err);
+
+        emitToUser(data.from, "read_update", {
+            from: data.from
+        });
+    });
+
+    /* TYPING */
+    socket.on("typing", (to) => {
+        emitToUser(to, "typing", { from: socket.username });
+
+        clearTimeout(socket.typingTimer);
+
+        socket.typingTimer = setTimeout(() => {
+            emitToUser(to, "stop_typing", { from: socket.username });
+        }, 600);
+    });
+
+    socket.on("disconnect", () => {
+        delete online[socket.username];
+        emitUsers();
+    });
+
+});
+
+/* USERS */
+async function emitUsers() {
+    const users = await User.find({}, "username");
+
+    io.emit("users", users.map(u => ({
+        username: u.username,
+        online: !!online[u.username]
+    })));
+}
+
+/* SEND TO USER */
+function emitToUser(username, event, data) {
+    for (let id in io.sockets.sockets) {
+        const s = io.sockets.sockets.get(id);
+        if (s?.username === username) {
+            s.emit(event, data);
+        }
     }
 }
 
-function emitToUser(username,event,data){
-for(let id in online){
-if(online[id]===username){
-io.to(id).emit(event,data);
-}
-}
-}
-
-process.on("uncaughtException", (err) => {
-    console.log("🔥 UNCAUGHT ERROR:", err);
+server.listen(3000, () => {
+    console.log("SERVER RUNNING");
 });
-
-process.on("unhandledRejection", (err) => {
-    console.log("🔥 PROMISE ERROR:", err);
-});
-
-server.listen(3000,()=>console.log("OK"));

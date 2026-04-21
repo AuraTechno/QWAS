@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Messenger FIX STABLE</title>
+<title>Messenger STABLE</title>
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
@@ -16,39 +16,29 @@ background:#0d0d0d;
 color:#fff;
 }
 
-/* AUTH */
+/* LOGIN */
 #auth{
 width:340px;
 margin:120px auto;
 display:flex;
 flex-direction:column;
-gap:12px;
+gap:10px;
 text-align:center;
 }
 
-#auth div{
-font-size:18px;
-font-weight:bold;
-}
-
 #auth input{
-width:100%;
 padding:14px;
-border-radius:10px;
 border:none;
+border-radius:10px;
 background:#1a1a1a;
 color:#fff;
-outline:none;
-box-sizing:border-box;
 }
 
 #auth button{
-width:100%;
 padding:14px;
-border-radius:10px;
 border:none;
+border-radius:10px;
 background:#fff;
-color:#000;
 font-weight:bold;
 cursor:pointer;
 }
@@ -59,12 +49,11 @@ display:none;
 height:100vh;
 }
 
-/* USERS */
 .sidebar{
-width:280px;
+width:260px;
 background:#111;
-border-right:1px solid #222;
 overflow:auto;
+border-right:1px solid #222;
 }
 
 .chat{
@@ -89,15 +78,8 @@ gap:8px;
 
 .msg{
 max-width:70%;
-padding:10px 12px;
-border-radius:14px;
-word-wrap:break-word;
-animation:pop .15s ease;
-}
-
-@keyframes pop{
-from{transform:scale(0.95);opacity:0}
-to{transform:scale(1);opacity:1}
+padding:10px;
+border-radius:12px;
 }
 
 .me{
@@ -116,38 +98,31 @@ border:1px solid #333;
 font-size:10px;
 opacity:0.7;
 text-align:right;
-margin-top:4px;
 }
 
-/* INPUT FIX */
+/* INPUT */
 .input{
 display:flex;
-align-items:center;
 padding:10px;
 gap:8px;
 border-top:1px solid #222;
-background:#0f0f0f;
 }
 
 .input input{
 flex:1;
-padding:12px 14px;
-border-radius:12px;
+padding:12px;
+border-radius:10px;
 border:none;
 background:#1a1a1a;
 color:#fff;
-outline:none;
 }
 
 .input button{
-width:48px;
-height:42px;
-border-radius:12px;
+width:50px;
 border:none;
+border-radius:10px;
 background:#fff;
-color:#000;
 cursor:pointer;
-font-weight:bold;
 }
 
 </style>
@@ -157,7 +132,7 @@ font-weight:bold;
 
 <!-- AUTH -->
 <div id="auth">
-<div>Messenger FIX</div>
+<h3>LOGIN</h3>
 <input id="u" placeholder="username">
 <input id="p" type="password">
 <button onclick="login()">Войти</button>
@@ -176,7 +151,7 @@ font-weight:bold;
 <div class="messages" id="messages"></div>
 
 <div class="input">
-<input id="msg" oninput="typing()">
+<input id="msg">
 <button onclick="send()">➤</button>
 </div>
 
@@ -186,80 +161,58 @@ font-weight:bold;
 
 <script>
 
-let socket = null;
-let token = "";
-let username = "";
-let current = "";
+let socket=null;
+let token="";
+let username="";
+let current="";
 
-/* KEY */
-function key(a,b){
-return CryptoJS.SHA256([a,b].sort().join("-")).toString();
-}
+/* LOGIN */
+async function login(){
 
-function enc(t,k){
-return CryptoJS.AES.encrypt(t,k).toString();
-}
-
-function dec(t,k){
-return CryptoJS.AES.decrypt(t,k).toString(CryptoJS.enc.Utf8);
-}
-
-/* ===================== LOGIN FIX ===================== */
-function login(){
-
-fetch("/login",{
+const res = await fetch("/login",{
 method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({
 username:u.value,
 password:p.value
 })
-})
-.then(r=>r.json())
-.then(d=>{
+});
+
+const d = await res.json();
 
 if(!d.ok){
-alert("Ошибка входа");
+alert("error login");
 return;
 }
 
 token = d.token;
 username = u.value;
 
-/* 🔥 UI SWITCH */
-auth.style.display = "none";
-chat.style.display = "flex";
+/* UI SWITCH */
+auth.style.display="none";
+chat.style.display="flex";
 
-/* 🔥 SOCKET SAFE INIT */
-if(socket){
-socket.disconnect();
-socket = null;
-}
-
+/* SOCKET SAFE */
 socket = io({
-auth:{ token },
-transports:["websocket"]
+auth:{token},
+transports:["websocket","polling"]
 });
 
-/* CONNECT */
 socket.on("connect",()=>{
-console.log("connected");
 socket.emit("join");
 });
 
 /* USERS */
-socket.on("users",data=>{
+socket.on("users",(data)=>{
 users.innerHTML="";
-
 data.forEach(u=>{
-if(u.username !== username){
-users.innerHTML += `
+if(u.username!==username){
+users.innerHTML+=`
 <div onclick="openChat('${u.username}')">
-${u.username}
+${u.username} ${u.online?"🟢":""}
 </div>`;
 }
 });
-
 });
 
 /* CHAT */
@@ -270,25 +223,6 @@ messages.innerHTML="";
 m.forEach(render);
 });
 
-/* TYPING */
-socket.on("typing",d=>{
-chatName.innerText = d.from + " печатает...";
-});
-
-socket.on("stop_typing",()=>{
-chatName.innerText = current;
-});
-
-/* READ FIX */
-socket.on("read_update",data=>{
-document.querySelectorAll(".msg").forEach(el=>{
-if(el.dataset.me==="1"){
-el.querySelector(".meta").innerText="✔✔";
-}
-});
-});
-
-});
 }
 
 /* REGISTER */
@@ -303,13 +237,10 @@ password:p.value
 });
 }
 
-/* CHAT OPEN */
+/* OPEN CHAT */
 function openChat(u){
-
-current = u;
-chatName.innerText = u;
-
-if(!socket) return;
+current=u;
+chatName.innerText=u;
 
 socket.emit("get_history",u);
 
@@ -322,61 +253,29 @@ to:username
 /* SEND */
 function send(){
 
-if(!msg.value || !current) return;
-
-let k = key(username,current);
+if(!msg.value||!current)return;
 
 socket.emit("private_message",{
 to:current,
-message:enc(msg.value,k)
+message:msg.value
 });
 
-msg.value = "";
-}
-
-/* TYPING */
-let typingTimer;
-
-function typing(){
-if(!current) return;
-
-socket.emit("typing",current);
-
-clearTimeout(typingTimer);
-
-typingTimer = setTimeout(()=>{
-socket.emit("stop_typing",current);
-},600);
+msg.value="";
 }
 
 /* RENDER */
 function render(m){
 
-let k = key(username,m.from===username?m.to:m.from);
+let div=document.createElement("div");
+div.className="msg "+(m.from===username?"me":"other");
 
-let text="";
-try{
-text = dec(m.message,k);
-}catch{
-text="🔒";
-}
-
-let div = document.createElement("div");
-
-div.className = "msg " + (m.from===username?"me":"other");
-
-/* mark own messages */
-if(m.from===username){
-div.dataset.me = "1";
-}
-
-div.innerHTML = `
-<div>${text}</div>
+div.innerHTML=`
+<div>${m.message}</div>
 <div class="meta">${m.status==="read"?"✔✔":"✔"}</div>
 `;
 
 messages.appendChild(div);
-messages.scrollTop = messages.scrollHeight;
+messages.scrollTop=messages.scrollHeight;
 }
 
 </script>
