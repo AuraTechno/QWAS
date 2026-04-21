@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Messenger PRO 3.4</title>
+<title>Messenger STABLE</title>
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
@@ -13,6 +13,7 @@ body{
     color:#fff;
 }
 
+/* AUTH */
 #auth{
     width:320px;
     margin:120px auto;
@@ -35,8 +36,10 @@ button{
     border-radius:10px;
     background:#fff;
     color:#000;
+    cursor:pointer;
 }
 
+/* CHAT */
 #chat{
     display:none;
     height:100vh;
@@ -50,9 +53,8 @@ button{
 }
 
 .user{
-    display:flex;
-    gap:10px;
     padding:15px;
+    border-bottom:1px solid #222;
     cursor:pointer;
 }
 
@@ -62,73 +64,35 @@ button{
     flex-direction:column;
 }
 
-.header{
-    padding:15px;
-    border-bottom:1px solid #222;
-}
-
 .messages{
     flex:1;
     padding:15px;
     overflow:auto;
 }
 
-.msg{
-    display:flex;
-    margin:6px 0;
-}
-
+.msg{display:flex;margin:6px 0;}
 .me{justify-content:flex-end;}
 .other{justify-content:flex-start;}
 
 .bubble{
     max-width:60%;
     padding:10px;
-    border-radius:12px;
+    border-radius:10px;
 }
 
-.me .bubble{
-    background:#fff;
-    color:#000;
-}
-
-.other .bubble{
-    background:#1a1a1a;
-    border:1px solid #333;
-}
-
-.meta{
-    font-size:10px;
-    opacity:0.6;
-    display:flex;
-    justify-content:center;
-    gap:6px;
-    margin-top:4px;
-}
-
-.input{
-    display:flex;
-    border-top:1px solid #222;
-}
-
-.input input{
-    flex:1;
-    padding:15px;
-    background:#111;
-}
-
-.input button{
-    width:80px;
-}
+.me .bubble{background:#fff;color:#000;}
+.other .bubble{background:#1a1a1a;border:1px solid #333;}
 </style>
 </head>
 
 <body>
 
 <div id="auth">
-    <input id="u">
-    <input id="p" type="password">
-    <button onclick="login()">Login</button>
+    <input id="u" placeholder="username">
+    <input id="p" type="password" placeholder="password">
+
+    <button onclick="register()">Регистрация</button>
+    <button onclick="login()">Войти</button>
 </div>
 
 <div id="chat">
@@ -137,12 +101,12 @@ button{
 
     <div class="chat">
 
-        <div class="header" id="chatName"></div>
+        <div id="chatName"></div>
 
         <div class="messages" id="messages"></div>
 
-        <div class="input">
-            <input id="msg">
+        <div style="display:flex">
+            <input id="msg" style="flex:1">
             <button onclick="send()">➤</button>
         </div>
 
@@ -155,10 +119,24 @@ const socket=io();
 let username="";
 let current="";
 
+/* REGISTER */
+function register(){
+fetch("/register",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({username:u.value,password:p.value})
+});
+}
+
 /* LOGIN */
 function login(){
-fetch("/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u.value,password:p.value})})
-.then(r=>r.json()).then(d=>{
+fetch("/login",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({username:u.value,password:p.value})
+})
+.then(r=>r.json())
+.then(d=>{
 if(d.ok){
 username=u.value;
 auth.style.display="none";
@@ -167,6 +145,22 @@ socket.emit("join",username);
 }
 });
 }
+
+/* USERS FIX */
+socket.on("users",data=>{
+
+users.innerHTML="";
+
+data.users.forEach(u=>{
+if(u.username!==username){
+
+users.innerHTML+=`
+<div class="user" onclick="openChat('${u.username}')">
+${u.username}
+</div>`;
+}
+});
+});
 
 /* OPEN CHAT */
 function openChat(u){
@@ -179,7 +173,11 @@ socket.emit("get_history",u);
 function send(){
 if(!msg.value)return;
 
-socket.emit("private_message",{to:current,message:msg.value});
+socket.emit("private_message",{
+to:current,
+message:msg.value
+});
+
 msg.value="";
 }
 
@@ -196,42 +194,15 @@ messages.innerHTML="";
 msgs.forEach(render);
 });
 
-/* READ UPDATE FIX */
-socket.on("message_read",data=>{
-
-if(data.to===current || data.from===current){
-socket.emit("get_history",current);
-}
-
-});
-
 /* RENDER */
 function render(m){
 
 let me=m.from===username;
 
-let time=new Date(m.time).toLocaleTimeString([],{
-hour:"2-digit",minute:"2-digit"
-});
-
-let check="";
-if(me){
-if(m.status==="sent")check="✓";
-if(m.status==="read")check="✓✓";
-}
-
 messages.innerHTML+=`
 <div class="msg ${me?'me':'other'}">
-<div class="bubble">
-<div>${m.message}</div>
-<div class="meta">
-<span>${time}</span>
-<span>${check}</span>
-</div>
-</div>
+<div class="bubble">${m.message}</div>
 </div>`;
-
-messages.scrollTop=messages.scrollHeight;
 }
 </script>
 
