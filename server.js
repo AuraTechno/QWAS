@@ -12,150 +12,207 @@ const Message = require("./models/Message");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
 app.use(express.json());
 app.use(express.static("public"));
 
-mongoose.connect(config.MONGO_URL);
+// Добавим обработку ошибок подключения к MongoDB
+mongoose.connect(config.MONGO_URL, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+}).then(() => {
+  console.log("✅ MongoDB connected");
+}).catch(err => {
+  console.error("❌ MongoDB connection error:", err);
+});
 
 /* ONLINE USERS */
 const online = new Map();
 
-/* LOGIN */
-app.post("/login", async (req, res) => {
-    const { username, password } = req.body;
-
-    const user = await User.findOne({ username });
-    if (!user) return res.json({ ok: false });
-
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.json({ ok: false });
-
-    const token = jwt.sign(
-        { username },
-        config.JWT_SECRET,
-        { expiresIn: "7d" }
-    );
-
-    res.json({ ok: true, token });
-});
-
 /* REGISTER */
 app.post("/register", async (req, res) => {
+  try {
     const { username, password } = req.body;
+    
+    if (!username || !password) {
+      return res.json({ ok: false, error: "Username and password required" });
+    }
 
     const exists = await User.findOne({ username });
-    if (exists) return res.json({ ok: false });
+    if (exists) return res.json({ ok: false, error: "User exists" });
 
     const hash = await bcrypt.hash(password, 10);
     await User.create({ username, password: hash });
 
     res.json({ ok: true });
+  } catch (err) {
+    console.error("Register error:", err);
+    res.json({ ok: false, error: "Server error" });
+  }
+});
+
+/* LOGIN */
+app.post("/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    const user = await User.findOne({ username });
+    if (!user) return res.json({ ok: false, error: "User not found" });
+
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) return res.json({ ok: false, error: "Wrong password" });
+
+    const token = jwt.sign({ username }, config.JWT_SECRET);
+    res.json({ ok: true, token });
+  } catch (err) {
+    console.error("Login error:", err);
+    res.json({ ok: false, error: "Server error" });
+  }
 });
 
 /* SOCKET AUTH */
 io.use((socket, next) => {
-    try {
-        const token = socket.handshake.auth.token;
-        const data = jwt.verify(token, config.JWT_SECRET);
-        socket.username = data.username;
-        next();
-    } catch {
-        next(new Error("auth"));
+  try {
+    const token = socket.handshake.auth.token;
+    if (!token) {
+      return next(new Error("No token"));
     }
+    const data = jwt.verify(token, config.JWT_SECRET);
+    socket.username = data.username;
+    next();
+  } catch (err) {
+    console.error("Socket auth error:", err);
+    next(new Error("auth"));
+  }
 });
 
 io.on("connection", (socket) => {
+  console.log(`✅ User connected: ${socket.username}`);
 
-    online.set(socket.username, socket.id);
+  online.set(socket.username, socket.id);
+  emitUsers();
+
+  socket.on("join", () => {
     emitUsers();
+  });
 
-    socket.on("join", emitUsers);
+  /* MESSAGE */
+  socket.on("send_message", async (data) => {
+    try {
+      console.log(`📨 Message from ${socket.username} to ${data.to}: ${data.message}`);
 
-    /* MESSAGE */
-    socket.on("private_message", async (data) => {
+      const msg = await Message.create({
+        from: socket.username,
+        to: data.to,
+        message: data.message,
+        status: "sent"
+      });
 
-        const msg = await Message.create({
-            from: socket.username,
-            to: data.to,
-            message: data.message,
-            status: "sent",
-            createdAt: Date.now()
-        });
+      const full = await Message.findById(msg._id);
+      console.log(`✅ Message saved: ${full._id}`);
 
-        const full = await Message.findById(msg._id);
+      // Отправляем получателю
+      send(data.to, "new_message", full);
+      // Отправляем отправителю для отображения
+      socket.emit("new_message", full);
+    } catch (err) {
+      console.error("Send message error:", err);
+    }
+  });
 
-        send(data.to, "new_message", full);
-        socket.emit("new_message", full);
-    });
+  /* HISTORY */
+  socket.on("get_history", async (user) => {
+    try {
+      console.log(`📜 Getting history between ${socket.username} and ${user}`);
 
-    /* HISTORY */
-    socket.on("get_history", async (user) => {
+      const msgs = await Message.find({
+        $or: [
+          { from: socket.username, to: user },
+          { from: user, to: socket.username }
+        ]
+      }).sort({ createdAt: 1 });
 
-        const msgs = await Message.find({
-            $or: [
-                { from: socket.username, to: user },
-                { from: user, to: socket.username }
-            ]
-        }).sort({ createdAt: 1 });
+      socket.emit("chat_history", msgs);
+    } catch (err) {
+      console.error("Get history error:", err);
+    }
+  });
 
-        socket.emit("chat_history", msgs);
-    });
+  /* READ */
+  socket.on("read", async (data) => {
+    try {
+      console.log(`👁️ Marking as read: from ${data.from} to ${data.to}`);
 
-    /* READ (REALTIME FIX) */
-    socket.on("read", async (data) => {
+      const msgs = await Message.find({
+        from: data.from,
+        to: data.to,
+        status: { $ne: "read" }
+      });
 
-        const msgs = await Message.find({
-            from: data.from,
-            to: data.to,
-            status: "sent"
-        });
-
+      if (msgs.length > 0) {
         await Message.updateMany(
-            { from: data.from, to: data.to },
-            { $set: { status: "read" } }
+          { from: data.from, to: data.to, status: { $ne: "read" } },
+          { $set: { status: "read" } }
         );
 
         send(data.from, "read_update", {
-            messages: msgs.map(m => m._id.toString())
+          messages: msgs.map(m => m._id.toString())
         });
-    });
+      }
+    } catch (err) {
+      console.error("Read error:", err);
+    }
+  });
 
-    /* TYPING FIX */
-    socket.on("typing", (to) => {
+  /* TYPING */
+  socket.on("typing", (to) => {
+    send(to, "typing", { from: socket.username });
+  });
 
-        send(to, "typing", { from: socket.username });
+  socket.on("stop_typing", (to) => {
+    send(to, "stop_typing", { from: socket.username });
+  });
 
-        clearTimeout(socket.typingTimer);
-
-        socket.typingTimer = setTimeout(() => {
-            send(to, "stop_typing", { from: socket.username });
-        }, 600);
-    });
-
-    socket.on("disconnect", () => {
-        online.delete(socket.username);
-        emitUsers();
-    });
-
+  socket.on("disconnect", () => {
+    console.log(`❌ User disconnected: ${socket.username}`);
+    online.delete(socket.username);
+    emitUsers();
+  });
 });
 
-/* USERS */
+/* EMIT USERS */
 async function emitUsers() {
+  try {
     const users = await User.find({}, "username avatar");
-
+    
     io.emit("users", users.map(u => ({
-        username: u.username,
-        avatar: u.avatar || "",
-        online: online.has(u.username)
+      username: u.username,
+      avatar: u.avatar,
+      online: online.has(u.username)
     })));
+  } catch (err) {
+    console.error("Emit users error:", err);
+  }
 }
 
 /* SEND */
 function send(user, event, data) {
-    const id = online.get(user);
-    if (id) io.to(id).emit(event, data);
+  const id = online.get(user);
+  if (id) {
+    io.to(id).emit(event, data);
+    console.log(`📤 Sent ${event} to ${user}`);
+  } else {
+    console.log(`⚠️ User ${user} is offline, message saved in DB`);
+  }
 }
 
-server.listen(3000, () => console.log("REALTIME FIX OK"));
+const PORT = 3000;
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+});

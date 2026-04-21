@@ -9,107 +9,133 @@
 body{margin:0;font-family:Arial;background:#111;color:#fff}
 #auth{width:300px;margin:100px auto;display:flex;flex-direction:column;gap:10px}
 input,button{padding:12px;border-radius:8px;border:none}
-button{background:#fff;font-weight:bold}
+button{background:#fff;font-weight:bold;cursor:pointer}
+button:disabled{opacity:0.5;cursor:not-allowed}
 #chat{display:none;height:100vh}
 .sidebar{width:250px;background:#000;overflow:auto}
 .user{padding:10px;border-bottom:1px solid #222;cursor:pointer;display:flex;align-items:center;gap:8px}
+.user:hover{background:#222}
 .user .online-dot{width:10px;height:10px;border-radius:50%;background:#00ff00}
 .user .offline-dot{width:10px;height:10px;border-radius:50%;background:#666}
 .chat{flex:1;display:flex;flex-direction:column}
-.header{padding:10px;background:#000}
+.header{padding:15px;background:#000;font-weight:bold}
 .messages{flex:1;padding:10px;overflow:auto;display:flex;flex-direction:column}
 .msg{padding:10px;margin:5px;border-radius:8px;max-width:70%;word-break:break-word}
 .me{background:#fff;color:#000;align-self:flex-end}
 .other{background:#222;align-self:flex-start}
-.meta{font-size:10px;opacity:.7;margin-top:4px}
-.input{display:flex}
-.input input{flex:1}
-.input button{width:60px}
-.typing-indicator{font-size:12px;color:#aaa;padding:4px 10px}
+.meta{font-size:10px;opacity:.7;margin-top:4px;display:flex;justify-content:space-between}
+.status{color:#4CAF50}
+.input{display:flex;padding:10px;gap:10px}
+.input input{flex:1;padding:12px;border-radius:8px;border:none}
+.input button{width:80px}
+.typing-indicator{font-size:12px;color:#aaa;padding:4px 15px;min-height:20px}
 </style>
 </head>
 
 <body>
 
 <div id="auth">
-<input id="u" placeholder="username">
-<input id="p" type="password">
-<button onclick="login()">login</button>
-<button onclick="register()">register</button>
+<h2>Messenger</h2>
+<input id="u" placeholder="Username">
+<input id="p" type="password" placeholder="Password">
+<button onclick="login()">Login</button>
+<button onclick="register()">Register</button>
 </div>
 
-<div id="chat">
-
+<div id="chat" style="display:none">
 <div class="sidebar" id="users"></div>
-
 <div class="chat">
-
 <div class="header" id="title">Выберите чат</div>
-
 <div class="messages" id="messages"></div>
-
 <div id="typingIndicator" class="typing-indicator"></div>
-
 <div class="input">
 <input id="msg" placeholder="Сообщение..." disabled>
-<button id="sendBtn" onclick="send()" disabled>➤</button>
+<button id="sendBtn" onclick="send()" disabled>Отправить</button>
 </div>
-
 </div>
-
 </div>
 
 <script>
-
 let socket;
 let me = "";
 let current = "";
 let typingTimeout = null;
 
-const map = new Map();
-
 /* === AUTH === */
 function register() {
+  const username = document.getElementById('u').value;
+  const password = document.getElementById('p').value;
+  
+  if (!username || !password) {
+    alert('Введите логин и пароль');
+    return;
+  }
+  
   fetch("/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: u.value, password: p.value })
+    body: JSON.stringify({ username, password })
   })
   .then(r => r.json())
   .then(d => {
-    alert(d.ok ? "ok" : "error");
+    if (d.ok) {
+      alert('Регистрация успешна! Теперь войдите.');
+    } else {
+      alert('Ошибка: ' + (d.error || 'Неизвестная ошибка'));
+    }
   });
 }
 
 function login() {
+  const username = document.getElementById('u').value;
+  const password = document.getElementById('p').value;
+  
+  if (!username || !password) {
+    alert('Введите логин и пароль');
+    return;
+  }
+  
   fetch("/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: u.value, password: p.value })
+    body: JSON.stringify({ username, password })
   })
   .then(r => r.json())
   .then(d => {
-    if (!d.ok) return alert("error");
-    me = u.value;
-    auth.style.display = "none";
-    chat.style.display = "flex";
+    if (!d.ok) {
+      alert('Ошибка: ' + (d.error || 'Неверный логин или пароль'));
+      return;
+    }
+    
+    me = username;
+    document.getElementById('auth').style.display = "none";
+    document.getElementById('chat').style.display = "flex";
     connectSocket(d.token);
   });
 }
 
 /* === SOCKET === */
 function connectSocket(token) {
-  socket = io({ auth: { token } });
+  socket = io({
+    auth: { token }
+  });
 
   socket.on("connect", () => {
-    console.log("connected");
+    console.log("✅ Connected to server");
+  });
+
+  socket.on("connect_error", (err) => {
+    console.error("❌ Connection error:", err);
+    alert("Ошибка подключения к серверу");
   });
 
   socket.on("users", users => {
+    console.log("📋 Users list:", users);
     renderUsers(users);
   });
 
   socket.on("new_message", msg => {
+    console.log("📨 New message:", msg);
     const isFromCurrent = (msg.from === current || msg.to === current);
     if (isFromCurrent) {
       addMessageToChat(msg);
@@ -120,10 +146,12 @@ function connectSocket(token) {
   });
 
   socket.on("chat_history", msgs => {
+    console.log("📜 Chat history:", msgs);
     renderHistory(msgs);
   });
 
   socket.on("read_update", data => {
+    console.log("👁️ Read update:", data);
     data.messages.forEach(id => {
       const el = document.getElementById(`msg-${id}`);
       if (el) {
@@ -135,24 +163,30 @@ function connectSocket(token) {
 
   socket.on("typing", data => {
     if (data.from === current) {
-      typingIndicator.innerText = `${current} печатает...`;
+      document.getElementById('typingIndicator').innerText = `${current} печатает...`;
     }
   });
 
   socket.on("stop_typing", data => {
     if (data.from === current) {
-      typingIndicator.innerText = "";
+      document.getElementById('typingIndicator').innerText = "";
     }
   });
-
-  socket.on("disconnect", () => {});
 }
 
 /* === RENDER USERS === */
 function renderUsers(users) {
   const container = document.getElementById("users");
   container.innerHTML = "";
-  users.filter(u => u.username !== me).forEach(u => {
+  
+  const otherUsers = users.filter(u => u.username !== me);
+  
+  if (otherUsers.length === 0) {
+    container.innerHTML = '<div style="padding:10px;color:#666">Нет пользователей</div>';
+    return;
+  }
+  
+  otherUsers.forEach(u => {
     const div = document.createElement("div");
     div.className = "user";
     div.onclick = () => selectUser(u.username);
@@ -171,12 +205,13 @@ function renderUsers(users) {
 
 /* === SELECT USER === */
 function selectUser(username) {
+  console.log("👤 Selected user:", username);
   current = username;
   document.getElementById("title").innerText = `Чат с ${username}`;
   document.getElementById("msg").disabled = false;
   document.getElementById("sendBtn").disabled = false;
   document.getElementById("messages").innerHTML = "";
-  typingIndicator.innerText = "";
+  document.getElementById("typingIndicator").innerText = "";
 
   socket.emit("get_history", username);
 }
@@ -191,6 +226,12 @@ function renderHistory(msgs) {
 
 function addMessageToChat(msg) {
   const container = document.getElementById("messages");
+  
+  // Проверяем, нет ли уже такого сообщения
+  if (document.getElementById(`msg-${msg._id}`)) {
+    return;
+  }
+  
   const div = document.createElement("div");
   div.className = `msg ${msg.from === me ? "me" : "other"}`;
   div.id = `msg-${msg._id}`;
@@ -201,51 +242,78 @@ function addMessageToChat(msg) {
   const meta = document.createElement("div");
   meta.className = "meta";
 
-  const time = new Date(msg.createdAt).toLocaleTimeString().slice(0,5);
-  const status = msg.status === "read" ? "✓✓" : (msg.from === me ? "✓" : "");
-  meta.innerText = `${time} ${status}`;
+  const time = document.createElement("span");
+  time.innerText = new Date(msg.createdAt).toLocaleTimeString().slice(0,5);
+  
+  const status = document.createElement("span");
+  status.className = "status";
+  if (msg.from === me) {
+    status.innerText = msg.status === "read" ? "✓✓" : "✓";
+  }
 
+  meta.appendChild(time);
+  meta.appendChild(status);
+  
   div.appendChild(text);
   div.appendChild(meta);
   container.appendChild(div);
-
-  if (msg.from === current || msg.to === current) {
-    scrollToBottom();
-  }
+  
+  scrollToBottom();
 }
 
 function scrollToBottom() {
   const container = document.getElementById("messages");
-  container.scrollTop = container.scrollHeight;
+  setTimeout(() => {
+    container.scrollTop = container.scrollHeight;
+  }, 100);
 }
 
 /* === SEND === */
 function send() {
   const input = document.getElementById("msg");
   const text = input.value.trim();
-  if (!text || !current) return;
-  socket.emit("send_message", { to: current, message: text });
+  
+  if (!text || !current) {
+    console.log("❌ Cannot send: no text or no recipient");
+    return;
+  }
+  
+  console.log(`📤 Sending message to ${current}: ${text}`);
+  
+  socket.emit("send_message", { 
+    to: current, 
+    message: text 
+  });
+  
   input.value = "";
   socket.emit("stop_typing", current);
-  if (typingTimeout) clearTimeout(typingTimeout);
+  
+  if (typingTimeout) {
+    clearTimeout(typingTimeout);
+    typingTimeout = null;
+  }
 }
 
 /* === TYPING === */
 document.getElementById("msg").addEventListener("input", () => {
   if (!current) return;
+  
   socket.emit("typing", current);
+  
   if (typingTimeout) clearTimeout(typingTimeout);
   typingTimeout = setTimeout(() => {
     socket.emit("stop_typing", current);
+    typingTimeout = null;
   }, 1000);
 });
 
 /* === ENTER KEY === */
 document.getElementById("msg").addEventListener("keypress", e => {
-  if (e.key === "Enter") send();
+  if (e.key === "Enter") {
+    send();
+  }
 });
 
 </script>
-
 </body>
 </html>
