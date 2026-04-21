@@ -9,7 +9,7 @@
 body{
     margin:0;
     font-family:Arial;
-    background:#000;
+    background:#0f0f0f;
     color:#fff;
 }
 
@@ -24,17 +24,25 @@ body{
 
 input{
     padding:12px;
-    background:#000;
-    border:1px solid #fff;
+    border:none;
+    border-radius:8px;
+    background:#1c1c1c;
     color:#fff;
+    outline:none;
 }
 
 button{
     padding:12px;
+    border:none;
+    border-radius:8px;
     background:#fff;
     color:#000;
-    border:none;
     cursor:pointer;
+    transition:0.2s;
+}
+
+button:hover{
+    opacity:0.8;
 }
 
 /* CHAT */
@@ -43,19 +51,26 @@ button{
     height:100vh;
 }
 
-/* USERS */
+/* SIDEBAR */
 .sidebar{
     width:300px;
-    border-right:1px solid #fff;
+    background:#141414;
+    border-right:1px solid #222;
     overflow:auto;
 }
 
 .user{
     display:flex;
+    align-items:center;
     gap:10px;
     padding:15px;
-    border-bottom:1px solid #222;
     cursor:pointer;
+    border-bottom:1px solid #222;
+    transition:0.2s;
+}
+
+.user:hover{
+    background:#1f1f1f;
 }
 
 /* AVATAR */
@@ -63,11 +78,11 @@ button{
     width:40px;
     height:40px;
     border-radius:50%;
-    overflow:hidden;
     background:#333;
     display:flex;
     align-items:center;
     justify-content:center;
+    overflow:hidden;
 }
 
 .avatar img{
@@ -83,20 +98,23 @@ button{
     flex-direction:column;
 }
 
+/* HEADER */
 .header{
     padding:15px;
-    border-bottom:1px solid #fff;
+    border-bottom:1px solid #222;
     display:flex;
     align-items:center;
     gap:10px;
 }
 
+/* MESSAGES */
 .messages{
     flex:1;
-    padding:10px;
+    padding:15px;
     overflow:auto;
 }
 
+/* MSG */
 .msg{
     display:flex;
     margin:6px 0;
@@ -105,9 +123,18 @@ button{
 .me{justify-content:flex-end;}
 .other{justify-content:flex-start;}
 
+/* BUBBLES */
 .bubble{
     max-width:60%;
     padding:10px;
+    border-radius:12px;
+    position:relative;
+    animation:fade 0.2s ease;
+}
+
+@keyframes fade{
+    from{opacity:0;transform:translateY(5px);}
+    to{opacity:1;}
 }
 
 /* ME */
@@ -118,23 +145,33 @@ button{
 
 /* OTHER */
 .other .bubble{
-    background:#000;
-    color:#fff;
-    border:1px solid #fff;
+    background:#1a1a1a;
+    border:1px solid #333;
+}
+
+/* TIME */
+.time{
+    font-size:10px;
+    opacity:0.6;
+    text-align:center;
+    margin-top:4px;
 }
 
 /* INPUT */
 .input{
     display:flex;
-    border-top:1px solid #fff;
+    border-top:1px solid #222;
 }
 
 .input input{
     flex:1;
     border:none;
-    background:#000;
-    color:#fff;
     padding:15px;
+    background:#111;
+}
+
+.input button{
+    width:80px;
 }
 
 /* STATUS */
@@ -149,9 +186,9 @@ button{
 
 <!-- AUTH -->
 <div id="auth">
-    <h2>Login</h2>
-    <input id="u">
-    <input id="p" type="password">
+    <h2>Messenger</h2>
+    <input id="u" placeholder="username">
+    <input id="p" type="password" placeholder="password">
     <button onclick="login()">Войти</button>
     <button onclick="register()">Регистрация</button>
 </div>
@@ -164,17 +201,16 @@ button{
     <div class="chat">
 
         <div class="header">
-            <div class="avatar" id="chatAvatar"></div>
-            <div>
-                <div id="chatName"></div>
-                <div class="status" id="status"></div>
-            </div>
+            <div id="chatName">Чат</div>
+            <div class="status" id="status"></div>
         </div>
 
         <div class="messages" id="messages"></div>
 
+        <!-- 🔥 ВОЗВРАЩЕНА КНОПКА -->
         <div class="input">
-            <input id="msg">
+            <input id="msg" placeholder="Сообщение...">
+            <button onclick="send()">➤</button>
         </div>
 
     </div>
@@ -209,7 +245,7 @@ users.innerHTML="";
 data.users.forEach(u=>{
 if(u.username!==username){
 users.innerHTML+=`
-<div class="user" onclick="openChat('${u.username}','${u.avatar||''}')">
+<div class="user" onclick="openChat('${u.username}')">
 <div class="avatar">${u.avatar?`<img src="${u.avatar}">`:u.username[0]}</div>
 <div>${u.username}</div>
 </div>`;
@@ -217,11 +253,10 @@ users.innerHTML+=`
 });
 });
 
-/* OPEN CHAT */
-function openChat(u,a){
+/* CHAT */
+function openChat(u){
 current=u;
 chatName.innerText=u;
-chatAvatar.innerHTML=a?`<img src="${a}">`:u[0];
 socket.emit("get_history",u);
 }
 
@@ -232,20 +267,55 @@ msgs.forEach(render);
 });
 
 /* SEND */
-msg.onkeydown=e=>{if(e.key==="Enter"){
-socket.emit("private_message",{to:current,message:msg.value});
-render({from:username,message:msg.value,time:new Date()});
+function send(){
+let text=msg.value;
+if(!text||!current)return;
+
+socket.emit("private_message",{to:current,message:text});
+render({from:username,message:text,time:new Date()});
 msg.value="";
-}}
+}
+
+/* ENTER */
+msg.onkeydown=e=>{
+if(e.key==="Enter")send();
+};
+
+/* TYPING */
+msg.oninput=()=>{
+socket.emit("typing",{from:username,to:current});
+};
 
 /* RENDER */
 function render(m){
+
 let me=m.from===username;
+
+let time=new Date(m.time).toLocaleTimeString([],{
+hour:"2-digit",minute:"2-digit"
+});
+
 messages.innerHTML+=`
 <div class="msg ${me?'me':'other'}">
-<div class="bubble">${m.message}</div>
+<div class="bubble">
+<div>${m.message}</div>
+<div class="time">${time}</div>
+</div>
 </div>`;
+
+messages.scrollTop=messages.scrollHeight;
 }
+
+/* TYPING UI */
+socket.on("typing",d=>{
+if(d.from===current){
+status.innerText="печатает...";
+}
+});
+
+socket.on("stop_typing",()=>{
+status.innerText="";
+});
 </script>
 
 </body>

@@ -12,8 +12,6 @@ const io = new Server(server);
 app.use(express.json());
 app.use(express.static(__dirname));
 
-/* ================= DB ================= */
-
 mongoose.connect(config.MONGO_URL);
 
 const UserSchema = new mongoose.Schema({
@@ -33,13 +31,9 @@ const MessageSchema = new mongoose.Schema({
 const User = mongoose.model("User", UserSchema);
 const Message = mongoose.model("Message", MessageSchema);
 
-/* ================= PRESENCE ================= */
-
 let onlineUsers = {};
-let lastSeen = {};
 
-/* ================= AUTH ================= */
-
+/* AUTH */
 app.post("/register", async (req,res)=>{
     const {username,password}=req.body;
 
@@ -69,36 +63,21 @@ app.post("/login", async (req,res)=>{
     res.json({ok:true});
 });
 
-/* ================= AVATAR ================= */
-
-app.post("/avatar", async (req,res)=>{
-    const {username,avatar}=req.body;
-
-    await User.updateOne(
-        {username},
-        {$set:{avatar}}
-    );
-
-    res.json({ok:true});
-});
-
-/* ================= SOCKET ================= */
-
+/* SOCKET */
 io.on("connection",(socket)=>{
 
     socket.on("join", async (username)=>{
-
         onlineUsers[socket.id]=username;
 
         const users = await User.find({}, "username avatar");
 
         io.emit("users",{
             users,
-            online:Object.values(onlineUsers),
-            lastSeen
+            online:Object.values(onlineUsers)
         });
     });
 
+    /* MESSAGE */
     socket.on("private_message", async (data)=>{
         const from = onlineUsers[socket.id];
 
@@ -116,11 +95,12 @@ io.on("connection",(socket)=>{
         }
     });
 
+    /* HISTORY */
     socket.on("get_history", async (withUser)=>{
         const user = onlineUsers[socket.id];
 
         await Message.updateMany(
-            {from:withUser,to:user,status:{$ne:"read"}},
+            {from:withUser,to:user},
             {$set:{status:"read"}}
         );
 
@@ -134,8 +114,7 @@ io.on("connection",(socket)=>{
         socket.emit("chat_history",msgs);
     });
 
-    /* ================= TYPING ================= */
-
+    /* TYPING */
     socket.on("typing",(data)=>{
         for(let id in onlineUsers){
             if(onlineUsers[id]===data.to){
@@ -152,25 +131,10 @@ io.on("connection",(socket)=>{
         }
     });
 
-    /* ================= DISCONNECT ================= */
-
     socket.on("disconnect",()=>{
-
-        const user = onlineUsers[socket.id];
-
-        if(user){
-            lastSeen[user]=Date.now();
-        }
-
         delete onlineUsers[socket.id];
-
-        io.emit("users",{
-            users:[],
-            online:Object.values(onlineUsers),
-            lastSeen
-        });
     });
 
 });
 
-server.listen(3000,()=>console.log("RUN"));
+server.listen(3000);
