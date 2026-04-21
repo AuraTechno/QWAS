@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>PRO STABLE 2</title>
+<title>PRO STABLE 3.1</title>
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
@@ -13,34 +13,7 @@ body{
     color:#fff;
 }
 
-#auth{
-    width:320px;
-    margin:120px auto;
-    display:flex;
-    flex-direction:column;
-    gap:10px;
-}
-
-input{
-    padding:12px;
-    border:none;
-    border-radius:8px;
-    background:#1a1a1a;
-    color:#fff;
-}
-
-button{
-    padding:12px;
-    border:none;
-    border-radius:8px;
-    background:#fff;
-    color:#000;
-}
-
-#chat{
-    display:none;
-    height:100vh;
-}
+#chat{display:none;height:100vh;}
 
 .sidebar{
     width:280px;
@@ -50,9 +23,13 @@ button{
 }
 
 .user{
-    padding:12px;
-    border-bottom:1px solid #222;
+    padding:14px;
+    border-bottom:1px solid #1f1f1f;
     cursor:pointer;
+}
+
+.user:hover{
+    background:#1a1a1a;
 }
 
 .chat{
@@ -61,42 +38,55 @@ button{
     flex-direction:column;
 }
 
+.header{
+    padding:15px;
+    border-bottom:1px solid #222;
+}
+
 .messages{
     flex:1;
-    padding:10px;
+    padding:15px;
     overflow:auto;
 }
 
 .msg{
     margin:6px 0;
-}
-
-.me{text-align:right;}
-.other{text-align:left;}
-
-.bubble{
-    display:inline-block;
+    max-width:70%;
     padding:10px;
-    border-radius:8px;
-    background:#1a1a1a;
+    border-radius:10px;
 }
 
-.me .bubble{
+.me{
+    margin-left:auto;
     background:#fff;
     color:#000;
+}
+
+.other{
+    background:#1a1a1a;
+    border:1px solid #333;
+}
+
+.input{
+    display:flex;
+    border-top:1px solid #222;
+}
+
+input{
+    flex:1;
+    padding:14px;
+    background:#111;
+    border:none;
+    color:#fff;
+}
+
+button{
+    width:80px;
 }
 </style>
 </head>
 
 <body>
-
-<div id="auth">
-    <input id="u" placeholder="username">
-    <input id="p" type="password" placeholder="password">
-
-    <button onclick="register()">Register</button>
-    <button onclick="login()">Login</button>
-</div>
 
 <div id="chat">
 
@@ -104,82 +94,59 @@ button{
 
     <div class="chat">
 
-        <div id="chatName"></div>
+        <div class="header" id="chatName"></div>
 
         <div class="messages" id="messages"></div>
 
-        <input id="msg">
-        <button onclick="send()">Send</button>
+        <div class="input">
+            <input id="msg">
+            <button onclick="send()">➤</button>
+        </div>
 
     </div>
 </div>
 
 <script>
-let socket;
+const socket=io();
+
 let token="";
 let username="";
 let current="";
 
-/* REGISTER */
-function register(){
-fetch("/register",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({username:u.value,password:p.value})
-});
-}
+/* LOGIN AUTO */
+username=prompt("username");
 
-/* LOGIN (STABLE FIX) */
-function login(){
 fetch("/login",{
 method:"POST",
 headers:{"Content-Type":"application/json"},
-body:JSON.stringify({username:u.value,password:p.value})
+body:JSON.stringify({username,password:"123"})
 })
 .then(r=>r.json())
 .then(d=>{
 
-if(!d.ok){
-alert("login error");
-return;
-}
-
 token=d.token;
-username=u.value;
 
-auth.style.display="none";
 chat.style.display="flex";
 
-/* SOCKET ONLY AFTER LOGIN */
-socket=io({
-auth:{token}
-});
-
-/* EVENTS */
-socket.on("connect",()=>{
-socket.emit("join");
-});
-
-socket.on("users",renderUsers);
-socket.on("private_message",renderMsg);
-socket.on("chat_history",renderHistory);
+socket.io.opts.auth={token};
+socket.connect();
 
 });
-}
 
 /* USERS */
-function renderUsers(data){
+socket.on("users",data=>{
 users.innerHTML="";
 
 data.users.forEach(u=>{
 if(u.username!==username){
+
 users.innerHTML+=`
 <div class="user" onclick="openChat('${u.username}')">
 ${u.username}
 </div>`;
 }
 });
-}
+});
 
 /* OPEN */
 function openChat(u){
@@ -190,7 +157,7 @@ socket.emit("get_history",u);
 
 /* SEND */
 function send(){
-if(!msg.value||!current)return;
+if(!msg.value)return;
 
 socket.emit("private_message",{
 to:current,
@@ -200,24 +167,30 @@ message:msg.value
 msg.value="";
 }
 
-/* HISTORY */
-function renderHistory(msgs){
-messages.innerHTML="";
-msgs.forEach(renderMsg);
+/* RECEIVE */
+socket.on("private_message",m=>{
+if(m.from===current||m.from===username){
+render(m);
 }
+});
 
-/* MESSAGE */
-function renderMsg(m){
+/* HISTORY */
+socket.on("chat_history",msgs=>{
+messages.innerHTML="";
+msgs.forEach(render);
+});
 
-if(m.from!==username && m.to!==username && m.from!==current && m.to!==current)
-return;
+/* RENDER */
+function render(m){
 
-let me=m.from===username;
+let div=document.createElement("div");
 
-messages.innerHTML+=`
-<div class="msg ${me?'me':'other'}">
-<div class="bubble">${m.message}</div>
-</div>`;
+div.className="msg "+(m.from===username?"me":"other");
+div.innerText=m.message;
+
+messages.appendChild(div);
+
+messages.scrollTop=messages.scrollHeight;
 }
 </script>
 

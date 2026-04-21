@@ -17,10 +17,13 @@ const io = new Server(server);
 app.use(express.json());
 app.use(express.static("public"));
 
-mongoose.connect(config.MONGO_URL);
+/* DB CONNECT (ONLY HERE) */
+mongoose.connect(config.MONGO_URL)
+.then(()=>console.log("Mongo connected"))
+.catch(err=>console.log("Mongo error",err));
 
 /* ONLINE MAP */
-let online = {}; // socketId -> username
+let online = {}; // socket.id -> username
 
 /* REGISTER */
 app.post("/register", async (req,res)=>{
@@ -60,14 +63,14 @@ app.post("/login", async (req,res)=>{
 
 /* SOCKET AUTH */
 io.use((socket,next)=>{
-    const token = socket.handshake.auth.token;
-
     try{
+        const token = socket.handshake.auth.token;
         const data = jwt.verify(token,config.JWT_SECRET);
+
         socket.username = data.username;
         next();
     }catch(e){
-        next(new Error("auth error"));
+        next(new Error("auth failed"));
     }
 });
 
@@ -77,8 +80,6 @@ io.on("connection",(socket)=>{
     online[socket.id]=socket.username;
 
     sendUsers();
-
-    socket.on("join",()=>{});
 
     socket.on("private_message", async (data)=>{
 
@@ -109,14 +110,29 @@ io.on("connection",(socket)=>{
         socket.emit("chat_history",msgs);
     });
 
-    socket.on("disconnect",()=>{
-        delete online[socket.id];
+    socket.on("disconnect",async ()=>{
+
+        const user = socket.username;
+
+        if(user){
+            await User.updateOne(
+                {username:user},
+                {$set:{lastSeen:Date.now()}}
+            );
+        }
+
+        for(let id in online){
+            if(online[id]===user){
+                delete online[id];
+            }
+        }
+
         sendUsers();
     });
 
 });
 
-/* USERS BROADCAST */
+/* USERS UPDATE */
 async function sendUsers(){
     const users = await User.find({}, "username avatar lastSeen");
 
@@ -126,4 +142,6 @@ async function sendUsers(){
     });
 }
 
-server.listen(3000,()=>console.log("PRO STABLE 2 RUN"));
+server.listen(config.PORT,()=>{
+    console.log("PRO STABLE 3.1 RUN");
+});

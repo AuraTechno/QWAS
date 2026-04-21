@@ -1,4 +1,7 @@
+require("dotenv").config();
+
 module.exports = {
-    MONGO_URL: "mongodb+srv://server:bRtteM2rqijlDTsd@qwas.ijvw0zw.mongodb.net/messenger",
-    JWT_SECRET: "witeriverufatest1236752"
+    MONGO_URL: process.env.MONGO_URL,
+    JWT_SECRET: process.env.JWT_SECRET,
+    PORT: process.env.PORT || 3000
 };
