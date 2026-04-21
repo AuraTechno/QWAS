@@ -33,8 +33,7 @@ const MessageSchema = new mongoose.Schema({
 const User = mongoose.model("User", UserSchema);
 const Message = mongoose.model("Message", MessageSchema);
 
-/* ONLINE MAP */
-let online = {};
+let online = {}; // socketId -> username
 
 /* AUTH */
 app.post("/register", async (req,res)=>{
@@ -81,7 +80,7 @@ io.on("connection",(socket)=>{
         });
     });
 
-    /* MESSAGE */
+    /* SEND MESSAGE */
     socket.on("private_message", async (data)=>{
 
         const from = online[socket.id];
@@ -93,13 +92,14 @@ io.on("connection",(socket)=>{
             status:"sent"
         });
 
-        // deliver
+        // deliver to receiver
         for(let id in online){
             if(online[id]===data.to){
                 io.to(id).emit("private_message",msg);
             }
         }
 
+        // echo to sender
         socket.emit("private_message",msg);
     });
 
@@ -107,11 +107,6 @@ io.on("connection",(socket)=>{
     socket.on("get_history", async (withUser)=>{
 
         const user = online[socket.id];
-
-        await Message.updateMany(
-            {from:withUser,to:user},
-            {$set:{status:"read"}}
-        );
 
         const msgs = await Message.find({
             $or:[
@@ -123,17 +118,23 @@ io.on("connection",(socket)=>{
         socket.emit("chat_history",msgs);
     });
 
-    /* MARK READ */
+    /* READ FIX (IMPORTANT) */
     socket.on("mark_read", async (data)=>{
 
+        const {from,to} = data;
+
         await Message.updateMany(
-            {from:data.from,to:data.to},
+            {from:from,to:to,status:{$ne:"read"}},
             {$set:{status:"read"}}
         );
 
+        // 🔥 ВАЖНО: уведомляем ТОЛЬКО отправителя
         for(let id in online){
-            if(online[id]===data.from){
-                io.to(id).emit("message_read",data);
+            if(online[id]===from){
+                io.to(id).emit("message_read",{
+                    from,
+                    to
+                });
             }
         }
     });
@@ -147,6 +148,7 @@ io.on("connection",(socket)=>{
         }
     });
 
+    /* DISCONNECT */
     socket.on("disconnect", async ()=>{
 
         const user = online[socket.id];
@@ -159,15 +161,8 @@ io.on("connection",(socket)=>{
         }
 
         delete online[socket.id];
-
-        const users = await User.find({}, "username avatar lastSeen");
-
-        io.emit("users",{
-            users,
-            online:Object.values(online)
-        });
     });
 
 });
 
-server.listen(3000,()=>console.log("PRO 3.3 RUN"));
+server.listen(3000,()=>console.log("PRO 3.4 RUN"));

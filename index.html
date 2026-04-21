@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>QWAS</title>
+<title>Messenger PRO 3.4</title>
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
@@ -13,7 +13,6 @@ body{
     color:#fff;
 }
 
-/* AUTH */
 #auth{
     width:320px;
     margin:120px auto;
@@ -38,13 +37,11 @@ button{
     color:#000;
 }
 
-/* CHAT */
 #chat{
     display:none;
     height:100vh;
 }
 
-/* USERS */
 .sidebar{
     width:300px;
     background:#121212;
@@ -57,20 +54,8 @@ button{
     gap:10px;
     padding:15px;
     cursor:pointer;
-    border-bottom:1px solid #1f1f1f;
 }
 
-.avatar{
-    width:40px;
-    height:40px;
-    border-radius:50%;
-    background:#333;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-}
-
-/* CHAT */
 .chat{
     flex:1;
     display:flex;
@@ -82,12 +67,6 @@ button{
     border-bottom:1px solid #222;
 }
 
-.status{
-    font-size:12px;
-    opacity:0.7;
-}
-
-/* MSG */
 .messages{
     flex:1;
     padding:15px;
@@ -118,7 +97,6 @@ button{
     border:1px solid #333;
 }
 
-/* META */
 .meta{
     font-size:10px;
     opacity:0.6;
@@ -128,7 +106,6 @@ button{
     margin-top:4px;
 }
 
-/* INPUT */
 .input{
     display:flex;
     border-top:1px solid #222;
@@ -160,10 +137,7 @@ button{
 
     <div class="chat">
 
-        <div class="header">
-            <div id="chatName"></div>
-            <div class="status" id="status"></div>
-        </div>
+        <div class="header" id="chatName"></div>
 
         <div class="messages" id="messages"></div>
 
@@ -194,48 +168,7 @@ socket.emit("join",username);
 });
 }
 
-/* USERS STATUS */
-function getStatus(u,data){
-
-if(data.online.includes(u)){
-return {text:"в сети",color:"#0f0"};
-}
-
-let user=data.users.find(x=>x.username===u);
-
-if(user && user.lastSeen){
-let diff=Date.now()-user.lastSeen;
-if(diff<5*60*1000){
-return {text:"был недавно",color:"#aaa"};
-}
-}
-
-return {text:"оффлайн",color:"#555"};
-}
-
-/* USERS */
-socket.on("users",data=>{
-users.innerHTML="";
-data.users.forEach(u=>{
-if(u.username!==username){
-
-let st=getStatus(u.username,data);
-
-users.innerHTML+=`
-<div class="user" onclick="openChat('${u.username}')">
-<div class="avatar">${u.username[0]}</div>
-<div>
-<div>${u.username}</div>
-<div style="font-size:12px;color:${st.color}">
-${st.text}
-</div>
-</div>
-</div>`;
-}
-});
-});
-
-/* OPEN */
+/* OPEN CHAT */
 function openChat(u){
 current=u;
 chatName.innerText=u;
@@ -247,7 +180,6 @@ function send(){
 if(!msg.value)return;
 
 socket.emit("private_message",{to:current,message:msg.value});
-
 msg.value="";
 }
 
@@ -258,15 +190,19 @@ render(m);
 }
 });
 
-/* READ */
-socket.on("message_read",()=>{
-socket.emit("get_history",current);
-});
-
 /* HISTORY */
 socket.on("chat_history",msgs=>{
 messages.innerHTML="";
 msgs.forEach(render);
+});
+
+/* READ UPDATE FIX */
+socket.on("message_read",data=>{
+
+if(data.to===current || data.from===current){
+socket.emit("get_history",current);
+}
+
 });
 
 /* RENDER */
@@ -294,6 +230,8 @@ messages.innerHTML+=`
 </div>
 </div>
 </div>`;
+
+messages.scrollTop=messages.scrollHeight;
 }
 </script>
 
