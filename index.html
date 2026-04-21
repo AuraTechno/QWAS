@@ -103,7 +103,17 @@ socket.on("users", (list) => {
 function openChat(user) {
     currentChat = user;
     document.getElementById("messages").innerHTML = `<b>Чат с ${user}</b><br>`;
+
+    socket.emit("get_history", user);
 }
+
+socket.on("chat_history", (history) => {
+    let messages = document.getElementById("messages");
+
+    history.forEach(msg => {
+        addMessage(msg.from, msg.message);
+    });
+});
 
 function send() {
     let input = document.getElementById("messageInput");
