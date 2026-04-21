@@ -13,6 +13,7 @@ body{
     color:#fff;
 }
 
+/* AUTH */
 #auth{
     width:320px;
     margin:120px auto;
@@ -37,8 +38,13 @@ button{
     color:#000;
 }
 
-#chat{display:none;height:100vh;}
+/* CHAT */
+#chat{
+    display:none;
+    height:100vh;
+}
 
+/* USERS */
 .sidebar{
     width:300px;
     background:#121212;
@@ -55,17 +61,21 @@ button{
 }
 
 .avatar{
-    width:40px;height:40px;border-radius:50%;
+    width:40px;
+    height:40px;
+    border-radius:50%;
     background:#333;
     display:flex;
     align-items:center;
     justify-content:center;
-    overflow:hidden;
 }
 
-.avatar img{width:100%;height:100%;}
-
-.chat{flex:1;display:flex;flex-direction:column;}
+/* CHAT */
+.chat{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+}
 
 .header{
     padding:15px;
@@ -77,9 +87,18 @@ button{
     opacity:0.7;
 }
 
-.messages{flex:1;padding:15px;overflow:auto;}
+/* MSG */
+.messages{
+    flex:1;
+    padding:15px;
+    overflow:auto;
+}
 
-.msg{display:flex;margin:6px 0;}
+.msg{
+    display:flex;
+    margin:6px 0;
+}
+
 .me{justify-content:flex-end;}
 .other{justify-content:flex-start;}
 
@@ -89,12 +108,41 @@ button{
     border-radius:12px;
 }
 
-.me .bubble{background:#fff;color:#000;}
-.other .bubble{background:#1a1a1a;border:1px solid #333;}
+.me .bubble{
+    background:#fff;
+    color:#000;
+}
 
-.input{display:flex;border-top:1px solid #222;}
-.input input{flex:1;padding:15px;background:#111;border:none;}
-.input button{width:80px;}
+.other .bubble{
+    background:#1a1a1a;
+    border:1px solid #333;
+}
+
+/* META */
+.meta{
+    font-size:10px;
+    opacity:0.6;
+    display:flex;
+    justify-content:center;
+    gap:6px;
+    margin-top:4px;
+}
+
+/* INPUT */
+.input{
+    display:flex;
+    border-top:1px solid #222;
+}
+
+.input input{
+    flex:1;
+    padding:15px;
+    background:#111;
+}
+
+.input button{
+    width:80px;
+}
 </style>
 </head>
 
@@ -107,9 +155,11 @@ button{
 </div>
 
 <div id="chat">
+
     <div class="sidebar" id="users"></div>
 
     <div class="chat">
+
         <div class="header">
             <div id="chatName"></div>
             <div class="status" id="status"></div>
@@ -121,6 +171,7 @@ button{
             <input id="msg">
             <button onclick="send()">➤</button>
         </div>
+
     </div>
 </div>
 
@@ -143,30 +194,28 @@ socket.emit("join",username);
 });
 }
 
-/* STATUS FIX */
-function getStatus(user,data){
+/* USERS STATUS */
+function getStatus(u,data){
 
-    if(data.online.includes(user)){
-        return {text:"в сети",color:"#0f0"};
-    }
+if(data.online.includes(u)){
+return {text:"в сети",color:"#0f0"};
+}
 
-    let u = data.users.find(x=>x.username===user);
+let user=data.users.find(x=>x.username===u);
 
-    if(u && u.lastSeen){
-        let diff = Date.now() - u.lastSeen;
+if(user && user.lastSeen){
+let diff=Date.now()-user.lastSeen;
+if(diff<5*60*1000){
+return {text:"был недавно",color:"#aaa"};
+}
+}
 
-        if(diff < 5*60*1000){
-            return {text:"был недавно",color:"#aaa"};
-        }
-    }
-
-    return {text:"оффлайн",color:"#555"};
+return {text:"оффлайн",color:"#555"};
 }
 
 /* USERS */
 socket.on("users",data=>{
 users.innerHTML="";
-
 data.users.forEach(u=>{
 if(u.username!==username){
 
@@ -174,7 +223,7 @@ let st=getStatus(u.username,data);
 
 users.innerHTML+=`
 <div class="user" onclick="openChat('${u.username}')">
-<div class="avatar">${u.avatar?`<img src="${u.avatar}">`:u.username[0]}</div>
+<div class="avatar">${u.username[0]}</div>
 <div>
 <div>${u.username}</div>
 <div style="font-size:12px;color:${st.color}">
@@ -186,7 +235,7 @@ ${st.text}
 });
 });
 
-/* OPEN CHAT */
+/* OPEN */
 function openChat(u){
 current=u;
 chatName.innerText=u;
@@ -198,6 +247,7 @@ function send(){
 if(!msg.value)return;
 
 socket.emit("private_message",{to:current,message:msg.value});
+
 msg.value="";
 }
 
@@ -208,13 +258,41 @@ render(m);
 }
 });
 
+/* READ */
+socket.on("message_read",()=>{
+socket.emit("get_history",current);
+});
+
+/* HISTORY */
+socket.on("chat_history",msgs=>{
+messages.innerHTML="";
+msgs.forEach(render);
+});
+
 /* RENDER */
 function render(m){
+
 let me=m.from===username;
+
+let time=new Date(m.time).toLocaleTimeString([],{
+hour:"2-digit",minute:"2-digit"
+});
+
+let check="";
+if(me){
+if(m.status==="sent")check="✓";
+if(m.status==="read")check="✓✓";
+}
 
 messages.innerHTML+=`
 <div class="msg ${me?'me':'other'}">
-<div class="bubble">${m.message}</div>
+<div class="bubble">
+<div>${m.message}</div>
+<div class="meta">
+<span>${time}</span>
+<span>${check}</span>
+</div>
+</div>
 </div>`;
 }
 </script>

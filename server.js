@@ -34,7 +34,7 @@ const User = mongoose.model("User", UserSchema);
 const Message = mongoose.model("Message", MessageSchema);
 
 /* ONLINE MAP */
-let online = {}; // socketId -> username
+let online = {};
 
 /* AUTH */
 app.post("/register", async (req,res)=>{
@@ -71,7 +71,6 @@ app.post("/login", async (req,res)=>{
 io.on("connection",(socket)=>{
 
     socket.on("join", async (username)=>{
-
         online[socket.id]=username;
 
         const users = await User.find({}, "username avatar lastSeen");
@@ -82,6 +81,7 @@ io.on("connection",(socket)=>{
         });
     });
 
+    /* MESSAGE */
     socket.on("private_message", async (data)=>{
 
         const from = online[socket.id];
@@ -93,6 +93,7 @@ io.on("connection",(socket)=>{
             status:"sent"
         });
 
+        // deliver
         for(let id in online){
             if(online[id]===data.to){
                 io.to(id).emit("private_message",msg);
@@ -102,6 +103,7 @@ io.on("connection",(socket)=>{
         socket.emit("private_message",msg);
     });
 
+    /* HISTORY */
     socket.on("get_history", async (withUser)=>{
 
         const user = online[socket.id];
@@ -121,6 +123,7 @@ io.on("connection",(socket)=>{
         socket.emit("chat_history",msgs);
     });
 
+    /* MARK READ */
     socket.on("mark_read", async (data)=>{
 
         await Message.updateMany(
@@ -135,6 +138,7 @@ io.on("connection",(socket)=>{
         }
     });
 
+    /* TYPING */
     socket.on("typing",(data)=>{
         for(let id in online){
             if(online[id]===data.to){
@@ -166,4 +170,4 @@ io.on("connection",(socket)=>{
 
 });
 
-server.listen(3000,()=>console.log("FIXED PRO RUN"));
+server.listen(3000,()=>console.log("PRO 3.3 RUN"));
