@@ -19,42 +19,9 @@ app.use(express.static("public"));
 
 mongoose.connect(config.MONGO_URL);
 
-/* USERS ONLINE */
-let online = {};
+let onlineUsers = new Map();
 
-/* REGISTER */
-app.post("/register", async (req, res) => {
-    const { username, password } = req.body;
-
-    const exists = await User.findOne({ username });
-    if (exists) return res.json({ ok: false });
-
-    const hash = await bcrypt.hash(password, 10);
-    await User.create({ username, password: hash });
-
-    res.json({ ok: true });
-});
-
-/* LOGIN */
-app.post("/login", async (req, res) => {
-    const { username, password } = req.body;
-
-    const user = await User.findOne({ username });
-    if (!user) return res.json({ ok: false });
-
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.json({ ok: false });
-
-    const token = jwt.sign(
-        { username },
-        config.JWT_SECRET,
-        { expiresIn: "7d" }
-    );
-
-    res.json({ ok: true, token });
-});
-
-/* SOCKET AUTH */
+/* AUTH */
 io.use((socket, next) => {
     try {
         const token = socket.handshake.auth.token;
@@ -68,7 +35,7 @@ io.use((socket, next) => {
 
 io.on("connection", (socket) => {
 
-    online[socket.username] = true;
+    onlineUsers.set(socket.username, socket.id);
 
     emitUsers();
 
@@ -84,11 +51,12 @@ io.on("connection", (socket) => {
             from: socket.username,
             to: data.to,
             message: data.message,
-            status: "sent"
+            status: "sent",
+            createdAt: Date.now()
         });
 
-        emitToUser(data.to, "private_message", msg);
-        socket.emit("private_message", msg);
+        sendToUser(data.to, "new_message", msg);
+        socket.emit("new_message", msg);
     });
 
     /* HISTORY */
@@ -112,24 +80,25 @@ io.on("connection", (socket) => {
             { $set: { status: "read" } }
         );
 
-        emitToUser(data.from, "read_update", {
-            from: data.from
+        sendToUser(data.from, "read_update", {
+            from: data.from,
+            to: data.to
         });
     });
 
     /* TYPING */
     socket.on("typing", (to) => {
-        emitToUser(to, "typing", { from: socket.username });
+        sendToUser(to, "typing", { from: socket.username });
 
         clearTimeout(socket.typingTimer);
 
         socket.typingTimer = setTimeout(() => {
-            emitToUser(to, "stop_typing", { from: socket.username });
-        }, 600);
+            sendToUser(to, "stop_typing", { from: socket.username });
+        }, 500);
     });
 
     socket.on("disconnect", () => {
-        delete online[socket.username];
+        onlineUsers.delete(socket.username);
         emitUsers();
     });
 
@@ -137,24 +106,21 @@ io.on("connection", (socket) => {
 
 /* USERS */
 async function emitUsers() {
+
     const users = await User.find({}, "username");
 
     io.emit("users", users.map(u => ({
         username: u.username,
-        online: !!online[u.username]
+        online: onlineUsers.has(u.username)
     })));
 }
 
-/* SEND TO USER */
-function emitToUser(username, event, data) {
-    for (let id in io.sockets.sockets) {
-        const s = io.sockets.sockets.get(id);
-        if (s?.username === username) {
-            s.emit(event, data);
-        }
+/* SEND */
+function sendToUser(username, event, data) {
+    const socketId = onlineUsers.get(username);
+    if (socketId) {
+        io.to(socketId).emit(event, data);
     }
 }
 
-server.listen(3000, () => {
-    console.log("SERVER RUNNING");
-});
+server.listen(3000, () => console.log("FINAL STABLE RUN"));
