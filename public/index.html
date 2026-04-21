@@ -1,172 +1,41 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
 <meta charset="UTF-8">
-<title>Messenger FIX PRO</title>
-
+<title>Messenger FIX</title>
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
-
-body{
-margin:0;
-font-family:Arial;
-background:#0b0b0b;
-color:#fff;
-}
-
-/* LOGIN */
-#auth{
-width:340px;
-margin:120px auto;
-display:flex;
-flex-direction:column;
-gap:10px;
-text-align:center;
-}
-
-#auth input{
-padding:14px;
-border:none;
-border-radius:10px;
-background:#1a1a1a;
-color:#fff;
-}
-
-#auth button{
-padding:14px;
-border:none;
-border-radius:10px;
-background:#fff;
-font-weight:bold;
-cursor:pointer;
-}
-
-/* APP */
-#chat{
-display:none;
-height:100vh;
-}
-
-/* USERS */
-.sidebar{
-width:280px;
-background:#111;
-border-right:1px solid #222;
-overflow:auto;
-}
-
-.user{
-display:flex;
-align-items:center;
-gap:10px;
-padding:12px;
-border-bottom:1px solid #222;
-cursor:pointer;
-}
-
-.avatar{
-width:38px;
-height:38px;
-border-radius:50%;
-background:#333;
-display:flex;
-align-items:center;
-justify-content:center;
-overflow:hidden;
-font-weight:bold;
-}
-
-.online{
-width:8px;
-height:8px;
-border-radius:50%;
-background:#2ecc71;
-opacity:0.3;
-}
-
-/* CHAT */
-.chat{
-flex:1;
-display:flex;
-flex-direction:column;
-}
-
-.header{
-padding:15px;
-border-bottom:1px solid #222;
-}
-
-.messages{
-flex:1;
-padding:15px;
-overflow:auto;
-display:flex;
-flex-direction:column;
-gap:8px;
-}
-
-.msg{
-max-width:70%;
-padding:10px;
-border-radius:12px;
-}
-
-.me{
-align-self:flex-end;
-background:#fff;
-color:#000;
-}
-
-.other{
-align-self:flex-start;
-background:#1a1a1a;
-border:1px solid #333;
-}
-
-.meta{
-font-size:10px;
-opacity:0.7;
-text-align:right;
-margin-top:3px;
-}
-
-/* INPUT */
-.input{
-display:flex;
-padding:10px;
-gap:8px;
-border-top:1px solid #222;
-}
-
-.input input{
-flex:1;
-padding:12px;
-border-radius:10px;
-border:none;
-background:#1a1a1a;
-color:#fff;
-}
-
-.input button{
-width:50px;
-border:none;
-border-radius:10px;
-background:#fff;
-cursor:pointer;
-}
-
+body{margin:0;font-family:Arial;background:#111;color:#fff}
+#auth{width:300px;margin:100px auto;display:flex;flex-direction:column;gap:10px}
+input,button{padding:12px;border-radius:8px;border:none}
+button{background:#fff;font-weight:bold}
+#chat{display:none;height:100vh}
+.sidebar{width:250px;background:#000;overflow:auto}
+.user{padding:10px;border-bottom:1px solid #222;cursor:pointer;display:flex;align-items:center;gap:8px}
+.user .online-dot{width:10px;height:10px;border-radius:50%;background:#00ff00}
+.user .offline-dot{width:10px;height:10px;border-radius:50%;background:#666}
+.chat{flex:1;display:flex;flex-direction:column}
+.header{padding:10px;background:#000}
+.messages{flex:1;padding:10px;overflow:auto;display:flex;flex-direction:column}
+.msg{padding:10px;margin:5px;border-radius:8px;max-width:70%;word-break:break-word}
+.me{background:#fff;color:#000;align-self:flex-end}
+.other{background:#222;align-self:flex-start}
+.meta{font-size:10px;opacity:.7;margin-top:4px}
+.input{display:flex}
+.input input{flex:1}
+.input button{width:60px}
+.typing-indicator{font-size:12px;color:#aaa;padding:4px 10px}
 </style>
 </head>
 
 <body>
 
 <div id="auth">
-<h3>LOGIN</h3>
 <input id="u" placeholder="username">
 <input id="p" type="password">
-<button onclick="login()">Войти</button>
-<button onclick="register()">Регистрация</button>
+<button onclick="login()">login</button>
+<button onclick="register()">register</button>
 </div>
 
 <div id="chat">
@@ -175,13 +44,15 @@ cursor:pointer;
 
 <div class="chat">
 
-<div class="header" id="chatName">Chat</div>
+<div class="header" id="title">Выберите чат</div>
 
 <div class="messages" id="messages"></div>
 
+<div id="typingIndicator" class="typing-indicator"></div>
+
 <div class="input">
-<input id="msg">
-<button onclick="send()">➤</button>
+<input id="msg" placeholder="Сообщение..." disabled>
+<button id="sendBtn" onclick="send()" disabled>➤</button>
 </div>
 
 </div>
@@ -191,158 +62,188 @@ cursor:pointer;
 <script>
 
 let socket;
-let token="";
-let username="";
-let current="";
+let me = "";
+let current = "";
+let typingTimeout = null;
 
-/* MAP FIX (ВАЖНО ДЛЯ ✔✔) */
-let messageMap = new Map();
+const map = new Map();
 
-/* LOGIN */
-function login(){
-
-fetch("/login",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({
-username:u.value,
-password:p.value
-})
-})
-.then(r=>r.json())
-.then(d=>{
-
-if(!d.ok) return alert("error");
-
-token=d.token;
-username=u.value;
-
-auth.style.display="none";
-chat.style.display="flex";
-
-socket=io({
-auth:{token}
-});
-
-socket.on("connect",()=>socket.emit("join"));
-
-/* USERS */
-socket.on("users",data=>{
-users.innerHTML="";
-
-data.forEach(u=>{
-users.innerHTML+=`
-<div class="user" onclick="openChat('${u.username}')">
-
-<div class="avatar">
-${u.avatar? `<img src="${u.avatar}" style="width:100%;height:100%">` : u.username[0]}
-</div>
-
-<div>${u.username}</div>
-
-<div class="online" style="opacity:${u.online?1:0.2}"></div>
-
-</div>`;
-});
-});
-
-/* HISTORY */
-socket.on("chat_history",m=>{
-messages.innerHTML="";
-messageMap.clear();
-m.forEach(render);
-});
-
-/* NEW MSG */
-socket.on("new_message",m=>{
-if(m.from===current || m.to===current) render(m);
-});
-
-/* ✔✔ REALTIME FIX */
-socket.on("read_update",data=>{
-
-data.messages.forEach(id=>{
-
-const el = messageMap.get(id);
-
-if(el){
-const meta = el.querySelector(".meta");
-if(meta) meta.innerText="✔✔";
+/* === AUTH === */
+function register() {
+  fetch("/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: u.value, password: p.value })
+  })
+  .then(r => r.json())
+  .then(d => {
+    alert(d.ok ? "ok" : "error");
+  });
 }
 
-});
-
-});
-
-/* TYPING FIX */
-socket.on("typing",d=>{
-if(d.from!==current) return;
-chatName.innerText = d.from + " печатает...";
-});
-
-socket.on("stop_typing",d=>{
-if(d.from!==current) return;
-chatName.innerText = current;
-});
-
-});
+function login() {
+  fetch("/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: u.value, password: p.value })
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (!d.ok) return alert("error");
+    me = u.value;
+    auth.style.display = "none";
+    chat.style.display = "flex";
+    connectSocket(d.token);
+  });
 }
 
-/* REGISTER */
-function register(){
-fetch("/register",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({
-username:u.value,
-password:p.value
-})
+/* === SOCKET === */
+function connectSocket(token) {
+  socket = io({ auth: { token } });
+
+  socket.on("connect", () => {
+    console.log("connected");
+  });
+
+  socket.on("users", users => {
+    renderUsers(users);
+  });
+
+  socket.on("new_message", msg => {
+    const isFromCurrent = (msg.from === current || msg.to === current);
+    if (isFromCurrent) {
+      addMessageToChat(msg);
+      if (msg.to === me && current === msg.from) {
+        socket.emit("read", { from: msg.from, to: me });
+      }
+    }
+  });
+
+  socket.on("chat_history", msgs => {
+    renderHistory(msgs);
+  });
+
+  socket.on("read_update", data => {
+    data.messages.forEach(id => {
+      const el = document.getElementById(`msg-${id}`);
+      if (el) {
+        const statusEl = el.querySelector('.status');
+        if (statusEl) statusEl.innerText = '✓✓';
+      }
+    });
+  });
+
+  socket.on("typing", data => {
+    if (data.from === current) {
+      typingIndicator.innerText = `${current} печатает...`;
+    }
+  });
+
+  socket.on("stop_typing", data => {
+    if (data.from === current) {
+      typingIndicator.innerText = "";
+    }
+  });
+
+  socket.on("disconnect", () => {});
+}
+
+/* === RENDER USERS === */
+function renderUsers(users) {
+  const container = document.getElementById("users");
+  container.innerHTML = "";
+  users.filter(u => u.username !== me).forEach(u => {
+    const div = document.createElement("div");
+    div.className = "user";
+    div.onclick = () => selectUser(u.username);
+
+    const dot = document.createElement("span");
+    dot.className = u.online ? "online-dot" : "offline-dot";
+    div.appendChild(dot);
+
+    const name = document.createElement("span");
+    name.innerText = u.username;
+    div.appendChild(name);
+
+    container.appendChild(div);
+  });
+}
+
+/* === SELECT USER === */
+function selectUser(username) {
+  current = username;
+  document.getElementById("title").innerText = `Чат с ${username}`;
+  document.getElementById("msg").disabled = false;
+  document.getElementById("sendBtn").disabled = false;
+  document.getElementById("messages").innerHTML = "";
+  typingIndicator.innerText = "";
+
+  socket.emit("get_history", username);
+}
+
+/* === RENDER HISTORY === */
+function renderHistory(msgs) {
+  const container = document.getElementById("messages");
+  container.innerHTML = "";
+  msgs.forEach(msg => addMessageToChat(msg));
+  scrollToBottom();
+}
+
+function addMessageToChat(msg) {
+  const container = document.getElementById("messages");
+  const div = document.createElement("div");
+  div.className = `msg ${msg.from === me ? "me" : "other"}`;
+  div.id = `msg-${msg._id}`;
+
+  const text = document.createElement("div");
+  text.innerText = msg.message;
+
+  const meta = document.createElement("div");
+  meta.className = "meta";
+
+  const time = new Date(msg.createdAt).toLocaleTimeString().slice(0,5);
+  const status = msg.status === "read" ? "✓✓" : (msg.from === me ? "✓" : "");
+  meta.innerText = `${time} ${status}`;
+
+  div.appendChild(text);
+  div.appendChild(meta);
+  container.appendChild(div);
+
+  if (msg.from === current || msg.to === current) {
+    scrollToBottom();
+  }
+}
+
+function scrollToBottom() {
+  const container = document.getElementById("messages");
+  container.scrollTop = container.scrollHeight;
+}
+
+/* === SEND === */
+function send() {
+  const input = document.getElementById("msg");
+  const text = input.value.trim();
+  if (!text || !current) return;
+  socket.emit("send_message", { to: current, message: text });
+  input.value = "";
+  socket.emit("stop_typing", current);
+  if (typingTimeout) clearTimeout(typingTimeout);
+}
+
+/* === TYPING === */
+document.getElementById("msg").addEventListener("input", () => {
+  if (!current) return;
+  socket.emit("typing", current);
+  if (typingTimeout) clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(() => {
+    socket.emit("stop_typing", current);
+  }, 1000);
 });
-}
 
-/* OPEN CHAT */
-function openChat(u){
-current=u;
-chatName.innerText=u;
-
-socket.emit("get_history",u);
-
-socket.emit("read",{
-from:u,
-to:username
+/* === ENTER KEY === */
+document.getElementById("msg").addEventListener("keypress", e => {
+  if (e.key === "Enter") send();
 });
-}
-
-/* SEND */
-function send(){
-if(!msg.value) return;
-
-socket.emit("private_message",{
-to:current,
-message:msg.value
-});
-
-msg.value="";
-}
-
-/* RENDER (FIXED) */
-function render(m){
-
-let div=document.createElement("div");
-div.className="msg "+(m.from===username?"me":"other");
-
-div.innerHTML=`
-<div>${m.message}</div>
-<div class="meta">${m.status==="read"?"✔✔":"✔"}</div>
-`;
-
-/* SAVE REFERENCE FOR REALTIME ✔✔ */
-messageMap.set(m._id, div);
-
-messages.appendChild(div);
-messages.scrollTop=messages.scrollHeight;
-
-}
 
 </script>
 
