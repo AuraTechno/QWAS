@@ -22,19 +22,6 @@ mongoose.connect(config.MONGO_URL);
 /* ONLINE USERS */
 const online = new Map();
 
-/* REGISTER */
-app.post("/register", async (req, res) => {
-    const { username, password } = req.body;
-
-    const exists = await User.findOne({ username });
-    if (exists) return res.json({ ok: false });
-
-    const hash = await bcrypt.hash(password, 10);
-    await User.create({ username, password: hash });
-
-    res.json({ ok: true });
-});
-
 /* LOGIN */
 app.post("/login", async (req, res) => {
     const { username, password } = req.body;
@@ -52,6 +39,19 @@ app.post("/login", async (req, res) => {
     );
 
     res.json({ ok: true, token });
+});
+
+/* REGISTER */
+app.post("/register", async (req, res) => {
+    const { username, password } = req.body;
+
+    const exists = await User.findOne({ username });
+    if (exists) return res.json({ ok: false });
+
+    const hash = await bcrypt.hash(password, 10);
+    await User.create({ username, password: hash });
+
+    res.json({ ok: true });
 });
 
 /* SOCKET AUTH */
@@ -103,13 +103,13 @@ io.on("connection", (socket) => {
         socket.emit("chat_history", msgs);
     });
 
-    /* READ FIX (REALTIME ✔✔) */
+    /* READ (REALTIME FIX) */
     socket.on("read", async (data) => {
 
         const msgs = await Message.find({
             from: data.from,
             to: data.to,
-            status: { $ne: "read" }
+            status: "sent"
         });
 
         await Message.updateMany(
@@ -122,23 +122,16 @@ io.on("connection", (socket) => {
         });
     });
 
-    /* TYPING FIX (STABLE) */
+    /* TYPING FIX */
     socket.on("typing", (to) => {
 
-        send(to, "typing", {
-            from: socket.username
-        });
+        send(to, "typing", { from: socket.username });
 
         clearTimeout(socket.typingTimer);
 
         socket.typingTimer = setTimeout(() => {
-
-            send(to, "stop_typing", {
-                from: socket.username
-            });
-
+            send(to, "stop_typing", { from: socket.username });
         }, 600);
-
     });
 
     socket.on("disconnect", () => {
@@ -165,4 +158,4 @@ function send(user, event, data) {
     if (id) io.to(id).emit(event, data);
 }
 
-server.listen(3000, () => console.log("FIX VERSION RUNNING"));
+server.listen(3000, () => console.log("REALTIME FIX OK"));

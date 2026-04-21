@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Messenger FIX</title>
+<title>Messenger FIX PRO</title>
 
 <script src="/socket.io/socket.io.js"></script>
 
@@ -195,6 +195,9 @@ let token="";
 let username="";
 let current="";
 
+/* MAP FIX (ВАЖНО ДЛЯ ✔✔) */
+let messageMap = new Map();
+
 /* LOGIN */
 function login(){
 
@@ -246,10 +249,11 @@ ${u.avatar? `<img src="${u.avatar}" style="width:100%;height:100%">` : u.usernam
 /* HISTORY */
 socket.on("chat_history",m=>{
 messages.innerHTML="";
+messageMap.clear();
 m.forEach(render);
 });
 
-/* NEW MESSAGE */
+/* NEW MSG */
 socket.on("new_message",m=>{
 if(m.from===current || m.to===current) render(m);
 });
@@ -258,8 +262,14 @@ if(m.from===current || m.to===current) render(m);
 socket.on("read_update",data=>{
 
 data.messages.forEach(id=>{
-const el=document.getElementById("meta-"+id);
-if(el) el.innerText="✔✔";
+
+const el = messageMap.get(id);
+
+if(el){
+const meta = el.querySelector(".meta");
+if(meta) meta.innerText="✔✔";
+}
+
 });
 
 });
@@ -315,7 +325,7 @@ message:msg.value
 msg.value="";
 }
 
-/* RENDER */
+/* RENDER (FIXED) */
 function render(m){
 
 let div=document.createElement("div");
@@ -323,13 +333,15 @@ div.className="msg "+(m.from===username?"me":"other");
 
 div.innerHTML=`
 <div>${m.message}</div>
-<div class="meta" id="meta-${m._id}">
-${m.status==="read"?"✔✔":"✔"}
-</div>
+<div class="meta">${m.status==="read"?"✔✔":"✔"}</div>
 `;
+
+/* SAVE REFERENCE FOR REALTIME ✔✔ */
+messageMap.set(m._id, div);
 
 messages.appendChild(div);
 messages.scrollTop=messages.scrollHeight;
+
 }
 
 </script>
