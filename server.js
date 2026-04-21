@@ -19,7 +19,6 @@ app.use(express.static("public"));
 
 mongoose.connect(config.MONGO_URL);
 
-/* ONLINE USERS */
 const online = new Map();
 
 /* REGISTER */
@@ -34,8 +33,7 @@ app.post("/register", async (req, res) => {
         await User.create({ username, password: hash });
 
         res.json({ ok: true });
-    } catch (e) {
-        console.log(e);
+    } catch {
         res.json({ ok: false });
     }
 });
@@ -58,8 +56,7 @@ app.post("/login", async (req, res) => {
         );
 
         res.json({ ok: true, token });
-    } catch (e) {
-        console.log(e);
+    } catch {
         res.json({ ok: false });
     }
 });
@@ -79,22 +76,18 @@ io.use((socket, next) => {
 io.on("connection", (socket) => {
 
     online.set(socket.username, socket.id);
-
     emitUsers();
 
-    socket.on("join", () => {
-        emitUsers();
-    });
+    socket.on("join", () => emitUsers());
 
-    /* MESSAGE */
+    /* SEND MESSAGE */
     socket.on("private_message", async (data) => {
 
         const msg = await Message.create({
             from: socket.username,
             to: data.to,
             message: data.message,
-            status: "sent",
-            createdAt: Date.now()
+            status: "sent"
         });
 
         send(data.to, "new_message", msg);
@@ -114,15 +107,23 @@ io.on("connection", (socket) => {
         socket.emit("chat_history", msgs);
     });
 
-    /* READ */
+    /* READ RECEIPT */
     socket.on("read", async (data) => {
+
+        const msgs = await Message.find({
+            from: data.from,
+            to: data.to,
+            status: { $ne: "read" }
+        });
 
         await Message.updateMany(
             { from: data.from, to: data.to },
             { $set: { status: "read" } }
         );
 
-        send(data.from, "read_update", {});
+        send(data.from, "read_update", {
+            messages: msgs.map(m => m._id)
+        });
     });
 
     /* TYPING */
@@ -130,7 +131,6 @@ io.on("connection", (socket) => {
         send(to, "typing", { from: socket.username });
 
         clearTimeout(socket.typingTimer);
-
         socket.typingTimer = setTimeout(() => {
             send(to, "stop_typing", {});
         }, 500);
@@ -145,18 +145,19 @@ io.on("connection", (socket) => {
 
 /* USERS */
 async function emitUsers() {
-    const users = await User.find({}, "username");
+    const users = await User.find({}, "username avatar");
 
     io.emit("users", users.map(u => ({
         username: u.username,
+        avatar: u.avatar || "",
         online: online.has(u.username)
     })));
 }
 
 /* SEND */
-function send(username, event, data) {
-    const id = online.get(username);
+function send(user, event, data) {
+    const id = online.get(user);
     if (id) io.to(id).emit(event, data);
 }
 
-server.listen(3000, () => console.log("SERVER OK"));
+server.listen(3000, () => console.log("RUNNING"));

@@ -2,10 +2,9 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Messenger STABLE</title>
+<title>Messenger FINAL PRO</title>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
 
 <style>
 
@@ -43,25 +42,54 @@ font-weight:bold;
 cursor:pointer;
 }
 
-/* CHAT */
+/* APP */
 #chat{
 display:none;
 height:100vh;
 }
 
+/* USERS */
 .sidebar{
-width:260px;
+width:280px;
 background:#111;
-overflow:auto;
 border-right:1px solid #222;
+overflow:auto;
 }
 
 .user{
+display:flex;
+align-items:center;
+gap:10px;
 padding:12px;
 border-bottom:1px solid #222;
 cursor:pointer;
 }
 
+.avatar{
+width:38px;
+height:38px;
+border-radius:50%;
+background:#333;
+display:flex;
+align-items:center;
+justify-content:center;
+overflow:hidden;
+font-weight:bold;
+}
+
+.name{
+flex:1;
+}
+
+.online{
+width:8px;
+height:8px;
+border-radius:50%;
+background:#2ecc71;
+opacity:0.3;
+}
+
+/* CHAT */
 .chat{
 flex:1;
 display:flex;
@@ -104,6 +132,7 @@ border:1px solid #333;
 font-size:10px;
 opacity:0.7;
 text-align:right;
+margin-top:3px;
 }
 
 /* INPUT */
@@ -125,9 +154,9 @@ color:#fff;
 
 .input button{
 width:50px;
-background:#fff;
 border:none;
 border-radius:10px;
+background:#fff;
 cursor:pointer;
 }
 
@@ -165,15 +194,12 @@ cursor:pointer;
 
 <script>
 
-let socket=null;
+let socket;
 let token="";
 let username="";
 let current="";
 
-/* LOGIN (FIXED, NO HANG) */
 async function login(){
-
-try{
 
 const res = await fetch("/login",{
 method:"POST",
@@ -186,68 +212,57 @@ password:p.value
 
 const d = await res.json();
 
-if(!d.ok){
-alert("error login");
-return;
-}
+if(!d.ok) return alert("error");
 
 token=d.token;
 username=u.value;
 
-/* UI SWITCH */
 auth.style.display="none";
 chat.style.display="flex";
 
-/* SOCKET SAFE */
-socket = io({
-auth:{token},
-transports:["websocket","polling"]
+socket=io({
+auth:{token}
 });
 
-socket.on("connect",()=>{
-socket.emit("join");
-});
+socket.on("connect",()=>socket.emit("join"));
 
-/* USERS */
-socket.on("users",(data)=>{
+socket.on("users",data=>{
 users.innerHTML="";
 
 data.forEach(u=>{
 users.innerHTML+=`
 <div class="user" onclick="openChat('${u.username}')">
-${u.username} ${u.online?"🟢":""}
+
+<div class="avatar">
+${u.avatar? `<img src="${u.avatar}" style="width:100%;height:100%">` : u.username[0]}
+</div>
+
+<div class="name">${u.username}</div>
+
+<div class="online" style="opacity:${u.online?1:0.2}"></div>
+
 </div>`;
 });
 });
 
-/* CHAT */
 socket.on("chat_history",m=>{
 messages.innerHTML="";
 m.forEach(render);
 });
 
-/* REALTIME MSG */
-socket.on("new_message",(m)=>{
-if(m.from===current || m.to===current){
-render(m);
-}
+socket.on("new_message",m=>{
+if(m.from===current || m.to===current) render(m);
 });
 
-/* READ */
-socket.on("read_update",()=>{
-document.querySelectorAll(".msg.me .meta").forEach(e=>{
-e.innerText="✔✔";
+socket.on("read_update",data=>{
+data.messages.forEach(id=>{
+let el=document.getElementById("meta-"+id);
+if(el) el.innerText="✔✔";
 });
 });
 
-}catch(e){
-console.log(e);
-alert("login error");
 }
 
-}
-
-/* REGISTER */
 function register(){
 fetch("/register",{
 method:"POST",
@@ -259,7 +274,6 @@ password:p.value
 });
 }
 
-/* OPEN CHAT */
 function openChat(u){
 current=u;
 chatName.innerText=u;
@@ -272,9 +286,8 @@ to:username
 });
 }
 
-/* SEND */
 function send(){
-if(!msg.value||!current)return;
+if(!msg.value) return;
 
 socket.emit("private_message",{
 to:current,
@@ -284,7 +297,6 @@ message:msg.value
 msg.value="";
 }
 
-/* RENDER */
 function render(m){
 
 let div=document.createElement("div");
@@ -292,7 +304,9 @@ div.className="msg "+(m.from===username?"me":"other");
 
 div.innerHTML=`
 <div>${m.message}</div>
-<div class="meta">${m.status==="read"?"✔✔":"✔"}</div>
+<div class="meta" id="meta-${m._id}">
+${m.status==="read"?"✔✔":"✔"}
+</div>
 `;
 
 messages.appendChild(div);
