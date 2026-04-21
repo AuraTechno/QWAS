@@ -99,25 +99,25 @@ mongoose.connection.on('reconnected', () => {
 app.post("/register", async (req, res) => {
   try {
     if (!User) {
-      return res.status(503).json({ ok: false, error: "Database not ready" });
+      return res.status(503).json({ ok: false, error: "Ошибка базы данных" });
     }
     
     const { username, password } = req.body;
     
     if (!username || !password) {
-      return res.json({ ok: false, error: "Username and password required" });
+      return res.json({ ok: false, error: "Требуется имя пользователя и пароль" });
     }
 
     const exists = await User.findOne({ username });
-    if (exists) return res.json({ ok: false, error: "User exists" });
+    if (exists) return res.json({ ok: false, error: "Пользователь существует" });
 
     const hash = await bcrypt.hash(password, 10);
     await User.create({ username, password: hash });
 
     res.json({ ok: true });
   } catch (err) {
-    console.error("Register error:", err);
-    res.json({ ok: false, error: "Server error" });
+    console.error("Ошибка регистрации:", err);
+    res.json({ ok: false, error: "Ошибка сервера" });
   }
 });
 
@@ -125,16 +125,16 @@ app.post("/register", async (req, res) => {
 app.post("/login", async (req, res) => {
   try {
     if (!User) {
-      return res.status(503).json({ ok: false, error: "Database not ready" });
+      return res.status(503).json({ ok: false, error: "Ошибка базы данных" });
     }
     
     const { username, password } = req.body;
 
     const user = await User.findOne({ username });
-    if (!user) return res.json({ ok: false, error: "User not found" });
+    if (!user) return res.json({ ok: false, error: "Пользователя не существует" });
 
     const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.json({ ok: false, error: "Wrong password" });
+    if (!ok) return res.json({ ok: false, error: "Неправильный пароль" });
 
     const token = jwt.sign({ username }, config.JWT_SECRET);
     res.json({ ok: true, token });
