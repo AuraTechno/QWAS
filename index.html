@@ -6,60 +6,118 @@
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
-body { margin:0; font-family:Arial; }
+body {
+    margin:0;
+    font-family:Arial;
+    background:#fff;
+    color:#000;
+}
+
+/* ================= AUTH ================= */
 
 #auth {
-    width:300px;
+    width:320px;
     margin:100px auto;
     display:flex;
     flex-direction:column;
+    gap:10px;
 }
+
+input {
+    padding:12px;
+    border:1px solid #000;
+    outline:none;
+    background:#fff;
+}
+
+button {
+    padding:12px;
+    border:1px solid #000;
+    background:#000;
+    color:#fff;
+    cursor:pointer;
+}
+
+button:hover {
+    opacity:0.8;
+}
+
+#error {
+    color:red;
+    font-size:14px;
+}
+
+/* ================= CHAT LAYOUT ================= */
 
 #chat {
     display:none;
     height:100vh;
 }
 
+/* LEFT PANEL */
 .sidebar {
-    width:220px;
-    background:#2f3136;
-    color:white;
-    float:left;
-    height:100%;
+    width:300px;
+    border-right:1px solid #000;
+    overflow-y:auto;
 }
 
 .user {
-    padding:10px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:15px;
+    border-bottom:1px solid #000;
     cursor:pointer;
 }
+
 .user:hover {
-    background:#40444b;
+    background:#000;
+    color:#fff;
 }
 
+/* AVATAR */
+.avatar {
+    width:40px;
+    height:40px;
+    border-radius:50%;
+    background:#ccc;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:bold;
+    overflow:hidden;
+}
+
+.avatar img {
+    width:100%;
+    height:100%;
+    object-fit:cover;
+}
+
+/* CHAT */
 .chat {
-    margin-left:220px;
+    flex:1;
     display:flex;
     flex-direction:column;
-    height:100%;
+}
+
+.header {
+    padding:15px;
+    border-bottom:1px solid #000;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
 }
 
 .messages {
     flex:1;
     padding:10px;
     overflow-y:auto;
-    background:#f2f2f2;
 }
-
-.input {
-    display:flex;
-}
-
-input { flex:1; padding:10px; }
-button { padding:10px; }
 
 .msg {
-    margin:5px 0;
     display:flex;
+    margin:8px 0;
 }
 
 .me {
@@ -71,26 +129,63 @@ button { padding:10px; }
 }
 
 .bubble {
-    padding:8px 12px;
-    border-radius:10px;
     max-width:60%;
-    color:white;
+    padding:10px;
+    border:1px solid #000;
 }
 
-.me .bubble {
-    background:#4caf50;
+/* INPUT */
+.input {
+    display:flex;
+    border-top:1px solid #000;
 }
 
-.other .bubble {
-    background:#333;
+.input input {
+    flex:1;
+    border:none;
+    padding:15px;
+}
+
+.input button {
+    border:none;
+    border-left:1px solid #000;
+}
+
+/* ================= SETTINGS ================= */
+
+#settings {
+    position:fixed;
+    top:0;
+    right:0;
+    width:300px;
+    height:100%;
+    background:#fff;
+    border-left:1px solid #000;
+    display:none;
+    padding:20px;
+}
+
+/* ================= MOBILE ================= */
+
+@media(max-width:768px){
+    .sidebar {
+        width:120px;
+    }
+
+    .bubble {
+        max-width:80%;
+    }
 }
 </style>
 </head>
 
 <body>
 
+<!-- ========== AUTH ========== -->
 <div id="auth">
-    <h2>Регистрация / Вход</h2>
+    <h2>Вход / Регистрация</h2>
+
+    <div id="error"></div>
 
     <input id="username" placeholder="username">
     <input id="password" type="password" placeholder="password">
@@ -99,19 +194,38 @@ button { padding:10px; }
     <button onclick="login()">Войти</button>
 </div>
 
+<!-- ========== CHAT ========== -->
 <div id="chat">
 
     <div class="sidebar" id="users"></div>
 
     <div class="chat">
+
+        <div class="header">
+            <span id="chatName">Чат</span>
+            <button onclick="openSettings()">⚙</button>
+        </div>
+
         <div class="messages" id="messages"></div>
 
         <div class="input">
-            <input id="msg">
-            <button onclick="send()">Отправить</button>
+            <input id="msg" placeholder="Написать сообщение...">
+            <button onclick="send()">➤</button>
         </div>
-    </div>
 
+    </div>
+</div>
+
+<!-- ========== SETTINGS ========== -->
+<div id="settings">
+    <h3>Настройки</h3>
+
+    <p id="myName"></p>
+
+    <input type="file" id="avatarInput">
+    <button onclick="saveAvatar()">Сохранить аватар</button>
+
+    <button onclick="closeSettings()">Закрыть</button>
 </div>
 
 <script>
@@ -121,6 +235,10 @@ let username = "";
 let current = "";
 
 /* ================= AUTH ================= */
+
+function showError(msg){
+    document.getElementById("error").innerText = msg;
+}
 
 async function register(){
     let res = await fetch("/register", {
@@ -133,7 +251,9 @@ async function register(){
     });
 
     let data = await res.json();
-    alert(data.ok ? "Успешно" : "Ошибка");
+
+    if(!data.ok) showError("Ошибка регистрации");
+    else showError("Успешно ✔");
 }
 
 async function login(){
@@ -148,16 +268,17 @@ async function login(){
 
     let data = await res.json();
 
-    if(data.ok){
-        username = document.getElementById("username").value;
-
-        document.getElementById("auth").style.display="none";
-        document.getElementById("chat").style.display="block";
-
-        socket.emit("join", username);
-    } else {
-        alert("Ошибка входа");
+    if(!data.ok){
+        showError("Неверный логин или пароль");
+        return;
     }
+
+    username = document.getElementById("username").value;
+
+    document.getElementById("auth").style.display="none";
+    document.getElementById("chat").style.display="flex";
+
+    socket.emit("join", username);
 }
 
 /* ================= USERS ================= */
@@ -168,17 +289,22 @@ socket.on("users", list => {
 
     list.forEach(u => {
         if(u !== username){
-            box.innerHTML += `<div class="user" onclick="openChat('${u}')">${u}</div>`;
+            box.innerHTML += `
+            <div class="user" onclick="openChat('${u}')">
+                ${avatarHTML(u)}
+                <span>${u}</span>
+            </div>`;
         }
     });
 });
 
 function openChat(u){
     current = u;
+    document.getElementById("chatName").innerText = u;
     socket.emit("get_history", u);
 }
 
-/* ================= HISTORY ================= */
+/* ================= MESSAGES ================= */
 
 socket.on("chat_history", msgs => {
     let box = document.getElementById("messages");
@@ -187,11 +313,8 @@ socket.on("chat_history", msgs => {
     msgs.forEach(m => render(m.from, m.message));
 });
 
-/* ================= SEND ================= */
-
 function send(){
     let msg = document.getElementById("msg").value;
-
     if(!msg || !current) return;
 
     socket.emit("private_message", {
@@ -203,7 +326,12 @@ function send(){
     document.getElementById("msg").value = "";
 }
 
-/* ================= RECEIVE ================= */
+/* ENTER SEND */
+document.getElementById("msg").addEventListener("keypress", e=>{
+    if(e.key==="Enter") send();
+});
+
+/* ================= SOCKET ================= */
 
 socket.on("private_message", data => {
     if(data.from === current){
@@ -215,16 +343,50 @@ socket.on("private_message", data => {
 
 function render(from, text){
     let box = document.getElementById("messages");
-
     let isMe = from === username;
 
     box.innerHTML += `
-        <div class="msg ${isMe ? 'me' : 'other'}">
-            <div class="bubble">${from}: ${text}</div>
-        </div>
-    `;
+    <div class="msg ${isMe?'me':'other'}">
+        <div class="bubble">${from}: ${text}</div>
+    </div>`;
 
     box.scrollTop = box.scrollHeight;
+}
+
+/* ================= AVATAR ================= */
+
+function avatarHTML(user){
+    let img = localStorage.getItem("avatar_"+user);
+
+    if(img){
+        return `<div class="avatar"><img src="${img}"></div>`;
+    }
+
+    return `<div class="avatar">${user[0].toUpperCase()}</div>`;
+}
+
+/* ================= SETTINGS ================= */
+
+function openSettings(){
+    document.getElementById("settings").style.display="block";
+    document.getElementById("myName").innerText = username;
+}
+
+function closeSettings(){
+    document.getElementById("settings").style.display="none";
+}
+
+function saveAvatar(){
+    let file = document.getElementById("avatarInput").files[0];
+
+    if(!file) return;
+
+    let reader = new FileReader();
+    reader.onload = function(){
+        localStorage.setItem("avatar_"+username, reader.result);
+        alert("Аватар сохранён");
+    };
+    reader.readAsDataURL(file);
 }
 </script>
 
