@@ -113,13 +113,20 @@ emitUsers();
 
 });
 
-function emitUsers(){
-User.find({},(err,users)=>{
-io.emit("users",users.map(u=>({
-username:u.username,
-online:Object.values(online).includes(u.username)
-})));
-});
+async function emitUsers() {
+    try {
+        const users = await User.find({}, "username avatar lastSeen");
+
+        io.emit("users",
+            users.map(u => ({
+                username: u.username,
+                avatar: u.avatar,
+                online: Object.values(online).includes(u.username)
+            }))
+        );
+    } catch (err) {
+        console.log("emitUsers error:", err);
+    }
 }
 
 function emitToUser(username,event,data){
