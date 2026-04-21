@@ -14,164 +14,120 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json());
 app.use(express.static("public"));
 
 mongoose.connect(config.MONGO_URL);
 
 let online = {};
-let typingUsers = {}; // FIX
+let typingTimers = {};
 
-/* REGISTER */
-app.post("/register", async (req, res) => {
-    const { username, password } = req.body;
-
-    const exists = await User.findOne({ username });
-    if (exists) return res.json({ ok: false });
-
-    const hash = await bcrypt.hash(password, 10);
-    await User.create({ username, password: hash });
-
-    res.json({ ok: true });
+/* AUTH */
+io.use((socket,next)=>{
+try{
+const token=socket.handshake.auth.token;
+socket.username=jwt.verify(token,config.JWT_SECRET).username;
+next();
+}catch{
+next(new Error("auth"));
+}
 });
 
-/* LOGIN */
-app.post("/login", async (req, res) => {
-    const { username, password } = req.body;
+io.on("connection",(socket)=>{
 
-    const user = await User.findOne({ username });
-    if (!user) return res.json({ ok: false });
+online[socket.id]=socket.username;
+emitUsers();
 
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.json({ ok: false });
+/* MESSAGE */
+socket.on("private_message",async(data)=>{
 
-    const token = jwt.sign({ username }, config.JWT_SECRET, { expiresIn: "7d" });
-
-    res.json({ ok: true, token });
+const msg=await Message.create({
+from:socket.username,
+to:data.to,
+message:data.message,
+status:"sent"
 });
 
-/* SOCKET AUTH */
-io.use((socket, next) => {
-    try {
-        const token = socket.handshake.auth.token;
-        const data = jwt.verify(token, config.JWT_SECRET);
-        socket.username = data.username;
-        next();
-    } catch {
-        next(new Error("auth"));
-    }
+emitToUser(data.to,"private_message",msg);
+socket.emit("private_message",msg);
+
 });
 
-io.on("connection", (socket) => {
+/* HISTORY */
+socket.on("get_history",async(user)=>{
 
-    online[socket.id] = socket.username;
-    emitUsers();
+const msgs=await Message.find({
+$or:[
+{from:socket.username,to:user},
+{from:user,to:socket.username}
+]
+}).sort({time:1});
 
-    socket.on("join", emitUsers);
+socket.emit("chat_history",msgs);
 
-    /* MESSAGE */
-    socket.on("private_message", async (data) => {
-
-        const msg = await Message.create({
-            from: socket.username,
-            to: data.to,
-            message: data.message,
-            status: "sent"
-        });
-
-        emitToUser(data.to, "private_message", msg);
-        socket.emit("private_message", msg);
-    });
-
-    /* HISTORY */
-    socket.on("get_history", async (user) => {
-
-        const msgs = await Message.find({
-            $or: [
-                { from: socket.username, to: user },
-                { from: user, to: socket.username }
-            ]
-        }).sort({ time: 1 });
-
-        socket.emit("chat_history", msgs);
-    });
-
-    /* FIX READ RECEIPTS (ТОЧНОЕ ОБНОВЛЕНИЕ) */
-    socket.on("read", async (data) => {
-
-        const updated = await Message.find({
-            from: data.from,
-            to: data.to,
-            status: { $ne: "read" }
-        });
-
-        await Message.updateMany(
-            { from: data.from, to: data.to },
-            { $set: { status: "read" } }
-        );
-
-        emitToUser(data.from, "read_update", {
-            from: data.from,
-            to: data.to,
-            ids: updated.map(m => m._id)
-        });
-    });
-
-    /* FIX TYPING */
-    socket.on("typing", (to) => {
-
-        emitToUser(to, "typing", {
-            from: socket.username
-        });
-
-        typingUsers[socket.username] = true;
-
-        clearTimeout(socket.typingTimeout);
-
-        socket.typingTimeout = setTimeout(() => {
-
-            delete typingUsers[socket.username];
-
-            emitToUser(to, "stop_typing", {
-                from: socket.username
-            });
-
-        }, 800);
-    });
-
-    socket.on("disconnect", async () => {
-
-        await User.updateOne(
-            { username: socket.username },
-            { $set: { lastSeen: Date.now() } }
-        );
-
-        delete online[socket.id];
-        emitUsers();
-    });
 });
 
-/* USERS */
-async function emitUsers() {
+/* 🔥 REAL TIME READ FIX */
+socket.on("read",async(data)=>{
 
-    const users = await User.find({}, "username avatar lastSeen");
+const updated=await Message.updateMany(
+{from:data.from,to:data.to,status:{$ne:"read"}},
+{$set:{status:"read"}}
+);
 
-    io.emit("users", users.map(u => ({
-        username: u.username,
-        avatar: u.avatar,
-        online: Object.values(online).includes(u.username)
-    })));
+/* 🔥 ВАЖНО: отправляем ID */
+const msgs=await Message.find({
+from:data.from,
+to:data.to,
+status:"read"
+});
+
+emitToUser(data.from,"read_update",{
+from:data.from,
+to:data.to,
+messages:msgs.map(m=>m._id)
+});
+
+});
+
+/* TYPING */
+socket.on("typing",(to)=>{
+
+emitToUser(to,"typing",{from:socket.username});
+
+clearTimeout(socket.typingTimer);
+
+socket.typingTimer=setTimeout(()=>{
+emitToUser(to,"stop_typing",{from:socket.username});
+},600);
+
+});
+
+/* DISCONNECT */
+socket.on("disconnect",()=>{
+
+delete online[socket.id];
+emitUsers();
+
+});
+
+});
+
+function emitUsers(){
+User.find({},(err,users)=>{
+io.emit("users",users.map(u=>({
+username:u.username,
+online:Object.values(online).includes(u.username)
+})));
+});
 }
 
-/* EMIT */
-function emitToUser(username, event, data) {
-    for (let id in online) {
-        if (online[id] === username) {
-            io.to(id).emit(event, data);
-        }
-    }
+function emitToUser(username,event,data){
+for(let id in online){
+if(online[id]===username){
+io.to(id).emit(event,data);
+}
+}
 }
 
-server.listen(3000, () => {
-    console.log("PRO STABLE 7 FIXED FINAL RUN");
-});
+server.listen(3000,()=>console.log("OK"));

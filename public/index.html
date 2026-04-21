@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>PRO STABLE 7 FIXED</title>
+<title>PRO STABLE FIX UI</title>
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
@@ -18,11 +18,11 @@ color:#fff;
 
 /* AUTH */
 #auth{
-width:320px;
+width:340px;
 margin:120px auto;
 display:flex;
 flex-direction:column;
-gap:10px;
+gap:12px;
 text-align:center;
 }
 
@@ -31,20 +31,22 @@ font-size:18px;
 font-weight:bold;
 }
 
-#auth input, #auth button{
+#auth input{
 width:100%;
 padding:14px;
 border-radius:10px;
 border:none;
+background:#1a1a1a;
+color:#fff;
+outline:none;
 box-sizing:border-box;
 }
 
-#auth input{
-background:#1a1a1a;
-color:#fff;
-}
-
 #auth button{
+width:100%;
+padding:14px;
+border-radius:10px;
+border:none;
 background:#fff;
 color:#000;
 font-weight:bold;
@@ -57,7 +59,7 @@ display:none;
 height:100vh;
 }
 
-/* USERS */
+/* SIDEBAR */
 .sidebar{
 width:280px;
 background:#111;
@@ -65,37 +67,7 @@ border-right:1px solid #222;
 overflow:auto;
 }
 
-.user{
-display:flex;
-gap:10px;
-padding:12px;
-border-bottom:1px solid #1f1f1f;
-cursor:pointer;
-align-items:center;
-}
-
-.avatar{
-width:35px;
-height:35px;
-border-radius:50%;
-background:#333;
-display:flex;
-align-items:center;
-justify-content:center;
-position:relative;
-overflow:hidden;
-}
-
-.online-dot{
-width:8px;height:8px;
-background:#2ecc71;
-border-radius:50%;
-position:absolute;
-bottom:0;right:0;
-border:2px solid #111;
-}
-
-/* CHAT */
+/* CHAT AREA */
 .chat{
 flex:1;
 display:flex;
@@ -121,8 +93,8 @@ gap:8px;
 max-width:70%;
 padding:10px 12px;
 border-radius:14px;
-word-wrap:break-word;
 animation:pop .15s ease;
+word-wrap:break-word;
 }
 
 @keyframes pop{
@@ -149,25 +121,34 @@ text-align:right;
 margin-top:4px;
 }
 
-/* INPUT */
+/* 🔥 FIX INPUT UI */
 .input{
 display:flex;
+align-items:center;
+padding:10px;
+gap:8px;
 border-top:1px solid #222;
+background:#0f0f0f;
 }
 
-input.msg{
+.input input{
 flex:1;
-padding:14px;
-background:#111;
-color:#fff;
+padding:12px 14px;
+border-radius:12px;
 border:none;
+background:#1a1a1a;
+color:#fff;
 outline:none;
+font-size:14px;
 }
 
-button.send{
-width:80px;
-background:#fff;
+.input button{
+width:48px;
+height:42px;
+border-radius:12px;
 border:none;
+background:#fff;
+color:#000;
 cursor:pointer;
 font-weight:bold;
 }
@@ -178,7 +159,7 @@ font-weight:bold;
 <body>
 
 <div id="auth">
-<div>Messenger PRO FIX</div>
+<div>Messenger FIX</div>
 <input id="u" placeholder="username">
 <input id="p" type="password">
 <button onclick="login()">Войти</button>
@@ -197,7 +178,7 @@ font-weight:bold;
 
 <div class="input">
 <input id="msg" oninput="typing()">
-<button class="send" onclick="send()">➤</button>
+<button onclick="send()">➤</button>
 </div>
 
 </div>
@@ -207,8 +188,8 @@ font-weight:bold;
 <script>
 
 let socket;
-let token="";
 let username="";
+let token="";
 let current="";
 
 /* KEY */
@@ -244,8 +225,6 @@ chat.style.display="flex";
 
 socket=io({auth:{token}});
 
-socket.on("connect",()=>socket.emit("join"));
-
 socket.on("private_message",render);
 
 socket.on("chat_history",m=>{
@@ -253,49 +232,42 @@ messages.innerHTML="";
 m.forEach(render);
 });
 
-/* FIX TYPING */
-socket.on("typing",d=>{
-chatName.innerText = d.from + " печатает...";
-});
+/* 🔥 REAL TIME READ UPDATE */
+socket.on("read_update",data=>{
 
-socket.on("stop_typing",()=>{
-chatName.innerText = current;
-});
+data.messages.forEach(id=>{
 
-/* FIX READ */
-socket.on("read_update",(data)=>{
-
-document.querySelectorAll(".msg.me .meta").forEach(m=>{
-m.innerText="✔✔";
+document.querySelectorAll(".msg").forEach(el=>{
+if(el.dataset.id===id){
+el.querySelector(".meta").innerText="✔✔";
+}
 });
 
 });
 
+});
+
+/* USERS */
 socket.on("users",data=>{
 users.innerHTML="";
 data.forEach(u=>{
 if(u.username!==username){
-
 users.innerHTML+=`
-<div class="user" onclick="openChat('${u.username}')">
-<div class="avatar"></div>
-<div>
-<div>${u.username}</div>
-</div>
+<div onclick="openChat('${u.username}')">
+${u.username}
 </div>`;
 }
 });
 });
 
+socket.on("typing",d=>{
+chatName.innerText=d.from+" печатает...";
 });
-}
 
-/* REGISTER */
-function register(){
-fetch("/register",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({username:u.value,password:p.value})
+socket.on("stop_typing",()=>{
+chatName.innerText=current;
+});
+
 });
 }
 
@@ -303,7 +275,6 @@ body:JSON.stringify({username:u.value,password:p.value})
 function openChat(u){
 current=u;
 chatName.innerText=u;
-
 socket.emit("get_history",u);
 
 socket.emit("read",{
@@ -327,18 +298,12 @@ msg.value="";
 }
 
 /* TYPING */
-let typingTimer;
-
+let t;
 function typing(){
-if(!current) return;
-
 socket.emit("typing",current);
 
-clearTimeout(typingTimer);
-
-typingTimer=setTimeout(()=>{
-socket.emit("stop_typing",current);
-},600);
+clearTimeout(t);
+t=setTimeout(()=>socket.emit("stop_typing",current),600);
 }
 
 /* RENDER */
@@ -347,16 +312,17 @@ function render(m){
 let k=key(username,m.from===username?m.to:m.from);
 
 let text="";
-try{text=dec(m.message,k);}catch{text="🔒 encrypted";}
-
-let ticks=m.from===username?(m.status==="read"?"✔✔":"✔"):"";
+try{text=dec(m.message,k);}catch{text="🔒";}
 
 let div=document.createElement("div");
 div.className="msg "+(m.from===username?"me":"other");
 
+/* IMPORTANT ID */
+div.dataset.id=m._id;
+
 div.innerHTML=`
 <div>${text}</div>
-<div class="meta">${ticks}</div>
+<div class="meta">${m.status==="read"?"✔✔":"✔"}</div>
 `;
 
 messages.appendChild(div);
