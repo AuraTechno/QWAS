@@ -14,8 +14,7 @@ app.use(express.static(__dirname));
 
 mongoose.connect(config.MONGO_URL);
 
-/* ================= DB ================= */
-
+/* MODELS */
 const UserSchema = new mongoose.Schema({
     username: String,
     password: String,
@@ -34,12 +33,10 @@ const MessageSchema = new mongoose.Schema({
 const User = mongoose.model("User", UserSchema);
 const Message = mongoose.model("Message", MessageSchema);
 
-/* ================= MEMORY ================= */
-
+/* ONLINE MAP */
 let online = {}; // socketId -> username
 
-/* ================= AUTH ================= */
-
+/* AUTH */
 app.post("/register", async (req,res)=>{
     const {username,password}=req.body;
 
@@ -70,11 +67,9 @@ app.post("/login", async (req,res)=>{
     res.json({ok:true});
 });
 
-/* ================= SOCKET ================= */
-
+/* SOCKET */
 io.on("connection",(socket)=>{
 
-    /* JOIN */
     socket.on("join", async (username)=>{
 
         online[socket.id]=username;
@@ -83,12 +78,10 @@ io.on("connection",(socket)=>{
 
         io.emit("users",{
             users,
-            online:Object.values(online),
-            lastSeen: Object.fromEntries(users.map(u=>[u.username,u.lastSeen]))
+            online:Object.values(online)
         });
     });
 
-    /* SEND MESSAGE */
     socket.on("private_message", async (data)=>{
 
         const from = online[socket.id];
@@ -100,25 +93,21 @@ io.on("connection",(socket)=>{
             status:"sent"
         });
 
-        // deliver immediately
         for(let id in online){
             if(online[id]===data.to){
                 io.to(id).emit("private_message",msg);
             }
         }
 
-        // also show to sender instantly
         socket.emit("private_message",msg);
     });
 
-    /* HISTORY */
     socket.on("get_history", async (withUser)=>{
 
         const user = online[socket.id];
 
-        // mark read
         await Message.updateMany(
-            {from:withUser,to:user,status:{$ne:"read"}},
+            {from:withUser,to:user},
             {$set:{status:"read"}}
         );
 
@@ -132,11 +121,10 @@ io.on("connection",(socket)=>{
         socket.emit("chat_history",msgs);
     });
 
-    /* MARK READ (REALTIME FIX) */
     socket.on("mark_read", async (data)=>{
 
         await Message.updateMany(
-            {from:data.from,to:data.to,status:{$ne:"read"}},
+            {from:data.from,to:data.to},
             {$set:{status:"read"}}
         );
 
@@ -147,7 +135,6 @@ io.on("connection",(socket)=>{
         }
     });
 
-    /* TYPING */
     socket.on("typing",(data)=>{
         for(let id in online){
             if(online[id]===data.to){
@@ -156,16 +143,7 @@ io.on("connection",(socket)=>{
         }
     });
 
-    socket.on("stop_typing",(data)=>{
-        for(let id in online){
-            if(online[id]===data.to){
-                io.to(id).emit("stop_typing");
-            }
-        }
-    });
-
-    /* DISCONNECT */
-    socket.on("disconnect",async ()=>{
+    socket.on("disconnect", async ()=>{
 
         const user = online[socket.id];
 
@@ -182,11 +160,10 @@ io.on("connection",(socket)=>{
 
         io.emit("users",{
             users,
-            online:Object.values(online),
-            lastSeen: Object.fromEntries(users.map(u=>[u.username,u.lastSeen]))
+            online:Object.values(online)
         });
     });
 
 });
 
-server.listen(3000,()=>console.log("PRO 3.1 RUN"));
+server.listen(3000,()=>console.log("FIXED PRO RUN"));

@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Messenger PRO 3.1</title>
+<title>QWAS</title>
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
@@ -13,7 +13,6 @@ body{
     color:#fff;
 }
 
-/* AUTH */
 #auth{
     width:320px;
     margin:120px auto;
@@ -36,16 +35,10 @@ button{
     border-radius:10px;
     background:#fff;
     color:#000;
-    cursor:pointer;
 }
 
-/* CHAT */
-#chat{
-    display:none;
-    height:100vh;
-}
+#chat{display:none;height:100vh;}
 
-/* USERS */
 .sidebar{
     width:300px;
     background:#121212;
@@ -61,127 +54,62 @@ button{
     border-bottom:1px solid #1f1f1f;
 }
 
-.user:hover{
-    background:#1a1a1a;
-}
-
-/* AVATAR */
 .avatar{
-    width:40px;
-    height:40px;
-    border-radius:50%;
+    width:40px;height:40px;border-radius:50%;
     background:#333;
-    overflow:hidden;
     display:flex;
     align-items:center;
     justify-content:center;
+    overflow:hidden;
 }
 
-.avatar img{
-    width:100%;
-    height:100%;
-}
+.avatar img{width:100%;height:100%;}
 
-/* CHAT */
-.chat{
-    flex:1;
-    display:flex;
-    flex-direction:column;
-}
+.chat{flex:1;display:flex;flex-direction:column;}
 
 .header{
     padding:15px;
     border-bottom:1px solid #222;
-    display:flex;
-    justify-content:space-between;
 }
 
-/* MESSAGES */
-.messages{
-    flex:1;
-    padding:15px;
-    overflow:auto;
+.status{
+    font-size:12px;
+    opacity:0.7;
 }
 
-/* MSG */
-.msg{
-    display:flex;
-    margin:6px 0;
-}
+.messages{flex:1;padding:15px;overflow:auto;}
 
+.msg{display:flex;margin:6px 0;}
 .me{justify-content:flex-end;}
 .other{justify-content:flex-start;}
 
-/* BUBBLE */
 .bubble{
     max-width:60%;
     padding:10px;
     border-radius:12px;
 }
 
-/* ME */
-.me .bubble{
-    background:#fff;
-    color:#000;
-}
+.me .bubble{background:#fff;color:#000;}
+.other .bubble{background:#1a1a1a;border:1px solid #333;}
 
-/* OTHER */
-.other .bubble{
-    background:#1a1a1a;
-    border:1px solid #333;
-}
-
-/* META */
-.meta{
-    font-size:10px;
-    opacity:0.6;
-    display:flex;
-    justify-content:center;
-    gap:5px;
-    margin-top:5px;
-}
-
-/* INPUT */
-.input{
-    display:flex;
-    border-top:1px solid #222;
-}
-
-.input input{
-    flex:1;
-    border:none;
-    padding:15px;
-    background:#111;
-}
-
-.input button{
-    width:80px;
-}
-
-/* STATUS */
-.status{
-    font-size:12px;
-    opacity:0.7;
-}
+.input{display:flex;border-top:1px solid #222;}
+.input input{flex:1;padding:15px;background:#111;border:none;}
+.input button{width:80px;}
 </style>
 </head>
 
 <body>
 
 <div id="auth">
-    <h2>Messenger PRO 3.1</h2>
     <input id="u">
     <input id="p" type="password">
-    <button onclick="login()">Войти</button>
-    <button onclick="register()">Регистрация</button>
+    <button onclick="login()">Login</button>
 </div>
 
 <div id="chat">
-
     <div class="sidebar" id="users"></div>
 
     <div class="chat">
-
         <div class="header">
             <div id="chatName"></div>
             <div class="status" id="status"></div>
@@ -193,7 +121,6 @@ button{
             <input id="msg">
             <button onclick="send()">➤</button>
         </div>
-
     </div>
 </div>
 
@@ -203,11 +130,7 @@ const socket=io();
 let username="";
 let current="";
 
-/* AUTH */
-function register(){
-fetch("/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u.value,password:p.value})})
-}
-
+/* LOGIN */
 function login(){
 fetch("/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u.value,password:p.value})})
 .then(r=>r.json()).then(d=>{
@@ -220,21 +143,50 @@ socket.emit("join",username);
 });
 }
 
+/* STATUS FIX */
+function getStatus(user,data){
+
+    if(data.online.includes(user)){
+        return {text:"в сети",color:"#0f0"};
+    }
+
+    let u = data.users.find(x=>x.username===user);
+
+    if(u && u.lastSeen){
+        let diff = Date.now() - u.lastSeen;
+
+        if(diff < 5*60*1000){
+            return {text:"был недавно",color:"#aaa"};
+        }
+    }
+
+    return {text:"оффлайн",color:"#555"};
+}
+
 /* USERS */
 socket.on("users",data=>{
 users.innerHTML="";
+
 data.users.forEach(u=>{
 if(u.username!==username){
+
+let st=getStatus(u.username,data);
+
 users.innerHTML+=`
 <div class="user" onclick="openChat('${u.username}')">
 <div class="avatar">${u.avatar?`<img src="${u.avatar}">`:u.username[0]}</div>
+<div>
 <div>${u.username}</div>
+<div style="font-size:12px;color:${st.color}">
+${st.text}
+</div>
+</div>
 </div>`;
 }
 });
 });
 
-/* OPEN */
+/* OPEN CHAT */
 function openChat(u){
 current=u;
 chatName.innerText=u;
@@ -243,82 +195,28 @@ socket.emit("get_history",u);
 
 /* SEND */
 function send(){
-if(!msg.value||!current)return;
+if(!msg.value)return;
 
 socket.emit("private_message",{to:current,message:msg.value});
-
 msg.value="";
 }
 
-/* ENTER */
-msg.onkeydown=e=>{
-if(e.key==="Enter")send();
-};
-
-/* REALTIME RECEIVE */
+/* RECEIVE */
 socket.on("private_message",m=>{
-
-if(m.from===current || m.from===username){
+if(m.from===current||m.from===username){
 render(m);
-
-socket.emit("mark_read",{
-from:m.from,
-to:username
-});
 }
-
-});
-
-/* READ UPDATE */
-socket.on("message_read",()=>{
-socket.emit("get_history",current);
-});
-
-/* HISTORY */
-socket.on("chat_history",msgs=>{
-messages.innerHTML="";
-msgs.forEach(render);
 });
 
 /* RENDER */
 function render(m){
-
 let me=m.from===username;
-
-let time=new Date(m.time).toLocaleTimeString([],{
-hour:"2-digit",minute:"2-digit"
-});
-
-let check="";
-if(me){
-if(m.status==="sent")check="✓";
-if(m.status==="read")check="✓✓";
-}
 
 messages.innerHTML+=`
 <div class="msg ${me?'me':'other'}">
-<div class="bubble">
-<div>${m.message}</div>
-<div class="meta">
-<span>${time}</span>
-<span>${check}</span>
-</div>
-</div>
+<div class="bubble">${m.message}</div>
 </div>`;
-
-messages.scrollTop=messages.scrollHeight;
 }
-
-/* TYPING */
-msg.oninput=()=>{
-socket.emit("typing",{from:username,to:current});
-};
-
-socket.on("typing",d=>{
-if(d.from===current){
-status.innerText="печатает...";
-}
-});
 </script>
 
 </body>
