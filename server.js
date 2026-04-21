@@ -19,6 +19,7 @@ app.use(express.static("public"));
 
 mongoose.connect(config.MONGO_URL);
 
+/* ONLINE USERS */
 const online = new Map();
 
 /* REGISTER */
@@ -83,8 +84,10 @@ io.on("connection", (socket) => {
             createdAt: Date.now()
         });
 
-        send(data.to, "new_message", msg);
-        socket.emit("new_message", msg);
+        const full = await Message.findById(msg._id);
+
+        send(data.to, "new_message", full);
+        socket.emit("new_message", full);
     });
 
     /* HISTORY */
@@ -100,7 +103,7 @@ io.on("connection", (socket) => {
         socket.emit("chat_history", msgs);
     });
 
-    /* READ (REALTIME FIX) */
+    /* READ FIX (REALTIME ✔✔) */
     socket.on("read", async (data) => {
 
         const msgs = await Message.find({
@@ -119,14 +122,23 @@ io.on("connection", (socket) => {
         });
     });
 
-    /* TYPING FIX */
+    /* TYPING FIX (STABLE) */
     socket.on("typing", (to) => {
-        send(to, "typing", { from: socket.username });
+
+        send(to, "typing", {
+            from: socket.username
+        });
 
         clearTimeout(socket.typingTimer);
+
         socket.typingTimer = setTimeout(() => {
-            send(to, "stop_typing", { from: socket.username });
-        }, 500);
+
+            send(to, "stop_typing", {
+                from: socket.username
+            });
+
+        }, 600);
+
     });
 
     socket.on("disconnect", () => {
@@ -153,4 +165,4 @@ function send(user, event, data) {
     if (id) io.to(id).emit(event, data);
 }
 
-server.listen(3000, () => console.log("REALTIME FIX RUNNING"));
+server.listen(3000, () => console.log("FIX VERSION RUNNING"));

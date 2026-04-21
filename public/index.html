@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Messenger FINAL FIX</title>
+<title>Messenger FIX</title>
 
 <script src="/socket.io/socket.io.js"></script>
 
@@ -217,7 +217,6 @@ username=u.value;
 auth.style.display="none";
 chat.style.display="flex";
 
-/* SOCKET */
 socket=io({
 auth:{token}
 });
@@ -250,12 +249,12 @@ messages.innerHTML="";
 m.forEach(render);
 });
 
-/* REALTIME MESSAGE */
+/* NEW MESSAGE */
 socket.on("new_message",m=>{
 if(m.from===current || m.to===current) render(m);
 });
 
-/* READ REALTIME FIX */
+/* ✔✔ REALTIME FIX */
 socket.on("read_update",data=>{
 
 data.messages.forEach(id=>{
@@ -291,7 +290,7 @@ password:p.value
 });
 }
 
-/* CHAT */
+/* OPEN CHAT */
 function openChat(u){
 current=u;
 chatName.innerText=u;
