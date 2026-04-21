@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>PRO STABLE 6.1</title>
+<title>PRO STABLE 7 UI+</title>
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
@@ -22,6 +22,25 @@ margin:120px auto;
 display:flex;
 flex-direction:column;
 gap:10px;
+text-align:center;
+}
+
+#auth input{
+padding:12px;
+border:none;
+border-radius:10px;
+background:#1a1a1a;
+color:#fff;
+}
+
+#auth button{
+padding:12px;
+border:none;
+border-radius:10px;
+background:#fff;
+color:#000;
+cursor:pointer;
+font-weight:bold;
 }
 
 /* CHAT */
@@ -56,15 +75,25 @@ display:flex;
 align-items:center;
 justify-content:center;
 overflow:hidden;
-font-size:14px;
+position:relative;
 }
 
-.avatar img{
-width:100%;
-height:100%;
+.avatar img{width:100%;height:100%;}
+
+.online-dot{
+width:8px;height:8px;
+background:#2ecc71;
+border-radius:50%;
+position:absolute;
+bottom:0;right:0;
+border:2px solid #111;
 }
 
-/* CHAT */
+.offline-dot{
+background:#555;
+}
+
+/* CHAT AREA */
 .chat{
 flex:1;
 display:flex;
@@ -85,34 +114,48 @@ flex-direction:column;
 gap:8px;
 }
 
+/* BUBBLES */
 .msg{
 max-width:70%;
-padding:10px;
-border-radius:10px;
+padding:10px 12px;
+border-radius:14px;
+animation:pop .15s ease;
+word-wrap:break-word;
+}
+
+@keyframes pop{
+from{transform:scale(0.95);opacity:0}
+to{transform:scale(1);opacity:1}
 }
 
 .me{
 align-self:flex-end;
 background:#fff;
 color:#000;
+border-bottom-right-radius:4px;
 }
 
 .other{
+align-self:flex-start;
 background:#1a1a1a;
 border:1px solid #333;
+border-bottom-left-radius:4px;
 }
 
 .meta{
 font-size:10px;
-opacity:0.6;
+opacity:0.7;
+text-align:right;
+margin-top:4px;
 }
 
+/* INPUT */
 .input{
 display:flex;
 border-top:1px solid #222;
 }
 
-input{
+input.msg{
 flex:1;
 padding:14px;
 background:#111;
@@ -122,6 +165,9 @@ border:none;
 
 button{
 width:80px;
+background:#fff;
+border:none;
+cursor:pointer;
 }
 </style>
 </head>
@@ -129,6 +175,7 @@ width:80px;
 <body>
 
 <div id="auth">
+<div style="font-size:20px;font-weight:bold">Messenger PRO 7 UI+</div>
 <input id="u" placeholder="username">
 <input id="p" type="password">
 <button onclick="login()">Войти</button>
@@ -146,7 +193,7 @@ width:80px;
 <div class="messages" id="messages"></div>
 
 <div class="input">
-<input id="msg" oninput="typing()">
+<input id="msg" class="msg" oninput="typing()">
 <button onclick="send()">➤</button>
 </div>
 
@@ -166,12 +213,10 @@ function key(a,b){
 return CryptoJS.SHA256([a,b].sort().join("-")).toString();
 }
 
-/* ENC */
+/* ENC/DEC */
 function enc(t,k){
 return CryptoJS.AES.encrypt(t,k).toString();
 }
-
-/* DEC */
 function dec(t,k){
 let b=CryptoJS.AES.decrypt(t,k);
 return b.toString(CryptoJS.enc.Utf8);
@@ -204,18 +249,18 @@ users.innerHTML="";
 data.forEach(u=>{
 if(u.username!==username){
 
-let av=u.avatar
-?`<img src="${u.avatar}">`
-:u.username[0];
-
-let st=u.online?"🟢":"⚪";
+let av=u.avatar?`<img src="${u.avatar}">`:u.username[0];
+let dot=u.online?"online-dot":"offline-dot";
 
 users.innerHTML+=`
 <div class="user" onclick="openChat('${u.username}')">
-<div class="avatar">${av}</div>
+<div class="avatar">
+${av}
+<div class="${dot}"></div>
+</div>
 <div>
 <div>${u.username}</div>
-<div style="font-size:10px">${st}</div>
+<div style="font-size:10px">${u.online?"online":"offline"}</div>
 </div>
 </div>`;
 }
@@ -226,6 +271,14 @@ socket.on("private_message",render);
 socket.on("chat_history",m=>{
 messages.innerHTML="";
 m.forEach(render);
+});
+
+socket.on("typing",d=>{
+chatName.innerText=d.from+" печатает...";
+});
+
+socket.on("stop_typing",()=>{
+chatName.innerText=current;
 });
 
 });
@@ -245,11 +298,15 @@ function openChat(u){
 current=u;
 chatName.innerText=u;
 socket.emit("get_history",u);
+
+socket.emit("read",{
+from:u,
+to:username
+});
 }
 
 /* SEND E2E */
 function send(){
-
 if(!msg.value||!current)return;
 
 let k=key(username,current);
@@ -262,29 +319,31 @@ message:enc(msg.value,k)
 msg.value="";
 }
 
-/* RENDER E2E */
+/* TYPING */
+function typing(){
+socket.emit("typing",current);
+}
+
+/* RENDER */
 function render(m){
 
 let k=key(username,m.from===username?m.to:m.from);
 
 let text="";
-try{ text=dec(m.message,k); }
-catch{ text="🔒 encrypted"; }
+try{text=dec(m.message,k);}catch{text="🔒 encrypted";}
+
+let ticks=m.from===username?(m.status==="read"?"✔✔":"✔"):"";
 
 let div=document.createElement("div");
 div.className="msg "+(m.from===username?"me":"other");
 
 div.innerHTML=`
-${text}
-<div class="meta">${m.status}</div>
+<div>${text}</div>
+<div class="meta">${ticks}</div>
 `;
 
 messages.appendChild(div);
 messages.scrollTop=messages.scrollHeight;
-}
-
-function typing(){
-socket.emit("typing",current);
 }
 
 </script>

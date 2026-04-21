@@ -19,7 +19,7 @@ app.use(express.static("public"));
 
 mongoose.connect(config.MONGO_URL);
 
-let online = {}; // socket.id -> username
+let online = {};
 
 /* REGISTER */
 app.post("/register", async (req,res)=>{
@@ -44,21 +44,16 @@ app.post("/login", async (req,res)=>{
     const ok = await bcrypt.compare(password,user.password);
     if(!ok) return res.json({ok:false});
 
-    const token = jwt.sign(
-        {username},
-        config.JWT_SECRET,
-        {expiresIn:"7d"}
-    );
+    const token = jwt.sign({username},config.JWT_SECRET,{expiresIn:"7d"});
 
     res.json({ok:true,token});
 });
 
-/* AVATAR UPDATE */
+/* AVATAR */
 app.post("/avatar", async (req,res)=>{
     const {username,avatar}=req.body;
 
-    await User.updateOne({username},{ $set:{avatar} });
-
+    await User.updateOne({username},{$set:{avatar}});
     res.json({ok:true});
 });
 
@@ -80,9 +75,9 @@ io.on("connection",(socket)=>{
 
     emitUsers();
 
-    socket.on("join",()=>emitUsers());
+    socket.on("join",emitUsers);
 
-    /* MESSAGE (E2E ENCRYPTED ALREADY) */
+    /* MESSAGE */
     socket.on("private_message", async (data)=>{
 
         const msg = await Message.create({
@@ -125,6 +120,10 @@ io.on("connection",(socket)=>{
         emitToUser(to,"typing",{from:socket.username});
     });
 
+    socket.on("stop_typing",(to)=>{
+        emitToUser(to,"stop_typing",{from:socket.username});
+    });
+
     socket.on("disconnect",async ()=>{
 
         await User.updateOne(
@@ -133,7 +132,6 @@ io.on("connection",(socket)=>{
         );
 
         delete online[socket.id];
-
         emitUsers();
     });
 
@@ -164,5 +162,5 @@ function emitToUser(username,event,data){
 }
 
 server.listen(3000,()=>{
-    console.log("PRO STABLE 6.1 RUN");
+    console.log("PRO STABLE 7 UI+ RUN");
 });
