@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Messenger FINAL PRO</title>
+<title>Messenger FINAL FIX</title>
 
 <script src="/socket.io/socket.io.js"></script>
 
@@ -75,10 +75,6 @@ align-items:center;
 justify-content:center;
 overflow:hidden;
 font-weight:bold;
-}
-
-.name{
-flex:1;
 }
 
 .online{
@@ -199,18 +195,19 @@ let token="";
 let username="";
 let current="";
 
-async function login(){
+/* LOGIN */
+function login(){
 
-const res = await fetch("/login",{
+fetch("/login",{
 method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({
 username:u.value,
 password:p.value
 })
-});
-
-const d = await res.json();
+})
+.then(r=>r.json())
+.then(d=>{
 
 if(!d.ok) return alert("error");
 
@@ -220,12 +217,14 @@ username=u.value;
 auth.style.display="none";
 chat.style.display="flex";
 
+/* SOCKET */
 socket=io({
 auth:{token}
 });
 
 socket.on("connect",()=>socket.emit("join"));
 
+/* USERS */
 socket.on("users",data=>{
 users.innerHTML="";
 
@@ -237,7 +236,7 @@ users.innerHTML+=`
 ${u.avatar? `<img src="${u.avatar}" style="width:100%;height:100%">` : u.username[0]}
 </div>
 
-<div class="name">${u.username}</div>
+<div>${u.username}</div>
 
 <div class="online" style="opacity:${u.online?1:0.2}"></div>
 
@@ -245,24 +244,42 @@ ${u.avatar? `<img src="${u.avatar}" style="width:100%;height:100%">` : u.usernam
 });
 });
 
+/* HISTORY */
 socket.on("chat_history",m=>{
 messages.innerHTML="";
 m.forEach(render);
 });
 
+/* REALTIME MESSAGE */
 socket.on("new_message",m=>{
 if(m.from===current || m.to===current) render(m);
 });
 
+/* READ REALTIME FIX */
 socket.on("read_update",data=>{
+
 data.messages.forEach(id=>{
-let el=document.getElementById("meta-"+id);
+const el=document.getElementById("meta-"+id);
 if(el) el.innerText="✔✔";
 });
+
 });
 
+/* TYPING FIX */
+socket.on("typing",d=>{
+if(d.from!==current) return;
+chatName.innerText = d.from + " печатает...";
+});
+
+socket.on("stop_typing",d=>{
+if(d.from!==current) return;
+chatName.innerText = current;
+});
+
+});
 }
 
+/* REGISTER */
 function register(){
 fetch("/register",{
 method:"POST",
@@ -274,6 +291,7 @@ password:p.value
 });
 }
 
+/* CHAT */
 function openChat(u){
 current=u;
 chatName.innerText=u;
@@ -286,6 +304,7 @@ to:username
 });
 }
 
+/* SEND */
 function send(){
 if(!msg.value) return;
 
@@ -297,6 +316,7 @@ message:msg.value
 msg.value="";
 }
 
+/* RENDER */
 function render(m){
 
 let div=document.createElement("div");

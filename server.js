@@ -23,42 +23,34 @@ const online = new Map();
 
 /* REGISTER */
 app.post("/register", async (req, res) => {
-    try {
-        const { username, password } = req.body;
+    const { username, password } = req.body;
 
-        const exists = await User.findOne({ username });
-        if (exists) return res.json({ ok: false });
+    const exists = await User.findOne({ username });
+    if (exists) return res.json({ ok: false });
 
-        const hash = await bcrypt.hash(password, 10);
-        await User.create({ username, password: hash });
+    const hash = await bcrypt.hash(password, 10);
+    await User.create({ username, password: hash });
 
-        res.json({ ok: true });
-    } catch {
-        res.json({ ok: false });
-    }
+    res.json({ ok: true });
 });
 
 /* LOGIN */
 app.post("/login", async (req, res) => {
-    try {
-        const { username, password } = req.body;
+    const { username, password } = req.body;
 
-        const user = await User.findOne({ username });
-        if (!user) return res.json({ ok: false });
+    const user = await User.findOne({ username });
+    if (!user) return res.json({ ok: false });
 
-        const ok = await bcrypt.compare(password, user.password);
-        if (!ok) return res.json({ ok: false });
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) return res.json({ ok: false });
 
-        const token = jwt.sign(
-            { username },
-            config.JWT_SECRET,
-            { expiresIn: "7d" }
-        );
+    const token = jwt.sign(
+        { username },
+        config.JWT_SECRET,
+        { expiresIn: "7d" }
+    );
 
-        res.json({ ok: true, token });
-    } catch {
-        res.json({ ok: false });
-    }
+    res.json({ ok: true, token });
 });
 
 /* SOCKET AUTH */
@@ -78,16 +70,17 @@ io.on("connection", (socket) => {
     online.set(socket.username, socket.id);
     emitUsers();
 
-    socket.on("join", () => emitUsers());
+    socket.on("join", emitUsers);
 
-    /* SEND MESSAGE */
+    /* MESSAGE */
     socket.on("private_message", async (data) => {
 
         const msg = await Message.create({
             from: socket.username,
             to: data.to,
             message: data.message,
-            status: "sent"
+            status: "sent",
+            createdAt: Date.now()
         });
 
         send(data.to, "new_message", msg);
@@ -107,7 +100,7 @@ io.on("connection", (socket) => {
         socket.emit("chat_history", msgs);
     });
 
-    /* READ RECEIPT */
+    /* READ (REALTIME FIX) */
     socket.on("read", async (data) => {
 
         const msgs = await Message.find({
@@ -122,17 +115,17 @@ io.on("connection", (socket) => {
         );
 
         send(data.from, "read_update", {
-            messages: msgs.map(m => m._id)
+            messages: msgs.map(m => m._id.toString())
         });
     });
 
-    /* TYPING */
+    /* TYPING FIX */
     socket.on("typing", (to) => {
         send(to, "typing", { from: socket.username });
 
         clearTimeout(socket.typingTimer);
         socket.typingTimer = setTimeout(() => {
-            send(to, "stop_typing", {});
+            send(to, "stop_typing", { from: socket.username });
         }, 500);
     });
 
@@ -160,4 +153,4 @@ function send(user, event, data) {
     if (id) io.to(id).emit(event, data);
 }
 
-server.listen(3000, () => console.log("RUNNING"));
+server.listen(3000, () => console.log("REALTIME FIX RUNNING"));
