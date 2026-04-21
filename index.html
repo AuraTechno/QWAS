@@ -2,295 +2,134 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Messenger</title>
+<title>Мессенджер</title>
+<script src="/socket.io/socket.io.js"></script>
 
 <style>
-body {
-  margin:0;
-  font-family: Arial;
-  background:#0f172a;
-  color:white;
-}
+body { margin:0; font-family:Arial; display:flex; height:100vh; }
+#login { margin:auto; }
+#chat { display:none; width:100%; }
 
-/* LOGIN */
-#login {
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  height:100vh;
-}
-
-.login-box {
-  background:#111827;
-  padding:20px;
-  border-radius:10px;
-  width:300px;
-  text-align:center;
-}
-
-.login-box small {
-  color:#9ca3af;
-  display:block;
-  margin-top:5px;
-  font-size:12px;
-}
-
-input {
-  width:100%;
-  padding:10px;
-  margin-top:10px;
-  border:none;
-  border-radius:8px;
-  outline:none;
-}
-
-button {
-  margin-top:10px;
-  width:100%;
-  padding:10px;
-  border:none;
-  background:#22c55e;
-  color:white;
-  border-radius:8px;
-  cursor:pointer;
-}
-
-/* CHAT */
-#chat {
-  display:none;
-  height:100vh;
-}
-
-.container {
-  display:flex;
-  height:100%;
-}
-
-/* USERS */
-.users {
-  width:250px;
-  background:#111827;
-  padding:10px;
-  overflow-y:auto;
-}
-
-.profile {
-  padding:10px;
-  border-bottom:2px solid #1f2937;
-  margin-bottom:10px;
-  font-weight:bold;
-  color:#22c55e;
+.sidebar {
+    width:250px;
+    background:#2f3136;
+    color:white;
+    padding:10px;
 }
 
 .user {
-  padding:8px;
-  border-bottom:1px solid #1f2937;
+    padding:10px;
+    cursor:pointer;
+}
+.user:hover {
+    background:#40444b;
 }
 
-/* CHAT BOX */
-.chat-box {
-  flex:1;
-  display:flex;
-  flex-direction:column;
+.chat {
+    flex:1;
+    display:flex;
+    flex-direction:column;
 }
 
 .messages {
-  flex:1;
-  padding:10px;
-  overflow-y:auto;
+    flex:1;
+    padding:10px;
+    overflow-y:auto;
 }
 
-.msg {
-  padding:8px;
-  margin:5px 0;
-  border-radius:8px;
-  max-width:60%;
-  word-wrap:break-word;
-}
-
-/* мои */
-.msg.me {
-  background:#22c55e;
-  margin-left:auto;
-  text-align:right;
-}
-
-/* чужие */
-.msg.other {
-  background:#2563eb;
-  margin-right:auto;
-}
-
-/* typing */
-#typing {
-  padding:5px 10px;
-  font-size:12px;
-  color:#9ca3af;
-}
-
-/* input */
 .input {
-  display:flex;
-  padding:10px;
-  background:#1f2937;
-  align-items:center;
-  gap:10px;
+    display:flex;
 }
 
-.input input {
-  flex:1;
-  height:40px;
-}
-
-.input button {
-  height:40px;
-  width:auto;
-  padding:0 15px;
-}
+input { flex:1; padding:10px; }
+button { padding:10px; }
 </style>
 </head>
 
 <body>
 
-<!-- LOGIN -->
 <div id="login">
-  <div class="login-box">
-    <h3>Регистрация</h3>
-    <input id="username" placeholder="имя пользователя (только a-z)">
-    <small>пример: handy → @handy</small>
-    <button onclick="register()">Войти</button>
-  </div>
+    <h2>Вход</h2>
+    <input id="username" placeholder="username">
+    <button onclick="login()">Войти</button>
 </div>
 
-<!-- CHAT -->
 <div id="chat">
-  <div class="container">
-
-    <div class="users" id="users"></div>
-
-    <div class="chat-box">
-
-      <div class="messages" id="messages"></div>
-      <div id="typing"></div>
-
-      <form class="input" id="form">
-        <input id="input" placeholder="Сообщение...">
-        <button>➤</button>
-      </form>
-
+    <div class="sidebar">
+        <h3>Пользователи</h3>
+        <div id="users"></div>
     </div>
 
-  </div>
+    <div class="chat">
+        <div class="messages" id="messages"></div>
+        <div class="input">
+            <input id="messageInput">
+            <button onclick="send()">Отправить</button>
+        </div>
+    </div>
 </div>
 
-<script src="/socket.io/socket.io.js"></script>
 <script>
 const socket = io();
 
-let myUsername = "";
+let username = "";
+let currentChat = "";
 
-/* REGISTER */
-function register() {
-  const input = document.getElementById("username");
-  let name = input.value.trim().toLowerCase();
+function login() {
+    username = document.getElementById("username").value;
 
-  // оставляем только a-z
-  name = name.replace(/[^a-z]/g, "");
+    if (username.length < 3) {
+        alert("Минимум 3 символа");
+        return;
+    }
 
-  if (!name) {
-    alert("Введи английское имя (a-z)");
-    return;
-  }
+    document.getElementById("login").style.display = "none";
+    document.getElementById("chat").style.display = "flex";
 
-  myUsername = "@" + name;
-
-  socket.emit("register", name);
-
-  document.getElementById("login").style.display = "none";
-  document.getElementById("chat").style.display = "block";
+    socket.emit("join", username);
 }
 
-/* SEND MESSAGE */
-const form = document.getElementById("form");
-const input = document.getElementById("input");
-const messages = document.getElementById("messages");
+socket.on("users", (list) => {
+    let usersDiv = document.getElementById("users");
+    usersDiv.innerHTML = "";
 
-form.addEventListener("submit", e => {
-  e.preventDefault();
+    list.forEach(user => {
+        if (user !== username) {
+            usersDiv.innerHTML += `<div class="user" onclick="openChat('${user}')">${user}</div>`;
+        }
+    });
+});
 
-  if (input.value.trim()) {
-    socket.emit("chat message", input.value);
+function openChat(user) {
+    currentChat = user;
+    document.getElementById("messages").innerHTML = `<b>Чат с ${user}</b><br>`;
+}
+
+function send() {
+    let input = document.getElementById("messageInput");
+    let msg = input.value;
+
+    if (!msg || !currentChat) return;
+
+    socket.emit("private_message", {
+        to: currentChat,
+        message: msg
+    });
+
+    addMessage("Ты", msg);
     input.value = "";
-    socket.emit("stop typing");
-  }
+}
+
+socket.on("private_message", (data) => {
+    if (data.from === currentChat) {
+        addMessage(data.from, data.message);
+    }
 });
 
-/* TYPING */
-let typingTimeout;
-
-input.addEventListener("input", () => {
-  socket.emit("typing");
-
-  clearTimeout(typingTimeout);
-
-  typingTimeout = setTimeout(() => {
-    socket.emit("stop typing");
-  }, 1000);
-});
-
-/* messages */
-socket.on("chat message", data => {
-  const div = document.createElement("div");
-  div.classList.add("msg");
-
-  if (data.user === myUsername) {
-    div.classList.add("me");
-    div.textContent = data.text;
-  } else {
-    div.classList.add("other");
-    div.textContent = data.user + ": " + data.text;
-  }
-
-  messages.appendChild(div);
-  messages.scrollTop = messages.scrollHeight;
-});
-
-/* users */
-socket.on("users update", users => {
-  const box = document.getElementById("users");
-  box.innerHTML = "";
-
-  // Профиль сверху
-  const me = document.createElement("div");
-  me.classList.add("profile");
-  me.textContent = "👤 Профиль: " + myUsername;
-  box.appendChild(me);
-
-  for (let id in users) {
-    const u = users[id];
-
-    const div = document.createElement("div");
-    div.classList.add("user");
-
-    div.innerHTML = `
-      <b>${u.username}</b><br>
-      ${u.online ? "🟢 онлайн" : "⚪ не в сети"}
-    `;
-
-    box.appendChild(div);
-  }
-});
-
-/* typing */
-socket.on("typing update", list => {
-  const typing = document.getElementById("typing");
-
-  if (list.length > 0) {
-    typing.innerText = list.join(", ") + " печатает...";
-  } else {
-    typing.innerText = "";
-  }
-});
+function addMessage(user, text) {
+    let messages = document.getElementById("messages");
+    messages.innerHTML += `<div><b>${user}:</b> ${text}</div>`;
+}
 </script>
 
 </body>

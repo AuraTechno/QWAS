@@ -6,67 +6,40 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.get("/", (req, res) => {
-  res.sendFile(__dirname + "/index.html");
-});
+app.use(express.static(__dirname));
 
-let users = {};
-let typingUsers = {};
-
-function formatUsername(name) {
-  return "@" + name.toLowerCase().replace(/[^a-z]/g, "");
-}
+let users = {}; // socket.id -> username
 
 io.on("connection", (socket) => {
-  console.log("connected:", socket.id);
 
-  socket.on("register", (rawName) => {
-    const username = formatUsername(rawName);
+    socket.on("join", (username) => {
+        users[socket.id] = username;
 
-    users[socket.id] = {
-      username,
-      online: true
-    };
-
-    socket.username = username;
-
-    io.emit("users update", users);
-  });
-
-  socket.on("chat message", (msg) => {
-    const user = users[socket.id];
-    if (!user) return;
-
-    io.emit("chat message", {
-      user: user.username,
-      text: msg
+        // отправляем список пользователей всем
+        io.emit("users", Object.values(users));
     });
-  });
 
-  socket.on("typing", () => {
-    if (users[socket.id]) {
-      typingUsers[socket.id] = users[socket.id].username;
-      io.emit("typing update", Object.values(typingUsers));
-    }
-  });
+    socket.on("private_message", (data) => {
+        const { to, message } = data;
 
-  socket.on("stop typing", () => {
-    delete typingUsers[socket.id];
-    io.emit("typing update", Object.values(typingUsers));
-  });
+        // ищем получателя
+        for (let id in users) {
+            if (users[id] === to) {
+                io.to(id).emit("private_message", {
+                    from: users[socket.id],
+                    message
+                });
+            }
+        }
+    });
 
-  socket.on("disconnect", () => {
-    delete typingUsers[socket.id];
+    socket.on("disconnect", () => {
+        delete users[socket.id];
+        io.emit("users", Object.values(users));
+    });
 
-    if (users[socket.id]) {
-      users[socket.id].online = false;
-      io.emit("users update", users);
-      io.emit("typing update", Object.values(typingUsers));
-      delete users[socket.id];
-    }
-  });
 });
 
 server.listen(3000, () => {
-  console.log("http://localhost:3000");
+    console.log("Сервер запущен");
 });
