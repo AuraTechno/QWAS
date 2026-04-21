@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Messenger STABLE</title>
+<title>PRO STABLE 2</title>
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
@@ -13,7 +13,6 @@ body{
     color:#fff;
 }
 
-/* AUTH */
 #auth{
     width:320px;
     margin:120px auto;
@@ -25,7 +24,7 @@ body{
 input{
     padding:12px;
     border:none;
-    border-radius:10px;
+    border-radius:8px;
     background:#1a1a1a;
     color:#fff;
 }
@@ -33,27 +32,25 @@ input{
 button{
     padding:12px;
     border:none;
-    border-radius:10px;
+    border-radius:8px;
     background:#fff;
     color:#000;
-    cursor:pointer;
 }
 
-/* CHAT */
 #chat{
     display:none;
     height:100vh;
 }
 
 .sidebar{
-    width:300px;
-    background:#121212;
+    width:280px;
+    background:#111;
     border-right:1px solid #222;
     overflow:auto;
 }
 
 .user{
-    padding:15px;
+    padding:12px;
     border-bottom:1px solid #222;
     cursor:pointer;
 }
@@ -66,22 +63,28 @@ button{
 
 .messages{
     flex:1;
-    padding:15px;
+    padding:10px;
     overflow:auto;
 }
 
-.msg{display:flex;margin:6px 0;}
-.me{justify-content:flex-end;}
-.other{justify-content:flex-start;}
-
-.bubble{
-    max-width:60%;
-    padding:10px;
-    border-radius:10px;
+.msg{
+    margin:6px 0;
 }
 
-.me .bubble{background:#fff;color:#000;}
-.other .bubble{background:#1a1a1a;border:1px solid #333;}
+.me{text-align:right;}
+.other{text-align:left;}
+
+.bubble{
+    display:inline-block;
+    padding:10px;
+    border-radius:8px;
+    background:#1a1a1a;
+}
+
+.me .bubble{
+    background:#fff;
+    color:#000;
+}
 </style>
 </head>
 
@@ -91,8 +94,8 @@ button{
     <input id="u" placeholder="username">
     <input id="p" type="password" placeholder="password">
 
-    <button onclick="register()">Регистрация</button>
-    <button onclick="login()">Войти</button>
+    <button onclick="register()">Register</button>
+    <button onclick="login()">Login</button>
 </div>
 
 <div id="chat">
@@ -105,17 +108,15 @@ button{
 
         <div class="messages" id="messages"></div>
 
-        <div style="display:flex">
-            <input id="msg" style="flex:1">
-            <button onclick="send()">➤</button>
-        </div>
+        <input id="msg">
+        <button onclick="send()">Send</button>
 
     </div>
 </div>
 
 <script>
-const socket=io();
-
+let socket;
+let token="";
 let username="";
 let current="";
 
@@ -128,7 +129,7 @@ body:JSON.stringify({username:u.value,password:p.value})
 });
 }
 
-/* LOGIN */
+/* LOGIN (STABLE FIX) */
 function login(){
 fetch("/login",{
 method:"POST",
@@ -137,32 +138,50 @@ body:JSON.stringify({username:u.value,password:p.value})
 })
 .then(r=>r.json())
 .then(d=>{
-if(d.ok){
+
+if(!d.ok){
+alert("login error");
+return;
+}
+
+token=d.token;
 username=u.value;
+
 auth.style.display="none";
 chat.style.display="flex";
-socket.emit("join",username);
-}
+
+/* SOCKET ONLY AFTER LOGIN */
+socket=io({
+auth:{token}
+});
+
+/* EVENTS */
+socket.on("connect",()=>{
+socket.emit("join");
+});
+
+socket.on("users",renderUsers);
+socket.on("private_message",renderMsg);
+socket.on("chat_history",renderHistory);
+
 });
 }
 
-/* USERS FIX */
-socket.on("users",data=>{
-
+/* USERS */
+function renderUsers(data){
 users.innerHTML="";
 
 data.users.forEach(u=>{
 if(u.username!==username){
-
 users.innerHTML+=`
 <div class="user" onclick="openChat('${u.username}')">
 ${u.username}
 </div>`;
 }
 });
-});
+}
 
-/* OPEN CHAT */
+/* OPEN */
 function openChat(u){
 current=u;
 chatName.innerText=u;
@@ -171,7 +190,7 @@ socket.emit("get_history",u);
 
 /* SEND */
 function send(){
-if(!msg.value)return;
+if(!msg.value||!current)return;
 
 socket.emit("private_message",{
 to:current,
@@ -181,21 +200,17 @@ message:msg.value
 msg.value="";
 }
 
-/* RECEIVE */
-socket.on("private_message",m=>{
-if(m.from===current||m.from===username){
-render(m);
-}
-});
-
 /* HISTORY */
-socket.on("chat_history",msgs=>{
+function renderHistory(msgs){
 messages.innerHTML="";
-msgs.forEach(render);
-});
+msgs.forEach(renderMsg);
+}
 
-/* RENDER */
-function render(m){
+/* MESSAGE */
+function renderMsg(m){
+
+if(m.from!==username && m.to!==username && m.from!==current && m.to!==current)
+return;
 
 let me=m.from===username;
 

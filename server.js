@@ -3,37 +3,26 @@ const http = require("http");
 const { Server } = require("socket.io");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+
+const config = require("./config");
+
+const User = require("./models/User");
+const Message = require("./models/Message");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.json());
-app.use(express.static(__dirname));
+app.use(express.static("public"));
 
-mongoose.connect("mongodb+srv://server:PASSWORD@qwas.ijvw0zw.mongodb.net/messenger");
+mongoose.connect(config.MONGO_URL);
 
-const UserSchema = new mongoose.Schema({
-    username: String,
-    password: String,
-    avatar: String,
-    lastSeen: Number
-});
+/* ONLINE MAP */
+let online = {}; // socketId -> username
 
-const MessageSchema = new mongoose.Schema({
-    from: String,
-    to: String,
-    message: String,
-    time: { type: Date, default: Date.now },
-    status: { type: String, default: "sent" }
-});
-
-const User = mongoose.model("User", UserSchema);
-const Message = mongoose.model("Message", MessageSchema);
-
-let online = {};
-
-/* AUTH */
+/* REGISTER */
 app.post("/register", async (req,res)=>{
     const {username,password}=req.body;
 
@@ -44,14 +33,13 @@ app.post("/register", async (req,res)=>{
 
     await User.create({
         username,
-        password:hash,
-        avatar:"",
-        lastSeen:Date.now()
+        password:hash
     });
 
     res.json({ok:true});
 });
 
+/* LOGIN */
 app.post("/login", async (req,res)=>{
     const {username,password}=req.body;
 
@@ -61,33 +49,43 @@ app.post("/login", async (req,res)=>{
     const ok = await bcrypt.compare(password,user.password);
     if(!ok) return res.json({ok:false});
 
-    res.json({ok:true});
+    const token = jwt.sign(
+        {username},
+        config.JWT_SECRET,
+        {expiresIn:"7d"}
+    );
+
+    res.json({ok:true,token});
+});
+
+/* SOCKET AUTH */
+io.use((socket,next)=>{
+    const token = socket.handshake.auth.token;
+
+    try{
+        const data = jwt.verify(token,config.JWT_SECRET);
+        socket.username = data.username;
+        next();
+    }catch(e){
+        next(new Error("auth error"));
+    }
 });
 
 /* SOCKET */
 io.on("connection",(socket)=>{
 
-    socket.on("join", async (username)=>{
+    online[socket.id]=socket.username;
 
-        online[socket.id]=username;
+    sendUsers();
 
-        const users = await User.find({}, "username avatar lastSeen");
-
-        io.emit("users",{
-            users,
-            online:Object.values(online)
-        });
-    });
+    socket.on("join",()=>{});
 
     socket.on("private_message", async (data)=>{
 
-        const from = online[socket.id];
-
         const msg = await Message.create({
-            from,
+            from:socket.username,
             to:data.to,
-            message:data.message,
-            status:"sent"
+            message:data.message
         });
 
         for(let id in online){
@@ -101,12 +99,10 @@ io.on("connection",(socket)=>{
 
     socket.on("get_history", async (withUser)=>{
 
-        const user = online[socket.id];
-
         const msgs = await Message.find({
             $or:[
-                {from:user,to:withUser},
-                {from:withUser,to:user}
+                {from:socket.username,to:withUser},
+                {from:withUser,to:socket.username}
             ]
         }).sort({time:1});
 
@@ -115,8 +111,19 @@ io.on("connection",(socket)=>{
 
     socket.on("disconnect",()=>{
         delete online[socket.id];
+        sendUsers();
     });
 
 });
 
-server.listen(3000,()=>console.log("STABLE RUN"));
+/* USERS BROADCAST */
+async function sendUsers(){
+    const users = await User.find({}, "username avatar lastSeen");
+
+    io.emit("users",{
+        users,
+        online:Object.values(online)
+    });
+}
+
+server.listen(3000,()=>console.log("PRO STABLE 2 RUN"));
