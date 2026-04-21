@@ -1,324 +1,174 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<title>Messenger PRO 3</title>
-<script src="/socket.io/socket.io.js"></script>
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const config = require("./config");
 
-<style>
-body{
-    margin:0;
-    font-family:Arial;
-    background:#0d0d0d;
-    color:#fff;
-}
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 
-/* AUTH */
-#auth{
-    width:320px;
-    margin:120px auto;
-    display:flex;
-    flex-direction:column;
-    gap:10px;
-}
+app.use(express.json());
+app.use(express.static(__dirname));
 
-input{
-    padding:12px;
-    border:none;
-    border-radius:10px;
-    background:#1a1a1a;
-    color:#fff;
-}
+mongoose.connect(config.MONGO_URL);
 
-button{
-    padding:12px;
-    border:none;
-    border-radius:10px;
-    background:#fff;
-    color:#000;
-    cursor:pointer;
-}
+/* ================= MODELS ================= */
 
-/* LAYOUT */
-#chat{
-    display:none;
-    height:100vh;
-}
-
-/* USERS */
-.sidebar{
-    width:300px;
-    background:#121212;
-    border-right:1px solid #222;
-    overflow:auto;
-}
-
-.user{
-    display:flex;
-    gap:10px;
-    padding:15px;
-    cursor:pointer;
-    border-bottom:1px solid #1f1f1f;
-}
-
-.user:hover{
-    background:#1a1a1a;
-}
-
-/* AVATAR */
-.avatar{
-    width:40px;
-    height:40px;
-    border-radius:50%;
-    background:#333;
-    overflow:hidden;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-}
-
-.avatar img{
-    width:100%;
-    height:100%;
-}
-
-/* CHAT */
-.chat{
-    flex:1;
-    display:flex;
-    flex-direction:column;
-}
-
-.header{
-    padding:15px;
-    border-bottom:1px solid #222;
-    display:flex;
-    justify-content:space-between;
-}
-
-.status{
-    font-size:12px;
-    opacity:0.7;
-}
-
-/* MSG */
-.messages{
-    flex:1;
-    padding:15px;
-    overflow:auto;
-}
-
-.msg{
-    display:flex;
-    margin:6px 0;
-}
-
-.me{justify-content:flex-end;}
-.other{justify-content:flex-start;}
-
-.bubble{
-    max-width:60%;
-    padding:10px;
-    border-radius:12px;
-}
-
-/* ME */
-.me .bubble{
-    background:#fff;
-    color:#000;
-}
-
-/* OTHER */
-.other .bubble{
-    background:#1a1a1a;
-    border:1px solid #333;
-}
-
-/* TIME + CHECKS */
-.meta{
-    font-size:10px;
-    opacity:0.6;
-    display:flex;
-    justify-content:center;
-    gap:5px;
-    margin-top:5px;
-}
-
-/* INPUT */
-.input{
-    display:flex;
-    border-top:1px solid #222;
-}
-
-.input input{
-    flex:1;
-    border:none;
-    padding:15px;
-    background:#111;
-}
-
-.input button{
-    width:80px;
-}
-
-/* typing */
-.typing{
-    font-size:12px;
-    opacity:0.6;
-}
-</style>
-</head>
-
-<body>
-
-<div id="auth">
-    <h2>Messenger PRO 3</h2>
-    <input id="u">
-    <input id="p" type="password">
-    <button onclick="login()">Войти</button>
-    <button onclick="register()">Регистрация</button>
-</div>
-
-<div id="chat">
-
-    <div class="sidebar" id="users"></div>
-
-    <div class="chat">
-
-        <div class="header">
-            <div id="chatName"></div>
-            <div class="status" id="status"></div>
-        </div>
-
-        <div class="messages" id="messages"></div>
-
-        <div class="input">
-            <input id="msg" placeholder="Сообщение">
-            <button onclick="send()">➤</button>
-        </div>
-
-    </div>
-</div>
-
-<script>
-const socket=io();
-
-let username="";
-let current="";
-
-/* AUTH */
-function register(){
-fetch("/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u.value,password:p.value})})
-}
-
-function login(){
-fetch("/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u.value,password:p.value})})
-.then(r=>r.json()).then(d=>{
-if(d.ok){
-username=u.value;
-auth.style.display="none";
-chat.style.display="flex";
-socket.emit("join",username);
-}
-});
-}
-
-/* USERS */
-socket.on("users",data=>{
-users.innerHTML="";
-data.users.forEach(u=>{
-if(u.username!==username){
-users.innerHTML+=`
-<div class="user" onclick="openChat('${u.username}')">
-<div class="avatar">${u.avatar?`<img src="${u.avatar}">`:u.username[0]}</div>
-<div>${u.username}</div>
-</div>`;
-}
-});
+const UserSchema = new mongoose.Schema({
+    username: String,
+    password: String,
+    avatar: String,
+    lastSeen: Number
 });
 
-/* CHAT */
-function openChat(u){
-current=u;
-chatName.innerText=u;
-socket.emit("get_history",u);
-}
+const MessageSchema = new mongoose.Schema({
+    from: String,
+    to: String,
+    message: String,
+    time: { type: Date, default: Date.now },
 
-/* SEND */
-function send(){
-if(!msg.value||!current)return;
-
-socket.emit("private_message",{to:current,message:msg.value});
-
-render({
-from:username,
-message:msg.value,
-time:new Date(),
-status:"sent"
+    // sent | delivered | read
+    status: { type: String, default: "sent" }
 });
 
-msg.value="";
-}
+const User = mongoose.model("User", UserSchema);
+const Message = mongoose.model("Message", MessageSchema);
 
-/* ENTER */
-msg.onkeydown=e=>{
-if(e.key==="Enter")send();
-};
+/* ================= MEMORY ================= */
 
-/* TYPING */
-msg.oninput=()=>{
-socket.emit("typing",{from:username,to:current});
-};
+let online = {}; // socketId -> username
 
-/* RENDER */
-function render(m){
+/* ================= AUTH ================= */
 
-let me=m.from===username;
+app.post("/register", async (req,res)=>{
+    const {username,password}=req.body;
 
-let time=new Date(m.time).toLocaleTimeString([],{
-hour:"2-digit",minute:"2-digit"
+    const exists = await User.findOne({username});
+    if(exists) return res.json({ok:false});
+
+    const hash = await bcrypt.hash(password,10);
+
+    await User.create({
+        username,
+        password:hash,
+        avatar:"",
+        lastSeen:Date.now()
+    });
+
+    res.json({ok:true});
 });
 
-let check="";
-if(me){
-if(m.status==="sent")check="✓";
-if(m.status==="read")check="✓✓";
-}
+app.post("/login", async (req,res)=>{
+    const {username,password}=req.body;
 
-messages.innerHTML+=`
-<div class="msg ${me?'me':'other'}">
-<div class="bubble">
+    const user = await User.findOne({username});
+    if(!user) return res.json({ok:false});
 
-<div>${m.message}</div>
+    const ok = await bcrypt.compare(password,user.password);
+    if(!ok) return res.json({ok:false});
 
-<div class="meta">
-<span>${time}</span>
-<span>${check}</span>
-</div>
-
-</div>
-</div>`;
-
-messages.scrollTop=messages.scrollHeight;
-}
-
-/* TYPING */
-socket.on("typing",d=>{
-if(d.from===current){
-status.innerText="печатает...";
-}
+    res.json({ok:true});
 });
 
-socket.on("stop_typing",()=>{
-status.innerText="";
+/* ================= SOCKET ================= */
+
+io.on("connection",(socket)=>{
+
+    /* JOIN */
+    socket.on("join", async (username)=>{
+
+        online[socket.id]=username;
+
+        const users = await User.find({}, "username avatar lastSeen");
+
+        io.emit("users",{
+            users,
+            online:Object.values(online)
+        });
+    });
+
+    /* SEND MESSAGE */
+    socket.on("private_message", async (data)=>{
+
+        const from = online[socket.id];
+
+        const msg = await Message.create({
+            from,
+            to:data.to,
+            message:data.message,
+            status:"sent"
+        });
+
+        // deliver to recipient
+        for(let id in online){
+            if(online[id]===data.to){
+                io.to(id).emit("private_message",msg);
+            }
+        }
+    });
+
+    /* HISTORY */
+    socket.on("get_history", async (withUser)=>{
+
+        const user = online[socket.id];
+
+        // mark read
+        await Message.updateMany(
+            {from:withUser,to:user},
+            {$set:{status:"read"}}
+        );
+
+        const msgs = await Message.find({
+            $or:[
+                {from:user,to:withUser},
+                {from:withUser,to:user}
+            ]
+        }).sort({time:1});
+
+        socket.emit("chat_history",msgs);
+    });
+
+    /* TYPING */
+    socket.on("typing",(data)=>{
+        for(let id in online){
+            if(online[id]===data.to){
+                io.to(id).emit("typing",{from:data.from});
+            }
+        }
+    });
+
+    socket.on("stop_typing",(data)=>{
+        for(let id in online){
+            if(online[id]===data.to){
+                io.to(id).emit("stop_typing");
+            }
+        }
+    });
+
+    /* DISCONNECT */
+    socket.on("disconnect",async ()=>{
+
+        const user = online[socket.id];
+
+        if(user){
+            await User.updateOne(
+                {username:user},
+                {$set:{lastSeen:Date.now()}}
+            );
+        }
+
+        delete online[socket.id];
+
+        const users = await User.find({}, "username avatar lastSeen");
+
+        io.emit("users",{
+            users,
+            online:Object.values(online)
+        });
+    });
+
 });
 
-/* HISTORY */
-socket.on("chat_history",msgs=>{
-messages.innerHTML="";
-msgs.forEach(render);
-});
-</script>
-
-</body>
-</html>
+server.listen(3000,()=>console.log("PRO 3 RUN"));
