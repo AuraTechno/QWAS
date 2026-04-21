@@ -14,14 +14,14 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.json());
+app.use(express.json({limit:"10mb"}));
 app.use(express.static("public"));
 
 mongoose.connect(config.MONGO_URL);
 
 let online = {}; // socket.id -> username
 
-/* AUTH */
+/* REGISTER */
 app.post("/register", async (req,res)=>{
     const {username,password}=req.body;
 
@@ -35,6 +35,7 @@ app.post("/register", async (req,res)=>{
     res.json({ok:true});
 });
 
+/* LOGIN */
 app.post("/login", async (req,res)=>{
     const {username,password}=req.body;
 
@@ -53,6 +54,18 @@ app.post("/login", async (req,res)=>{
     res.json({ok:true,token});
 });
 
+/* UPDATE AVATAR */
+app.post("/avatar", async (req,res)=>{
+    const {username,avatar}=req.body;
+
+    await User.updateOne(
+        {username},
+        {$set:{avatar}}
+    );
+
+    res.json({ok:true});
+});
+
 /* SOCKET AUTH */
 io.use((socket,next)=>{
     try{
@@ -65,16 +78,12 @@ io.use((socket,next)=>{
     }
 });
 
-/* STATE */
-let typingUsers = {};
-
 io.on("connection",(socket)=>{
 
     online[socket.id]=socket.username;
 
     emitUsers();
 
-    /* JOIN */
     socket.on("join",()=>{
         emitUsers();
     });
@@ -106,36 +115,42 @@ io.on("connection",(socket)=>{
         socket.emit("chat_history",msgs);
     });
 
-    /* READ RECEIPTS */
-    socket.on("read_messages", async (data)=>{
+    /* READ */
+    socket.on("read", async (data)=>{
 
         await Message.updateMany(
             {from:data.from,to:data.to},
             {$set:{status:"read"}}
         );
 
-        emitToUser(data.from,"messages_read",{
-            from:data.from,
-            to:data.to
-        });
+        emitToUser(data.from,"read_update",data);
     });
 
     /* TYPING */
-    socket.on("typing", (to)=>{
+    let typingTimeout;
 
-        emitToUser(to,"typing",{
-            from:socket.username
-        });
-    });
+    socket.on("typing",(to)=>{
 
-    socket.on("stop_typing",(to)=>{
-        emitToUser(to,"stop_typing",{
-            from:socket.username
-        });
+        emitToUser(to,"typing",{from:socket.username});
+
+        clearTimeout(typingTimeout);
+
+        typingTimeout=setTimeout(()=>{
+            emitToUser(to,"stop_typing",{from:socket.username});
+        },1000);
     });
 
     /* DISCONNECT */
-    socket.on("disconnect",()=>{
+    socket.on("disconnect",async ()=>{
+
+        const user = socket.username;
+
+        if(user){
+            await User.updateOne(
+                {username:user},
+                {$set:{lastSeen:Date.now()}}
+            );
+        }
 
         delete online[socket.id];
 
@@ -144,16 +159,20 @@ io.on("connection",(socket)=>{
 
 });
 
-/* HELPERS */
-function emitUsers(){
-    const users = Object.values(online);
+/* USERS */
+async function emitUsers(){
+
+    const users = await User.find({}, "username avatar lastSeen");
 
     io.emit("users",{
-        users
+        users,
+        online:Object.values(online)
     });
 }
 
+/* SEND TO USER */
 function emitToUser(username,event,data){
+
     for(let id in online){
         if(online[id]===username){
             io.to(id).emit(event,data);
@@ -162,5 +181,5 @@ function emitToUser(username,event,data){
 }
 
 server.listen(3000,()=>{
-    console.log("PRO STABLE 4 RUN");
+    console.log("PRO STABLE 5 RUN");
 });
