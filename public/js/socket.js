@@ -51,7 +51,7 @@
       });
       
       QWAS.State.socket.on('chat_history', (data) => {
-        console.log('📜 chat_history получен:', data);
+        console.log('📜 chat_history:', data);
         const container = document.getElementById('messages');
         if (!container) return;
         
@@ -60,26 +60,37 @@
         QWAS.State.hasMoreMessages = hasMore;
         QWAS.State.currentPage = page || 1;
         
+        console.log(`📜 page=${page}, messages=${messages.length}, hasMore=${hasMore}`);
+        
         if (page === 1) {
+          // Первая страница - очищаем и заполняем
           container.innerHTML = messages.length ? '' : 
             '<div class="empty-state"><div class="empty-state-icon">💬</div><p>Нет сообщений</p></div>';
           
           messages.forEach(m => QWAS.Messages.add(m, true));
-          container.scrollTop = container.scrollHeight;
+          
+          // Прокручиваем вниз
+          setTimeout(() => {
+            container.scrollTop = container.scrollHeight;
+          }, 50);
         } else {
+          // Подгружаем старые сообщения сверху
           const oldScrollHeight = container.scrollHeight;
           
+          // Добавляем в начало
           for (let i = messages.length - 1; i >= 0; i--) {
             QWAS.Messages.prepend(messages[i]);
           }
           
-          const newScrollHeight = container.scrollHeight;
-          container.scrollTop = newScrollHeight - oldScrollHeight;
+          // Восстанавливаем позицию
+          setTimeout(() => {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = newScrollHeight - oldScrollHeight;
+          }, 50);
         }
         
         QWAS.State.isLoadingMessages = false;
       });
-      
       QWAS.State.socket.on('typing', (d) => {
         if (d.from === QWAS.State.current) {
           const indicator = document.getElementById('typingIndicator');

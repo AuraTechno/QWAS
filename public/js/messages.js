@@ -236,15 +236,34 @@
     });
   }
   
-  // Пагинация
+  // Пагинация при прокрутке
   const messagesContainer = document.getElementById('messages');
   if (messagesContainer) {
-    messagesContainer.addEventListener('scroll', function() {
-      if (this.scrollTop < 50 && QWAS.State.hasMoreMessages && !QWAS.State.isLoadingMessages) {
-        console.log('📜 Загружаем ещё...');
+    // Функция проверки и загрузки
+    const checkAndLoadMore = function() {
+      const scrollTop = this.scrollTop;
+      
+      console.log(`📜 Скролл: scrollTop=${scrollTop}, hasMore=${QWAS.State.hasMoreMessages}, isLoading=${QWAS.State.isLoadingMessages}`);
+      
+      // Если мы вверху (меньше 30px) и есть ещё сообщения
+      if (scrollTop < 30 && QWAS.State.hasMoreMessages && !QWAS.State.isLoadingMessages) {
+        console.log('📜 Загружаем следующую страницу...');
         QWAS.State.isLoadingMessages = true;
         QWAS.State.socket.emit('load_more');
       }
-    });
+    };
+    
+    // Назначаем обработчик скролла
+    messagesContainer.addEventListener('scroll', checkAndLoadMore);
+    
+    // Дополнительно для колесика мыши
+    messagesContainer.addEventListener('wheel', function(e) {
+      // Крутим вверх (deltaY < 0)
+      if (e.deltaY < 0 && this.scrollTop < 30 && QWAS.State.hasMoreMessages && !QWAS.State.isLoadingMessages) {
+        console.log('🖱️ Колесико вверх - загружаем...');
+        QWAS.State.isLoadingMessages = true;
+        QWAS.State.socket.emit('load_more');
+      }
+    }, { passive: true });
   }
 })();
