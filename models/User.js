@@ -1,4 +1,3 @@
-
 const mongoose = require("mongoose");
 
 const UserSchema = new mongoose.Schema({
@@ -6,12 +5,8 @@ const UserSchema = new mongoose.Schema({
   password: { type: String, required: true },
   avatar: { type: String, default: "" },
   avatarColor: { type: String, default: "#667eea" },
+  sessionToken: { type: String, default: null },
   createdAt: { type: Date, default: Date.now }
-});
-
-// Виртуальное поле для отображения с @
-UserSchema.virtual('displayName').get(function() {
-  return '@' + this.username;
 });
 
 module.exports = mongoose.model("User", UserSchema);

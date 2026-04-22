@@ -4,6 +4,7 @@ const { Server } = require("socket.io");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 
 const config = require("./config");
 
@@ -20,7 +21,6 @@ app.use(express.static("public"));
 
 const online = new Map();
 
-// Health check
 app.get("/health", (req, res) => {
   const mongoStatus = mongoose.connection.readyState;
   const statusMap = { 0: "disconnected", 1: "connected", 2: "connecting", 3: "disconnecting" };
@@ -40,24 +40,26 @@ mongoose.connect(config.MONGO_URL)
     console.error("❌ MongoDB connection error:", err.message);
   });
 
+function generateSessionToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
 /* REGISTER */
 app.post("/register", async (req, res) => {
   try {
-    if (!User) return res.status(503).json({ ok: false, error: "Database not ready" });
+    if (!User) return res.status(503).json({ ok: false, error: "База данных не готова" });
     
     let { username, password } = req.body;
-    if (!username || !password) return res.json({ ok: false, error: "Username and password required" });
+    if (!username || !password) return res.json({ ok: false, error: "Введите логин и пароль" });
 
-    // Убираем @ если пользователь его ввел
     username = username.replace(/^@/, '');
     
-    // Проверяем что username содержит только допустимые символы
     if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      return res.json({ ok: false, error: "Username can only contain letters, numbers and underscores" });
+      return res.json({ ok: false, error: "Логин может содержать только буквы, цифры и _" });
     }
 
     const exists = await User.findOne({ username });
-    if (exists) return res.json({ ok: false, error: "User exists" });
+    if (exists) return res.json({ ok: false, error: "Пользователь уже существует" });
 
     const hash = await bcrypt.hash(password, 10);
     
@@ -66,28 +68,32 @@ app.post("/register", async (req, res) => {
     
     await User.create({ username, password: hash, avatarColor: randomColor });
 
-    res.json({ ok: true });
+    res.json({ ok: true, message: "Регистрация успешна! Теперь войдите." });
   } catch (err) {
     console.error("Register error:", err);
-    res.json({ ok: false, error: "Server error" });
+    res.json({ ok: false, error: "Ошибка сервера" });
   }
 });
 
 /* LOGIN */
 app.post("/login", async (req, res) => {
   try {
-    if (!User) return res.status(503).json({ ok: false, error: "Database not ready" });
+    if (!User) return res.status(503).json({ ok: false, error: "База данных не готова" });
     
     let { username, password } = req.body;
     username = username.replace(/^@/, '');
     
     const user = await User.findOne({ username });
-    if (!user) return res.json({ ok: false, error: "User not found" });
+    if (!user) return res.json({ ok: false, error: "Пользователь не найден" });
 
     const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.json({ ok: false, error: "Wrong password" });
+    if (!ok) return res.json({ ok: false, error: "Неверный пароль" });
 
-    const token = jwt.sign({ username }, config.JWT_SECRET);
+    const sessionToken = generateSessionToken();
+    const token = jwt.sign({ username, sessionToken }, config.JWT_SECRET);
+    
+    await User.updateOne({ username }, { $set: { sessionToken } });
+
     res.json({ 
       ok: true, 
       token, 
@@ -95,59 +101,93 @@ app.post("/login", async (req, res) => {
         username: user.username, 
         avatar: user.avatar || "", 
         avatarColor: user.avatarColor || "#667eea" 
-      } 
+      },
+      message: "Вход выполнен успешно!"
     });
   } catch (err) {
     console.error("Login error:", err);
-    res.json({ ok: false, error: "Server error" });
+    res.json({ ok: false, error: "Ошибка сервера" });
   }
 });
 
-/* GET ALL USERS (для поиска) */
+/* AUTO LOGIN */
+app.post("/auto-login", async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.json({ ok: false });
+    
+    const data = jwt.verify(token, config.JWT_SECRET);
+    const user = await User.findOne({ 
+      username: data.username,
+      sessionToken: data.sessionToken 
+    });
+    
+    if (!user) return res.json({ ok: false });
+    
+    res.json({ 
+      ok: true, 
+      user: { 
+        username: user.username, 
+        avatar: user.avatar || "", 
+        avatarColor: user.avatarColor || "#667eea" 
+      } 
+    });
+  } catch (err) {
+    res.json({ ok: false });
+  }
+});
+
+/* LOGOUT */
+app.post("/logout", async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (token) {
+      const data = jwt.verify(token, config.JWT_SECRET);
+      await User.updateOne({ username: data.username }, { $set: { sessionToken: null } });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.json({ ok: true });
+  }
+});
+
+/* GET ALL USERS */
 app.get("/users/all", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      console.log("❌ No token in /users/all");
-      return res.status(401).json({ ok: false, error: "No token" });
-    }
+    if (!token) return res.status(401).json({ ok: false, error: "Нет токена" });
     
     const data = jwt.verify(token, config.JWT_SECRET);
-    console.log("📋 Fetching all users for:", data.username);
     
     const users = await User.find({
       username: { $ne: data.username }
     }).select('username avatar avatarColor');
     
-    console.log(`✅ Found ${users.length} users for search`);
-    
     res.json({ ok: true, users });
   } catch (err) {
-    console.error("❌ Get all users error:", err.message);
+    console.error("Get all users error:", err);
     res.json({ ok: false, users: [] });
   }
 });
+
 /* SEARCH USERS */
 app.get("/users/search", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ ok: false, error: "No token" });
+    if (!token) return res.status(401).json({ ok: false });
     
     const data = jwt.verify(token, config.JWT_SECRET);
     let { q } = req.query;
     
     if (!q) {
-      // Если запрос пустой, возвращаем всех пользователей кроме себя
       const allUsers = await User.find({
         username: { $ne: data.username }
       }).select('username avatar avatarColor').limit(20);
       return res.json({ ok: true, users: allUsers });
     }
     
-    // Убираем @ если есть
     q = q.replace(/^@/, '');
     
-    // Ищем пользователей (исключая себя)
     const users = await User.find({
       username: { $regex: '^' + q, $options: 'i' },
       username: { $ne: data.username }
@@ -160,15 +200,14 @@ app.get("/users/search", async (req, res) => {
   }
 });
 
-/* GET CHAT LIST (только те с кем есть сообщения) */
+/* GET CHAT LIST */
 app.get("/chats", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ ok: false, error: "No token" });
+    if (!token) return res.status(401).json({ ok: false });
     
     const data = jwt.verify(token, config.JWT_SECRET);
     
-    // Находим всех с кем были сообщения
     const messages = await Message.aggregate([
       {
         $match: {
@@ -193,12 +232,10 @@ app.get("/chats", async (req, res) => {
     
     const contactUsernames = messages.length > 0 ? messages[0].contacts : [];
     
-    // Получаем информацию о контактах
     const contacts = await User.find({
       username: { $in: contactUsernames }
     }).select('username avatar avatarColor');
     
-    // Добавляем онлайн статус
     const contactsWithStatus = contacts.map(c => ({
       username: c.username,
       avatar: c.avatar,
@@ -217,12 +254,12 @@ app.get("/chats", async (req, res) => {
 app.get("/profile", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ ok: false, error: "No token" });
+    if (!token) return res.status(401).json({ ok: false });
     
     const data = jwt.verify(token, config.JWT_SECRET);
     const user = await User.findOne({ username: data.username }).select('-password');
     
-    if (!user) return res.status(404).json({ ok: false, error: "User not found" });
+    if (!user) return res.status(404).json({ ok: false, error: "Пользователь не найден" });
     
     res.json({ 
       ok: true, 
@@ -233,7 +270,7 @@ app.get("/profile", async (req, res) => {
       } 
     });
   } catch (err) {
-    res.status(401).json({ ok: false, error: "Invalid token" });
+    res.status(401).json({ ok: false, error: "Неверный токен" });
   }
 });
 
@@ -241,7 +278,7 @@ app.get("/profile", async (req, res) => {
 app.post("/profile/update", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ ok: false, error: "No token" });
+    if (!token) return res.status(401).json({ ok: false });
     
     const data = jwt.verify(token, config.JWT_SECRET);
     const { avatar, avatarColor } = req.body;
@@ -252,12 +289,11 @@ app.post("/profile/update", async (req, res) => {
     
     await User.updateOne({ username: data.username }, { $set: update });
     
-    // Оповещаем всех об обновлении
     emitChatList();
     
-    res.json({ ok: true });
+    res.json({ ok: true, message: "Профиль обновлён" });
   } catch (err) {
-    res.status(500).json({ ok: false, error: "Server error" });
+    res.status(500).json({ ok: false, error: "Ошибка сервера" });
   }
 });
 
@@ -282,7 +318,6 @@ io.on("connection", async (socket) => {
   if (mongoose.connection.readyState === 1 && User) {
     emitChatList();
     
-    // Отправляем список всех пользователей для поиска
     try {
       const allUsers = await User.find({
         username: { $ne: socket.username }
@@ -308,7 +343,6 @@ io.on("connection", async (socket) => {
       send(data.to, "new_message", full);
       socket.emit("new_message", full);
       
-      // Обновляем список чатов у обоих пользователей
       emitChatListForUser(socket.username);
       emitChatListForUser(data.to);
     } catch (err) {
@@ -358,7 +392,6 @@ io.on("connection", async (socket) => {
 
   socket.on("typing", (to) => send(to, "typing", { from: socket.username }));
   socket.on("stop_typing", (to) => send(to, "stop_typing", { from: socket.username }));
-  
   socket.on("profile_updated", () => emitChatList());
 
   socket.on("disconnect", () => {
@@ -386,7 +419,6 @@ async function emitChatListForUser(username) {
     const socketId = online.get(username);
     if (!socketId) return;
     
-    // Находим все чаты пользователя
     const messages = await Message.aggregate([
       {
         $match: {

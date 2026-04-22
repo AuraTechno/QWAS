@@ -40,6 +40,66 @@ body {
   color: #fff;
 }
 
+/* Уведомления */
+.notification-container {
+  position: fixed;
+  top: max(20px, env(safe-area-inset-top));
+  left: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.notification {
+  padding: 14px 18px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 500;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  pointer-events: auto;
+  animation: slideDown 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  backdrop-filter: blur(10px);
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.notification-success {
+  background: rgba(46, 204, 113, 0.95);
+  color: white;
+}
+
+.notification-error {
+  background: rgba(231, 76, 60, 0.95);
+  color: white;
+}
+
+.notification-info {
+  background: rgba(102, 126, 234, 0.95);
+  color: white;
+}
+
+.notification-warning {
+  background: rgba(243, 156, 18, 0.95);
+  color: white;
+}
+
+.notification-icon {
+  font-size: 20px;
+}
+
+.notification-message {
+  flex: 1;
+}
+
 /* Страница входа */
 #auth {
   position: fixed;
@@ -438,6 +498,8 @@ body {
   color: white;
   text-transform: uppercase;
   flex-shrink: 0;
+  background-size: cover;
+  background-position: center;
 }
 
 .message-content {
@@ -487,7 +549,7 @@ body {
   flex-shrink: 0;
 }
 
-/* Поле ввода - адаптивное под клавиатуру */
+/* Поле ввода */
 .message-input-container {
   padding: 12px 16px;
   padding-bottom: max(12px, env(safe-area-inset-bottom));
@@ -497,7 +559,6 @@ body {
   gap: 10px;
   align-items: flex-end;
   flex-shrink: 0;
-  transition: padding-bottom 0.2s ease;
 }
 
 .message-input {
@@ -509,10 +570,8 @@ body {
   color: #fff;
   font-size: 16px;
   line-height: 1.4;
-  max-height: 120px;
   min-height: 48px;
   outline: none;
-  resize: none;
 }
 
 .message-input:focus {
@@ -760,6 +819,9 @@ body {
 </head>
 <body>
 
+<!-- Контейнер для уведомлений -->
+<div class="notification-container" id="notificationContainer"></div>
+
 <!-- Страница входа -->
 <div id="auth">
   <div class="auth-container">
@@ -869,19 +931,14 @@ let isMobile = window.innerWidth <= 768;
 
 const colors = ["#667eea", "#764ba2", "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#1abc9c", "#e67e22", "#9b59b6", "#e91e63"];
 
-// Определение мобильного устройства
 function checkMobile() {
   isMobile = window.innerWidth <= 768;
 }
 
 window.addEventListener('resize', checkMobile);
 
-// Фикс для клавиатуры на iOS
 const msgInput = document.getElementById('msg');
-let originalHeight = window.innerHeight;
-
 window.addEventListener('resize', () => {
-  // Компенсация для iOS клавиатуры
   if (isMobile && document.activeElement === msgInput) {
     setTimeout(() => {
       msgInput.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -889,7 +946,33 @@ window.addEventListener('resize', () => {
   }
 });
 
-// Инициализация цветов
+function showNotification(message, type = 'info') {
+  const container = document.getElementById('notificationContainer');
+  
+  const icons = {
+    success: '✅',
+    error: '❌',
+    info: 'ℹ️',
+    warning: '⚠️'
+  };
+  
+  const notification = document.createElement('div');
+  notification.className = `notification notification-${type}`;
+  notification.innerHTML = `
+    <span class="notification-icon">${icons[type] || 'ℹ️'}</span>
+    <span class="notification-message">${message}</span>
+  `;
+  
+  container.appendChild(notification);
+  
+  setTimeout(() => {
+    notification.style.opacity = '0';
+    notification.style.transform = 'translateY(-20px)';
+    notification.style.transition = 'all 0.3s ease';
+    setTimeout(() => notification.remove(), 300);
+  }, 4000);
+}
+
 const picker = document.getElementById('colorPicker');
 colors.forEach(color => {
   const div = document.createElement('div');
@@ -899,7 +982,6 @@ colors.forEach(color => {
   picker.appendChild(div);
 });
 
-// Поиск
 const searchInput = document.getElementById('searchInput');
 const searchResults = document.getElementById('searchResults');
 
@@ -926,7 +1008,7 @@ searchInput.addEventListener('input', function() {
     searchResults.innerHTML = filtered.slice(0, 10).map(u => `
       <div class="search-result-item" onclick="startChatWith('${u.username}')">
         <div class="user-avatar small" style="background:${u.avatarColor || '#667eea'};">
-          ${getAvatarLetter(u.username)}
+          ${u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : getAvatarLetter(u.username)}
         </div>
         <div>
           <div class="user-name">@${u.username}</div>
@@ -1017,6 +1099,7 @@ async function saveProfile() {
   currentUser.avatarColor = selectedColor;
   updateMyAvatar();
   closeProfile();
+  showNotification('Профиль обновлён', 'success');
 }
 
 function updateMyAvatar() {
@@ -1050,7 +1133,10 @@ function register() {
   let u = document.getElementById('u').value.trim().replace(/^@/, '');
   const p = document.getElementById('p').value;
   
-  if(!u||!p) return alert('Введите логин и пароль');
+  if(!u||!p) {
+    showNotification('Введите логин и пароль', 'warning');
+    return;
+  }
   
   fetch("/register", {
     method:"POST",
@@ -1058,14 +1144,25 @@ function register() {
     body:JSON.stringify({username:u,password:p})
   })
   .then(r=>r.json())
-  .then(d=>alert(d.ok?'Успешно!':'Ошибка: '+(d.error||'')));
+  .then(d=>{
+    if(d.ok) {
+      showNotification(d.message || 'Регистрация успешна!', 'success');
+      document.getElementById('u').value = '';
+      document.getElementById('p').value = '';
+    } else {
+      showNotification(d.error || 'Ошибка регистрации', 'error');
+    }
+  });
 }
 
 async function login() {
   let u = document.getElementById('u').value.trim().replace(/^@/, '');
   const p = document.getElementById('p').value;
   
-  if(!u||!p) return alert('Введите логин и пароль');
+  if(!u||!p) {
+    showNotification('Введите логин и пароль', 'warning');
+    return;
+  }
   
   const res = await fetch("/login", {
     method:"POST",
@@ -1074,18 +1171,31 @@ async function login() {
   });
   const d = await res.json();
   
-  if(!d.ok) return alert('Ошибка: '+(d.error||'Неверный логин или пароль'));
+  if(!d.ok) {
+    showNotification(d.error || 'Ошибка входа', 'error');
+    return;
+  }
   
   me = u;
   userToken = d.token;
   currentUser = d.user;
+  
+  localStorage.setItem('qwas_token', d.token);
+  localStorage.setItem('qwas_user', JSON.stringify(d.user));
+  
+  showNotification(d.message || 'Вход выполнен!', 'success');
   
   document.getElementById('auth').style.display = 'none';
   document.getElementById('chat').style.display = isMobile ? 'block' : 'flex';
   document.getElementById('myUsername').textContent = '@' + me;
   updateMyAvatar();
   
-  // Загружаем всех пользователей
+  await loadAllUsers();
+  await loadChatList();
+  connectSocket(d.token);
+}
+
+async function loadAllUsers() {
   try {
     const usersRes = await fetch('/users/all', {
       headers: { 'Authorization': `Bearer ${userToken}` }
@@ -1095,8 +1205,9 @@ async function login() {
   } catch (err) {
     console.error('Ошибка загрузки пользователей:', err);
   }
-  
-  // Загружаем чаты
+}
+
+async function loadChatList() {
   try {
     const chatsRes = await fetch('/chats', {
       headers: { 'Authorization': `Bearer ${userToken}` }
@@ -1107,8 +1218,6 @@ async function login() {
   } catch (err) {
     console.error('Ошибка загрузки чатов:', err);
   }
-  
-  connectSocket(d.token);
 }
 
 function renderChatList() {
@@ -1146,6 +1255,7 @@ function connectSocket(token) {
       addMessageToChat(msg);
       if(msg.to === me) socket.emit("read", {from: msg.from, to: me});
     }
+    loadChatList();
   });
   
   socket.on("chat_history", msgs => {
@@ -1256,23 +1366,41 @@ function send() {
   input.focus();
 }
 
-function logout() {
+async function logout() {
+  closeProfile();
+  
+  if (userToken) {
+    await fetch('/logout', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${userToken}` }
+    });
+  }
+  
   if(socket) socket.disconnect();
-  document.getElementById('auth').style.display = 'flex';
-  document.getElementById('chat').style.display = 'none';
-  document.getElementById('u').value = '';
-  document.getElementById('p').value = '';
+  
+  localStorage.removeItem('qwas_token');
+  localStorage.removeItem('qwas_user');
+  
   me = "";
   current = "";
+  userToken = "";
   chatList = [];
   allUsers = [];
+  
+  document.getElementById('auth').style.display = 'flex';
+  document.getElementById('chat').style.display = 'none';
+  document.getElementById('sidebar').classList.remove('hidden');
+  document.getElementById('chatHeader').style.display = 'none';
+  document.getElementById('u').value = '';
+  document.getElementById('p').value = '';
+  
+  showNotification('Вы вышли из аккаунта', 'info');
 }
 
 function showSidebar() {
   document.getElementById('sidebar').classList.remove('hidden');
 }
 
-// Обработчики клавиатуры
 document.getElementById("msg").addEventListener("keypress", e => {
   if(e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
@@ -1287,7 +1415,46 @@ document.getElementById("msg").addEventListener("input", () => {
   typingTimeout = setTimeout(() => socket.emit("stop_typing", current), 1000);
 });
 
-// Предотвращаем зум
+async function checkAutoLogin() {
+  const savedToken = localStorage.getItem('qwas_token');
+  const savedUser = localStorage.getItem('qwas_user');
+  
+  if (!savedToken || !savedUser) return;
+  
+  try {
+    const res = await fetch('/auto-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: savedToken })
+    });
+    const d = await res.json();
+    
+    if (d.ok) {
+      me = d.user.username;
+      userToken = savedToken;
+      currentUser = d.user;
+      
+      document.getElementById('auth').style.display = 'none';
+      document.getElementById('chat').style.display = isMobile ? 'block' : 'flex';
+      document.getElementById('myUsername').textContent = '@' + me;
+      updateMyAvatar();
+      
+      await loadAllUsers();
+      await loadChatList();
+      connectSocket(savedToken);
+      
+      showNotification(`С возвращением, @${me}!`, 'success');
+    } else {
+      localStorage.removeItem('qwas_token');
+      localStorage.removeItem('qwas_user');
+    }
+  } catch (err) {
+    console.error('Auto-login error:', err);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', checkAutoLogin);
+
 document.addEventListener('touchmove', (e) => {
   if (e.target.closest('.messages-container') || e.target.closest('.users-list')) {
     return;
@@ -1297,7 +1464,6 @@ document.addEventListener('touchmove', (e) => {
 document.addEventListener('gesturestart', (e) => e.preventDefault());
 document.addEventListener('dblclick', (e) => e.preventDefault());
 
-// Фикс для iOS safe area
 document.body.style.setProperty('--sat', 'env(safe-area-inset-top)');
 document.body.style.setProperty('--sab', 'env(safe-area-inset-bottom)');
 </script>
