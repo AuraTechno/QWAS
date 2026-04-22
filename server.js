@@ -63,11 +63,14 @@ app.post("/register", async (req, res) => {
 
     const hash = await bcrypt.hash(password, 10);
     
+    const colors = ["#6366f1", "#8b5cf6", "#ec4899", "#f43f5e", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6"];
+    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+    
     await User.create({ 
       username, 
       password: hash, 
       avatar: "", 
-      avatarColor: "#e8e8e8" 
+      avatarColor: randomColor 
     });
 
     res.json({ ok: true, message: "Регистрация успешна!" });
@@ -102,7 +105,7 @@ app.post("/login", async (req, res) => {
       user: { 
         username: user.username, 
         avatar: user.avatar || "", 
-        avatarColor: user.avatarColor || "#e8e8e8" 
+        avatarColor: user.avatarColor || "#6366f1" 
       },
       message: "Вход выполнен успешно!"
     });
@@ -131,7 +134,7 @@ app.post("/auto-login", async (req, res) => {
       user: { 
         username: user.username, 
         avatar: user.avatar || "", 
-        avatarColor: user.avatarColor || "#e8e8e8" 
+        avatarColor: user.avatarColor || "#6366f1" 
       } 
     });
   } catch (err) {
@@ -265,7 +268,7 @@ app.get("/profile", async (req, res) => {
       user: { 
         username: user.username, 
         avatar: user.avatar || "", 
-        avatarColor: user.avatarColor || "#e8e8e8" 
+        avatarColor: user.avatarColor || "#6366f1" 
       } 
     });
   } catch (err) {
@@ -334,6 +337,8 @@ io.on("connection", async (socket) => {
         from: socket.username,
         to: data.to,
         message: data.message,
+        isForwarded: data.isForwarded || false,
+        forwardedFrom: data.forwardedFrom || null,
         status: "sent"
       });
 
@@ -387,7 +392,6 @@ io.on("connection", async (socket) => {
       socket.emit("message_deleted", { messageId: data.messageId });
     } catch (err) {
       console.error("Ошибка удаления:", err);
-      socket.emit("error", { message: "Ошибка удаления" });
     }
   });
 
@@ -411,7 +415,22 @@ io.on("connection", async (socket) => {
         }).sort({ createdAt: 1 });
       }
 
-      socket.emit("chat_history", msgs);
+      // Получаем информацию об отправителях для аватарок
+      const senderUsernames = [...new Set(msgs.map(m => m.from))];
+      const senders = await User.find({
+        username: { $in: senderUsernames }
+      }).select('username avatar avatarColor');
+      
+      const msgsWithSenders = msgs.map(m => {
+        const sender = senders.find(s => s.username === m.from);
+        return {
+          ...m.toObject(),
+          senderAvatar: sender?.avatar || "",
+          senderAvatarColor: sender?.avatarColor || "#6366f1"
+        };
+      });
+
+      socket.emit("chat_history", msgsWithSenders);
     } catch (err) {
       socket.emit("chat_history", []);
     }
