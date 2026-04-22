@@ -21,7 +21,6 @@ app.use(express.static("public"));
 
 const online = new Map();
 
-// Health check
 app.get("/health", (req, res) => {
   const mongoStatus = mongoose.connection.readyState;
   const statusMap = { 0: "disconnected", 1: "connected", 2: "connecting", 3: "disconnecting" };
@@ -71,7 +70,7 @@ app.post("/register", async (req, res) => {
       avatarColor: "#ffffff" 
     });
 
-    res.json({ ok: true, message: "Регистрация успешна! Теперь войдите." });
+    res.json({ ok: true, message: "Регистрация успешна!" });
   } catch (err) {
     console.error("Register error:", err);
     res.json({ ok: false, error: "Ошибка сервера" });
@@ -158,7 +157,7 @@ app.post("/logout", async (req, res) => {
 app.get("/users/all", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ ok: false, error: "Нет токена" });
+    if (!token) return res.status(401).json({ ok: false });
     
     const data = jwt.verify(token, config.JWT_SECRET);
     
@@ -168,7 +167,6 @@ app.get("/users/all", async (req, res) => {
     
     res.json({ ok: true, users });
   } catch (err) {
-    console.error("Get all users error:", err);
     res.json({ ok: false, users: [] });
   }
 });
@@ -198,7 +196,6 @@ app.get("/users/search", async (req, res) => {
     
     res.json({ ok: true, users });
   } catch (err) {
-    console.error("Search error:", err);
     res.json({ ok: false, users: [] });
   }
 });
@@ -248,7 +245,6 @@ app.get("/chats", async (req, res) => {
     
     res.json({ ok: true, chats: contactsWithStatus });
   } catch (err) {
-    console.error("Get chats error:", err);
     res.json({ ok: false, chats: [] });
   }
 });
@@ -262,7 +258,7 @@ app.get("/profile", async (req, res) => {
     const data = jwt.verify(token, config.JWT_SECRET);
     const user = await User.findOne({ username: data.username }).select('-password');
     
-    if (!user) return res.status(404).json({ ok: false, error: "Пользователь не найден" });
+    if (!user) return res.status(404).json({ ok: false });
     
     res.json({ 
       ok: true, 
@@ -273,7 +269,7 @@ app.get("/profile", async (req, res) => {
       } 
     });
   } catch (err) {
-    res.status(401).json({ ok: false, error: "Неверный токен" });
+    res.status(401).json({ ok: false });
   }
 });
 
@@ -295,28 +291,6 @@ app.post("/profile/update", async (req, res) => {
     emitChatList();
     
     res.json({ ok: true, message: "Профиль обновлён" });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: "Ошибка сервера" });
-  }
-});
-
-/* DELETE MESSAGE (REST) */
-app.delete("/messages/:id", async (req, res) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ ok: false });
-    
-    const data = jwt.verify(token, config.JWT_SECRET);
-    const msg = await Message.findById(req.params.id);
-    
-    if (!msg) return res.status(404).json({ ok: false });
-    if (msg.from !== data.username) return res.status(403).json({ ok: false });
-    
-    await Message.deleteOne({ _id: req.params.id });
-    
-    send(msg.to, "message_deleted", { messageId: req.params.id });
-    
-    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false });
   }
@@ -348,9 +322,7 @@ io.on("connection", async (socket) => {
         username: { $ne: socket.username }
       }).select('username avatar avatarColor');
       socket.emit("all_users", allUsers);
-    } catch (err) {
-      console.error("Send all users error:", err);
-    }
+    } catch (err) {}
   }
 
   /* SEND MESSAGE */
@@ -366,11 +338,19 @@ io.on("connection", async (socket) => {
       });
 
       const full = await Message.findById(msg._id);
-      send(data.to, "new_message", full);
-      socket.emit("new_message", full);
+      
+      if (data.to === "favorites") {
+        // Для избранного просто отправляем себе
+        socket.emit("new_message", full);
+      } else {
+        send(data.to, "new_message", full);
+        socket.emit("new_message", full);
+      }
       
       emitChatListForUser(socket.username);
-      emitChatListForUser(data.to);
+      if (data.to !== "favorites") {
+        emitChatListForUser(data.to);
+      }
     } catch (err) {
       console.error("Send message error:", err);
     }
@@ -389,7 +369,7 @@ io.on("connection", async (socket) => {
       send(msg.to, "message_updated", msg);
       socket.emit("message_updated", msg);
     } catch (err) {
-      console.error("Edit message error:", err);
+      console.error("Edit error:", err);
     }
   });
 
@@ -397,14 +377,18 @@ io.on("connection", async (socket) => {
   socket.on("delete_message", async (data) => {
     try {
       const msg = await Message.findById(data.messageId);
-      if (!msg || msg.from !== socket.username) return;
+      if (!msg) return;
+      if (msg.from !== socket.username) return;
       
       await Message.deleteOne({ _id: data.messageId });
       
-      send(msg.to, "message_deleted", { messageId: data.messageId });
+      if (msg.to !== "favorites") {
+        send(msg.to, "message_deleted", { messageId: data.messageId });
+      }
       socket.emit("message_deleted", { messageId: data.messageId });
     } catch (err) {
-      console.error("Delete message error:", err);
+      console.error("Delete error:", err);
+      socket.emit("error", { message: "Ошибка удаления" });
     }
   });
 
@@ -413,12 +397,20 @@ io.on("connection", async (socket) => {
     try {
       if (!Message) { socket.emit("chat_history", []); return; }
       
-      const msgs = await Message.find({
-        $or: [
-          { from: socket.username, to: user },
-          { from: user, to: socket.username }
-        ]
-      }).sort({ createdAt: 1 });
+      let msgs;
+      if (user === "favorites") {
+        msgs = await Message.find({
+          to: "favorites",
+          from: socket.username
+        }).sort({ createdAt: -1 });
+      } else {
+        msgs = await Message.find({
+          $or: [
+            { from: socket.username, to: user },
+            { from: user, to: socket.username }
+          ]
+        }).sort({ createdAt: 1 });
+      }
 
       socket.emit("chat_history", msgs);
     } catch (err) {
@@ -450,14 +442,10 @@ io.on("connection", async (socket) => {
     }
   });
 
-  /* TYPING */
   socket.on("typing", (to) => send(to, "typing", { from: socket.username }));
   socket.on("stop_typing", (to) => send(to, "stop_typing", { from: socket.username }));
-  
-  /* PROFILE UPDATED */
   socket.on("profile_updated", () => emitChatList());
 
-  /* DISCONNECT */
   socket.on("disconnect", () => {
     console.log(`❌ User disconnected: ${socket.username}`);
     online.delete(socket.username);
@@ -473,9 +461,7 @@ async function emitChatList() {
     for (const socket of sockets) {
       await emitChatListForUser(socket.username);
     }
-  } catch (err) {
-    console.error("Emit chat list error:", err);
-  }
+  } catch (err) {}
 }
 
 async function emitChatListForUser(username) {
@@ -508,7 +494,7 @@ async function emitChatListForUser(username) {
     const contactUsernames = messages.length > 0 ? messages[0].contacts : [];
     
     const contacts = await User.find({
-      username: { $in: contactUsernames }
+      username: { $in: contactUsernames.filter(u => u !== "favorites") }
     }).select('username avatar avatarColor');
     
     const chatList = contacts.map(c => ({
@@ -519,9 +505,7 @@ async function emitChatListForUser(username) {
     }));
     
     io.to(socketId).emit("chat_list", chatList);
-  } catch (err) {
-    console.error("Emit chat list for user error:", err);
-  }
+  } catch (err) {}
 }
 
 function send(user, event, data) {
