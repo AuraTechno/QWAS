@@ -1,11 +1,12 @@
-
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, shrink-to-fit=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="QWAS">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0a0a0a">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icon-192.png">
@@ -14,75 +15,218 @@
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #fff; }
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
 
+html, body {
+  width: 100%;
+  height: 100%;
+  position: fixed;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, sans-serif;
+  background: #0a0a0a;
+  color: #fff;
+}
+
+/* Страница входа */
 #auth {
-  width: 100%; max-width: 400px; margin: 0 auto;
-  display: flex; flex-direction: column; gap: 15px;
-  padding: 30px 20px; background: #1a1a1a;
-  border-radius: 16px; position: absolute;
-  top: 50%; left: 50%; transform: translate(-50%, -50%);
-}
-
-#auth h1 {
-  text-align: center; font-size: 32px;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-}
-
-#auth input {
-  padding: 14px; border-radius: 10px; border: 1px solid #333;
-  background: #0a0a0a; color: #fff; font-size: 16px;
-}
-
-#auth button {
-  padding: 14px; border-radius: 10px; border: none;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: white; font-weight: bold; font-size: 16px;
-  cursor: pointer; min-height: 48px;
-}
-
-#chat { display: none; height: 100dvh; display: flex; }
-
-.sidebar {
-  width: 300px; background: #111; border-right: 1px solid #222;
-  overflow-y: auto; display: flex; flex-direction: column;
-}
-
-@media (max-width: 768px) {
-  .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 100%; z-index: 10; }
-  .sidebar.hidden { display: none; }
-}
-
-.sidebar-header {
-  padding: 20px 16px; border-bottom: 1px solid #222;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
   background: #0a0a0a;
 }
 
+.auth-container {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 30px 24px;
+  background: #1a1a1a;
+  border-radius: 20px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+
+.auth-container h1 {
+  text-align: center;
+  font-size: 32px;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.auth-container input {
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #333;
+  background: #0a0a0a;
+  color: #fff;
+  font-size: 16px;
+  outline: none;
+}
+
+.auth-container input:focus {
+  border-color: #667eea;
+}
+
+.auth-container button {
+  padding: 16px;
+  border-radius: 12px;
+  border: none;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  min-height: 52px;
+  transition: opacity 0.2s;
+}
+
+.auth-container button:active {
+  opacity: 0.8;
+}
+
+.auth-container .btn-primary {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+}
+
+.auth-container .btn-secondary {
+  background: #333;
+  color: white;
+}
+
+/* Основной чат */
+#chat {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: none;
+  background: #0a0a0a;
+  overflow: hidden;
+}
+
+/* Сайдбар */
+.sidebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  max-width: 320px;
+  background: #111;
+  border-right: 1px solid #222;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+  transform: translateX(0);
+  transition: transform 0.3s ease;
+}
+
+@media (min-width: 769px) {
+  .sidebar {
+    position: relative;
+    width: 300px;
+  }
+  #chat {
+    display: none;
+    flex-direction: row;
+  }
+}
+
+.sidebar.hidden {
+  transform: translateX(-100%);
+}
+
+.sidebar-header {
+  padding: 20px 16px;
+  padding-top: max(20px, env(safe-area-inset-top));
+  border-bottom: 1px solid #222;
+  background: #0a0a0a;
+  flex-shrink: 0;
+}
+
 .sidebar-header h2 {
-  font-size: 24px; background: linear-gradient(135deg, #667eea, #764ba2);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  font-size: 24px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .user-info {
-  display: flex; align-items: center; gap: 12px;
-  margin-top: 15px; padding-top: 15px; border-top: 1px solid #222;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #222;
   cursor: pointer;
 }
 
 .user-avatar {
-  width: 44px; height: 44px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-weight: bold; font-size: 18px; color: white;
-  text-transform: uppercase; background-size: cover;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 18px;
+  color: white;
+  text-transform: uppercase;
+  background-size: cover;
+  background-position: center;
+  flex-shrink: 0;
 }
 
-.user-avatar.small { width: 40px; height: 40px; font-size: 16px; }
+.user-avatar.small {
+  width: 40px;
+  height: 40px;
+  font-size: 16px;
+}
 
+.user-info-text {
+  flex: 1;
+}
+
+.user-info-text .username {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.user-info-text .status {
+  font-size: 13px;
+  color: #888;
+  margin-top: 2px;
+}
+
+/* Поиск */
 .search-container {
   padding: 12px 16px;
   border-bottom: 1px solid #222;
+  flex-shrink: 0;
 }
 
 .search-box {
@@ -104,12 +248,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   outline: none;
 }
 
+.search-box input::placeholder {
+  color: #666;
+}
+
 .search-results {
   max-height: 300px;
   overflow-y: auto;
   margin-top: 8px;
   background: #1a1a1a;
   border-radius: 12px;
+  display: none;
 }
 
 .search-result-item {
@@ -121,124 +270,355 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   border-bottom: 1px solid #222;
 }
 
-.search-result-item:active { background: #222; }
+.search-result-item:active {
+  background: #222;
+}
 
 .section-title {
   padding: 12px 16px 4px;
-  font-size: 13px;
+  font-size: 12px;
   color: #666;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
 }
 
-.users-list { flex: 1; }
+.users-list {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: env(safe-area-inset-bottom);
+}
 
 .user {
-  padding: 14px 16px; border-bottom: 1px solid #1a1a1a;
-  cursor: pointer; display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #1a1a1a;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 14px;
   position: relative;
 }
 
-.user.selected { background: #1e1e1e; border-left: 4px solid #667eea; }
+.user:active {
+  background: #1a1a1a;
+}
+
+.user.selected {
+  background: #1e1e1e;
+  border-left: 4px solid #667eea;
+}
 
 .online-indicator, .offline-indicator {
-  position: absolute; bottom: 14px; right: 16px;
-  width: 12px; height: 12px; border-radius: 50%; border: 2px solid #111;
+  position: absolute;
+  bottom: 14px;
+  right: 16px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #111;
 }
 .online-indicator { background: #00ff00; }
 .offline-indicator { background: #666; }
 
-.user-name { font-weight: 500; font-size: 16px; }
-.user-status { font-size: 13px; color: #888; }
-
-.chat-area { flex: 1; display: flex; flex-direction: column; background: #0a0a0a; }
-
-.chat-header {
-  padding: 12px 16px; background: #111; border-bottom: 1px solid #222;
-  display: flex; align-items: center; gap: 12px;
+.user-content {
+  flex: 1;
 }
 
-.mobile-back-btn {
-  display: none; background: none; border: none;
-  color: #fff; font-size: 24px; cursor: pointer;
+.user-name {
+  font-weight: 500;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.user-status {
+  font-size: 13px;
+  color: #888;
+}
+
+/* Область чата */
+.chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #0a0a0a;
+  position: relative;
 }
 
 @media (max-width: 768px) {
-  .mobile-back-btn { display: block; }
+  .chat-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
 }
 
-.chat-header-info { flex: 1; }
+.chat-header {
+  padding: 12px 16px;
+  padding-top: max(12px, env(safe-area-inset-top));
+  background: #111;
+  border-bottom: 1px solid #222;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  min-height: 64px;
+}
 
+.mobile-back-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 28px;
+  cursor: pointer;
+  padding: 4px 8px;
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-back-btn {
+    display: block;
+  }
+}
+
+.chat-header-info {
+  flex: 1;
+}
+
+.chat-header-info h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.chat-header-info .online-status {
+  font-size: 13px;
+  color: #888;
+}
+
+/* Сообщения */
 .messages-container {
-  flex: 1; padding: 16px; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 8px;
+  flex: 1;
+  padding: 16px 12px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .message {
-  display: flex; gap: 8px; max-width: 85%;
+  display: flex;
+  gap: 8px;
+  max-width: 85%;
+  animation: fadeIn 0.2s ease;
 }
-.message.me { align-self: flex-end; flex-direction: row-reverse; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.message.me {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.message-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 14px;
+  color: white;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.message-content {
+  flex: 1;
+  min-width: 0;
+}
 
 .message-bubble {
-  padding: 12px 14px; border-radius: 18px;
-  background: #1e1e1e; color: #fff;
+  padding: 10px 14px;
+  border-radius: 18px;
+  word-break: break-word;
+  font-size: 15px;
+  line-height: 1.4;
+  background: #1e1e1e;
+  color: #fff;
 }
+
 .message.me .message-bubble {
   background: linear-gradient(135deg, #667eea, #764ba2);
 }
 
 .message-meta {
-  display: flex; align-items: center; gap: 6px;
-  margin-top: 4px; font-size: 11px; color: #888;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #888;
+  padding: 0 4px;
 }
 
+.message.me .message-meta {
+  justify-content: flex-end;
+}
+
+.message-status {
+  color: #4CAF50;
+}
+
+/* Индикатор печати */
 .typing-indicator {
-  padding: 8px 16px; font-size: 13px; color: #888;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: #888;
+  font-style: italic;
+  min-height: 36px;
+  flex-shrink: 0;
 }
 
+/* Поле ввода - адаптивное под клавиатуру */
 .message-input-container {
-  padding: 12px 16px; background: #111; border-top: 1px solid #222;
-  display: flex; gap: 10px;
+  padding: 12px 16px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  background: #111;
+  border-top: 1px solid #222;
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-shrink: 0;
+  transition: padding-bottom 0.2s ease;
 }
 
 .message-input {
-  flex: 1; padding: 12px 16px; border-radius: 24px;
-  border: 1px solid #333; background: #0a0a0a; color: #fff;
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: 24px;
+  border: 1px solid #333;
+  background: #0a0a0a;
+  color: #fff;
   font-size: 16px;
+  line-height: 1.4;
+  max-height: 120px;
+  min-height: 48px;
+  outline: none;
+  resize: none;
+}
+
+.message-input:focus {
+  border-color: #667eea;
+}
+
+.message-input:disabled {
+  opacity: 0.5;
 }
 
 .send-button {
-  width: 48px; height: 48px; border-radius: 50%; border: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
   background: linear-gradient(135deg, #667eea, #764ba2);
-  color: white; font-size: 22px; cursor: pointer;
+  color: white;
+  font-size: 22px;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, opacity 0.2s;
 }
 
-.empty-state { text-align: center; color: #666; padding: 40px; }
-.empty-state-icon { font-size: 64px; margin-bottom: 20px; opacity: 0.5; }
+.send-button:active {
+  transform: scale(0.92);
+}
 
+.send-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Пустые состояния */
+.empty-state {
+  text-align: center;
+  color: #666;
+  padding: 40px 20px;
+}
+
+.empty-state-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-state h3 {
+  font-size: 18px;
+  margin-bottom: 8px;
+  color: #fff;
+}
+
+.empty-state p {
+  font-size: 14px;
+}
+
+/* Модальное окно профиля */
 .modal {
   display: none;
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: rgba(0,0,0,0.9);
   z-index: 1000;
   align-items: center;
   justify-content: center;
+  backdrop-filter: blur(8px);
 }
 
-.modal.show { display: flex; }
+.modal.show {
+  display: flex;
+}
 
 .modal-content {
   background: #1a1a1a;
-  border-radius: 20px;
+  border-radius: 24px;
   padding: 24px;
   width: 90%;
-  max-width: 400px;
+  max-width: 380px;
+  max-height: 80vh;
+  overflow-y: auto;
+  animation: slideUp 0.25s ease;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   margin-bottom: 24px;
+}
+
+.modal-header h2 {
+  font-size: 20px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .close-btn {
@@ -247,44 +627,108 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   color: #888;
   font-size: 28px;
   cursor: pointer;
+  padding: 4px;
+  line-height: 1;
 }
 
 .profile-avatar-large {
-  width: 120px; height: 120px; border-radius: 50%;
-  margin: 0 auto 16px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 48px; font-weight: bold; color: white;
-  cursor: pointer; position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  margin: 0 auto 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  font-weight: bold;
+  color: white;
+  text-transform: uppercase;
+  cursor: pointer;
+  position: relative;
+  background-size: cover;
+  background-position: center;
+}
+
+.avatar-edit-badge {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  border: 2px solid #1a1a1a;
 }
 
 .color-picker {
-  display: flex; gap: 8px; flex-wrap: wrap;
-  justify-content: center; margin: 16px 0;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 16px 0;
 }
 
 .color-option {
-  width: 36px; height: 36px; border-radius: 50%;
-  cursor: pointer; border: 3px solid transparent;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 3px solid transparent;
+  transition: transform 0.15s;
 }
 
-.color-option.selected { border-color: white; }
+.color-option:active {
+  transform: scale(0.9);
+}
+
+.color-option.selected {
+  border-color: white;
+}
 
 .profile-field {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
+}
+
+.profile-field label {
+  display: block;
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 6px;
 }
 
 .profile-field input {
-  width: 100%; padding: 14px; border-radius: 10px;
-  border: 1px solid #333; background: #0a0a0a; color: #fff;
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #333;
+  background: #0a0a0a;
+  color: #fff;
+  font-size: 16px;
+  outline: none;
 }
 
 .profile-actions {
-  display: flex; gap: 12px;
+  display: flex;
+  gap: 12px;
 }
 
 .btn {
-  flex: 1; padding: 14px; border-radius: 10px; border: none;
-  font-weight: bold; cursor: pointer;
+  flex: 1;
+  padding: 14px;
+  border-radius: 12px;
+  border: none;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.btn:active {
+  opacity: 0.8;
 }
 
 .btn-primary {
@@ -297,55 +741,46 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   color: white;
 }
 
-#avatarInput { display: none; }
+#avatarInput {
+  display: none;
+}
+
+/* Скроллбар */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 2px;
+}
 </style>
 </head>
 <body>
 
-<div class="modal" id="profileModal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h2>Профиль</h2>
-      <button class="close-btn" onclick="closeProfile()">&times;</button>
-    </div>
-    
-    <div class="profile-avatar-large" id="profileAvatarLarge" onclick="document.getElementById('avatarInput').click()">
-      <span id="profileAvatarText">U</span>
-      <img id="profileAvatarImg" style="display:none; width:100%; height:100%; border-radius:50%; object-fit:cover;">
-    </div>
-    
-    <div class="color-picker" id="colorPicker"></div>
-    
-    <div class="profile-field">
-      <input type="text" id="profileUsername" readonly>
-    </div>
-    
-    <div class="profile-actions">
-      <button class="btn btn-primary" onclick="saveProfile()">Сохранить</button>
-      <button class="btn btn-danger" onclick="logout()">Выйти</button>
-    </div>
+<!-- Страница входа -->
+<div id="auth">
+  <div class="auth-container">
+    <h1>💬 QWAS</h1>
+    <input id="u" type="text" placeholder="Имя пользователя" autocomplete="off" autocapitalize="none" autocorrect="off">
+    <input id="p" type="password" placeholder="Пароль" autocomplete="off">
+    <button class="btn-primary" onclick="login()">Войти</button>
+    <button class="btn-secondary" onclick="register()">Создать аккаунт</button>
   </div>
 </div>
 
-<input type="file" id="avatarInput" accept="image/*">
-
-<div id="auth">
-  <h1>💬 QWAS</h1>
-  <input id="u" placeholder="Имя пользователя" autocomplete="off">
-  <input id="p" type="password" placeholder="Пароль">
-  <button onclick="login()">Войти</button>
-  <button onclick="register()">Создать аккаунт</button>
-</div>
-
-<div id="chat" style="display:none">
+<!-- Основной чат -->
+<div id="chat">
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <h2>💬 QWAS</h2>
       <div class="user-info" onclick="openProfile()">
         <div class="user-avatar" id="myAvatar">U</div>
-        <div>
-          <div id="myUsername">username</div>
-          <div style="font-size:13px;color:#888;">Онлайн</div>
+        <div class="user-info-text">
+          <div class="username" id="myUsername">username</div>
+          <div class="status">Онлайн</div>
         </div>
       </div>
     </div>
@@ -353,9 +788,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <div class="search-container">
       <div class="search-box">
         <span>🔍</span>
-        <input type="text" id="searchInput" placeholder="Поиск @username..." autocomplete="off">
+        <input type="text" id="searchInput" placeholder="Поиск @username..." autocomplete="off" autocorrect="off">
       </div>
-      <div class="search-results" id="searchResults" style="display:none;"></div>
+      <div class="search-results" id="searchResults"></div>
     </div>
     
     <div class="section-title">Чаты</div>
@@ -368,7 +803,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
       <div class="user-avatar small" id="chatAvatar">U</div>
       <div class="chat-header-info">
         <h3 id="chatUsername">Выберите чат</h3>
-        <div id="chatStatus" style="font-size:13px;color:#888;"></div>
+        <div class="online-status" id="chatStatus"></div>
       </div>
     </div>
     
@@ -383,30 +818,85 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <div id="typingIndicator" class="typing-indicator"></div>
     
     <div class="message-input-container">
-      <input class="message-input" id="msg" placeholder="Сообщение..." disabled>
+      <input class="message-input" id="msg" placeholder="Сообщение..." disabled autocomplete="off" autocapitalize="sentences">
       <button class="send-button" id="sendBtn" onclick="send()" disabled>➤</button>
     </div>
   </div>
 </div>
 
+<!-- Модальное окно профиля -->
+<div class="modal" id="profileModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Профиль</h2>
+      <button class="close-btn" onclick="closeProfile()">&times;</button>
+    </div>
+    
+    <div class="profile-avatar-large" id="profileAvatarLarge" onclick="document.getElementById('avatarInput').click()">
+      <span id="profileAvatarText">U</span>
+      <img id="profileAvatarImg" style="display:none; width:100%; height:100%; border-radius:50%; object-fit:cover;">
+      <div class="avatar-edit-badge">📷</div>
+    </div>
+    
+    <div class="color-picker" id="colorPicker"></div>
+    
+    <div class="profile-field">
+      <label>Имя пользователя</label>
+      <input type="text" id="profileUsername" readonly>
+    </div>
+    
+    <div class="profile-actions">
+      <button class="btn btn-primary" onclick="saveProfile()">Сохранить</button>
+      <button class="btn btn-danger" onclick="logout()">Выйти</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="avatarInput" accept="image/*">
+
 <script>
-let socket, me = "", current = "", typingTimeout = null;
+let socket;
+let me = "";
+let current = "";
+let typingTimeout = null;
 let userToken = "";
 let currentUser = { avatar: "", avatarColor: "#667eea" };
 let selectedColor = "#667eea";
 let uploadedAvatar = null;
 let chatList = [];
 let allUsers = [];
+let isMobile = window.innerWidth <= 768;
 
-const colors = ["#667eea", "#764ba2", "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#1abc9c", "#e67e22"];
+const colors = ["#667eea", "#764ba2", "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#1abc9c", "#e67e22", "#9b59b6", "#e91e63"];
+
+// Определение мобильного устройства
+function checkMobile() {
+  isMobile = window.innerWidth <= 768;
+}
+
+window.addEventListener('resize', checkMobile);
+
+// Фикс для клавиатуры на iOS
+const msgInput = document.getElementById('msg');
+let originalHeight = window.innerHeight;
+
+window.addEventListener('resize', () => {
+  // Компенсация для iOS клавиатуры
+  if (isMobile && document.activeElement === msgInput) {
+    setTimeout(() => {
+      msgInput.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 100);
+  }
+});
 
 // Инициализация цветов
+const picker = document.getElementById('colorPicker');
 colors.forEach(color => {
   const div = document.createElement('div');
   div.className = 'color-option';
   div.style.background = color;
   div.onclick = () => selectColor(color);
-  document.getElementById('colorPicker').appendChild(div);
+  picker.appendChild(div);
 });
 
 // Поиск
@@ -421,24 +911,14 @@ searchInput.addEventListener('input', function() {
     return;
   }
   
-  // Фильтруем пользователей - проверяем что allUsers существует и это массив
-  if (!Array.isArray(allUsers)) {
-    console.error('allUsers не массив:', allUsers);
-    return;
-  }
+  if (!Array.isArray(allUsers)) return;
   
   const cleanQuery = query.replace(/^@/, '').toLowerCase();
   
   const filtered = allUsers.filter(u => {
-    // Проверяем что u существует и у него есть username
-    if (!u || !u.username) return false;
-    // Исключаем себя
-    if (u.username === me) return false;
-    // Проверяем совпадение
+    if (!u || !u.username || u.username === me) return false;
     return u.username.toLowerCase().includes(cleanQuery);
   });
-  
-  console.log('Поиск:', query, 'Найдено:', filtered.length);
   
   if (filtered.length === 0) {
     searchResults.innerHTML = '<div style="padding:16px;text-align:center;color:#666;">Ничего не найдено</div>';
@@ -507,12 +987,17 @@ function openProfile() {
     document.getElementById('profileAvatarImg').src = uploadedAvatar;
     document.getElementById('profileAvatarImg').style.display = 'block';
     document.getElementById('profileAvatarText').style.display = 'none';
+    document.getElementById('profileAvatarLarge').style.background = 'transparent';
   } else {
     document.getElementById('profileAvatarImg').style.display = 'none';
     document.getElementById('profileAvatarText').style.display = 'block';
     document.getElementById('profileAvatarText').textContent = getAvatarLetter(me);
     document.getElementById('profileAvatarLarge').style.background = selectedColor;
   }
+  
+  document.querySelectorAll('.color-option').forEach(el => {
+    el.classList.toggle('selected', el.style.background === selectedColor);
+  });
 }
 
 function closeProfile() {
@@ -541,7 +1026,8 @@ function updateMyAvatar() {
     el.style.backgroundSize = 'cover';
     el.textContent = '';
   } else {
-    el.style.background = currentUser.avatarColor;
+    el.style.backgroundImage = 'none';
+    el.style.background = currentUser.avatarColor || '#667eea';
     el.textContent = getAvatarLetter(me);
   }
 }
@@ -572,7 +1058,7 @@ function register() {
     body:JSON.stringify({username:u,password:p})
   })
   .then(r=>r.json())
-  .then(d=>alert(d.ok?'Успешно!':'Ошибка: '+d.error));
+  .then(d=>alert(d.ok?'Успешно!':'Ошибка: '+(d.error||'')));
 }
 
 async function login() {
@@ -588,14 +1074,14 @@ async function login() {
   });
   const d = await res.json();
   
-  if(!d.ok) return alert('Ошибка: '+d.error);
+  if(!d.ok) return alert('Ошибка: '+(d.error||'Неверный логин или пароль'));
   
   me = u;
   userToken = d.token;
   currentUser = d.user;
   
-  document.getElementById('auth').style.display='none';
-  document.getElementById('chat').style.display='flex';
+  document.getElementById('auth').style.display = 'none';
+  document.getElementById('chat').style.display = isMobile ? 'block' : 'flex';
   document.getElementById('myUsername').textContent = '@' + me;
   updateMyAvatar();
   
@@ -605,18 +1091,9 @@ async function login() {
       headers: { 'Authorization': `Bearer ${userToken}` }
     });
     const usersData = await usersRes.json();
-    console.log('Ответ от /users/all:', usersData);
-    
-    if (usersData.ok && Array.isArray(usersData.users)) {
-      allUsers = usersData.users;
-      console.log('📋 Загружено пользователей:', allUsers.length);
-    } else {
-      console.error('Неверный формат данных от /users/all:', usersData);
-      allUsers = [];
-    }
+    allUsers = usersData.ok ? usersData.users : [];
   } catch (err) {
     console.error('Ошибка загрузки пользователей:', err);
-    allUsers = [];
   }
   
   // Загружаем чаты
@@ -638,16 +1115,16 @@ function renderChatList() {
   const container = document.getElementById("users");
   
   if (chatList.length === 0) {
-    container.innerHTML = '<div class="empty-state"><div>💭</div><p>Нет чатов</p></div>';
+    container.innerHTML = '<div class="empty-state"><div>💭</div><p style="margin-top:8px;">Нет чатов</p></div>';
     return;
   }
   
   container.innerHTML = chatList.sort((a,b) => a.username.localeCompare(b.username)).map(u => `
     <div class="user ${current === u.username ? 'selected' : ''}" onclick="selectUser('${u.username}')">
       <div class="user-avatar small" style="background:${u.avatarColor || '#667eea'};">
-        ${getAvatarLetter(u.username)}
+        ${u.avatar ? `<img src="${u.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : getAvatarLetter(u.username)}
       </div>
-      <div style="flex:1;">
+      <div class="user-content">
         <div class="user-name">@${u.username}</div>
         <div class="user-status">${u.online?'Онлайн':'Офлайн'}</div>
       </div>
@@ -709,15 +1186,26 @@ function selectUser(username) {
   const user = chatList.find(u => u.username === username) || allUsers.find(u => u.username === username) || {};
   
   document.getElementById('chatHeader').style.display = 'flex';
-  document.getElementById('chatAvatar').style.background = user.avatarColor || '#667eea';
-  document.getElementById('chatAvatar').textContent = getAvatarLetter(username);
+  
+  const avatarEl = document.getElementById('chatAvatar');
+  avatarEl.style.background = user.avatarColor || '#667eea';
+  if (user.avatar) {
+    avatarEl.style.backgroundImage = `url(${user.avatar})`;
+    avatarEl.style.backgroundSize = 'cover';
+    avatarEl.textContent = '';
+  } else {
+    avatarEl.style.backgroundImage = 'none';
+    avatarEl.textContent = getAvatarLetter(username);
+  }
+  
   document.getElementById('chatUsername').textContent = '@' + username;
   document.getElementById('chatStatus').textContent = user.online ? 'Онлайн' : 'Офлайн';
   document.getElementById('msg').disabled = false;
   document.getElementById('sendBtn').disabled = false;
   document.getElementById('messages').innerHTML = '';
+  document.getElementById('typingIndicator').textContent = '';
   
-  if(window.innerWidth <= 768) {
+  if (isMobile) {
     document.getElementById('sidebar').classList.add('hidden');
   }
   
@@ -736,11 +1224,11 @@ function addMessageToChat(msg) {
   div.id = `msg-${msg._id}`;
   
   div.innerHTML = `
-    <div style="width:32px;height:32px;border-radius:50%;background:${isMe ? currentUser.avatarColor : '#667eea'};display:flex;align-items:center;justify-content:center;font-weight:bold;color:#fff;">
+    <div class="message-avatar" style="background:${isMe ? currentUser.avatarColor : '#667eea'};">
       ${getAvatarLetter(msg.from)}
     </div>
-    <div style="flex:1;">
-      <div class="message-bubble">${msg.message}</div>
+    <div class="message-content">
+      <div class="message-bubble">${escapeHtml(msg.message)}</div>
       <div class="message-meta">
         <span>${new Date(msg.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
         ${isMe ? `<span class="message-status">${msg.status==='read'?'✓✓':'✓'}</span>` : ''}
@@ -752,6 +1240,12 @@ function addMessageToChat(msg) {
   c.scrollTop = c.scrollHeight;
 }
 
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
 function send() {
   const input = document.getElementById("msg");
   const text = input.value.trim();
@@ -759,31 +1253,53 @@ function send() {
   
   socket.emit("send_message", {to: current, message: text});
   input.value = "";
+  input.focus();
 }
 
 function logout() {
   if(socket) socket.disconnect();
-  location.reload();
+  document.getElementById('auth').style.display = 'flex';
+  document.getElementById('chat').style.display = 'none';
+  document.getElementById('u').value = '';
+  document.getElementById('p').value = '';
+  me = "";
+  current = "";
+  chatList = [];
+  allUsers = [];
 }
 
 function showSidebar() {
   document.getElementById('sidebar').classList.remove('hidden');
 }
 
-// Отправка по Enter
+// Обработчики клавиатуры
 document.getElementById("msg").addEventListener("keypress", e => {
-  if(e.key === "Enter") { e.preventDefault(); send(); }
+  if(e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    send();
+  }
 });
 
-// Печать
-let typingTimer;
 document.getElementById("msg").addEventListener("input", () => {
   if(!current) return;
   socket.emit("typing", current);
-  clearTimeout(typingTimer);
-  typingTimer = setTimeout(() => socket.emit("stop_typing", current), 1000);
+  clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(() => socket.emit("stop_typing", current), 1000);
 });
 
+// Предотвращаем зум
+document.addEventListener('touchmove', (e) => {
+  if (e.target.closest('.messages-container') || e.target.closest('.users-list')) {
+    return;
+  }
+}, { passive: false });
+
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+document.addEventListener('dblclick', (e) => e.preventDefault());
+
+// Фикс для iOS safe area
+document.body.style.setProperty('--sat', 'env(safe-area-inset-top)');
+document.body.style.setProperty('--sab', 'env(safe-area-inset-bottom)');
 </script>
 </body>
 </html>
