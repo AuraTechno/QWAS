@@ -27,24 +27,24 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", mongodb: statusMap[mongoStatus] || "unknown", online_users: online.size });
 });
 
-console.log("🔄 Connecting to MongoDB...");
+console.log("🔄 Подключение к MongoDB...");
 mongoose.set('strictQuery', false);
 mongoose.connect(config.MONGO_URL)
   .then(() => {
-    console.log("✅ MongoDB connected successfully!");
+    console.log("✅ MongoDB подключена!");
     User = require("./models/User");
     Message = require("./models/Message");
-    console.log("✅ Models loaded");
+    console.log("✅ Модели загружены");
   })
   .catch(err => {
-    console.error("❌ MongoDB connection error:", err.message);
+    console.error("❌ Ошибка подключения к MongoDB:", err.message);
   });
 
 function generateSessionToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
-/* REGISTER */
+/* РЕГИСТРАЦИЯ */
 app.post("/register", async (req, res) => {
   try {
     if (!User) return res.status(503).json({ ok: false, error: "База данных не готова" });
@@ -67,17 +67,17 @@ app.post("/register", async (req, res) => {
       username, 
       password: hash, 
       avatar: "", 
-      avatarColor: "#ffffff" 
+      avatarColor: "#e8e8e8" 
     });
 
     res.json({ ok: true, message: "Регистрация успешна!" });
   } catch (err) {
-    console.error("Register error:", err);
+    console.error("Ошибка регистрации:", err);
     res.json({ ok: false, error: "Ошибка сервера" });
   }
 });
 
-/* LOGIN */
+/* ВХОД */
 app.post("/login", async (req, res) => {
   try {
     if (!User) return res.status(503).json({ ok: false, error: "База данных не готова" });
@@ -102,17 +102,17 @@ app.post("/login", async (req, res) => {
       user: { 
         username: user.username, 
         avatar: user.avatar || "", 
-        avatarColor: user.avatarColor || "#ffffff" 
+        avatarColor: user.avatarColor || "#e8e8e8" 
       },
       message: "Вход выполнен успешно!"
     });
   } catch (err) {
-    console.error("Login error:", err);
+    console.error("Ошибка входа:", err);
     res.json({ ok: false, error: "Ошибка сервера" });
   }
 });
 
-/* AUTO LOGIN */
+/* АВТО-ВХОД */
 app.post("/auto-login", async (req, res) => {
   try {
     const { token } = req.body;
@@ -131,7 +131,7 @@ app.post("/auto-login", async (req, res) => {
       user: { 
         username: user.username, 
         avatar: user.avatar || "", 
-        avatarColor: user.avatarColor || "#ffffff" 
+        avatarColor: user.avatarColor || "#e8e8e8" 
       } 
     });
   } catch (err) {
@@ -139,7 +139,7 @@ app.post("/auto-login", async (req, res) => {
   }
 });
 
-/* LOGOUT */
+/* ВЫХОД */
 app.post("/logout", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -153,7 +153,7 @@ app.post("/logout", async (req, res) => {
   }
 });
 
-/* GET ALL USERS */
+/* ВСЕ ПОЛЬЗОВАТЕЛИ */
 app.get("/users/all", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -171,7 +171,7 @@ app.get("/users/all", async (req, res) => {
   }
 });
 
-/* SEARCH USERS */
+/* ПОИСК ПОЛЬЗОВАТЕЛЕЙ */
 app.get("/users/search", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -190,7 +190,7 @@ app.get("/users/search", async (req, res) => {
     q = q.replace(/^@/, '');
     
     const users = await User.find({
-      username: { $regex: '^' + q, $options: 'i' },
+      username: { $regex: q, $options: 'i' },
       username: { $ne: data.username }
     }).select('username avatar avatarColor').limit(10);
     
@@ -200,7 +200,7 @@ app.get("/users/search", async (req, res) => {
   }
 });
 
-/* GET CHAT LIST */
+/* СПИСОК ЧАТОВ */
 app.get("/chats", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -230,7 +230,7 @@ app.get("/chats", async (req, res) => {
       }
     ]);
     
-    const contactUsernames = messages.length > 0 ? messages[0].contacts : [];
+    const contactUsernames = messages.length > 0 ? messages[0].contacts.filter(u => u !== "favorites") : [];
     
     const contacts = await User.find({
       username: { $in: contactUsernames }
@@ -249,7 +249,7 @@ app.get("/chats", async (req, res) => {
   }
 });
 
-/* GET PROFILE */
+/* ПРОФИЛЬ */
 app.get("/profile", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -265,7 +265,7 @@ app.get("/profile", async (req, res) => {
       user: { 
         username: user.username, 
         avatar: user.avatar || "", 
-        avatarColor: user.avatarColor || "#ffffff" 
+        avatarColor: user.avatarColor || "#e8e8e8" 
       } 
     });
   } catch (err) {
@@ -273,7 +273,7 @@ app.get("/profile", async (req, res) => {
   }
 });
 
-/* UPDATE PROFILE */
+/* ОБНОВЛЕНИЕ ПРОФИЛЯ */
 app.post("/profile/update", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -310,7 +310,7 @@ io.use((socket, next) => {
 });
 
 io.on("connection", async (socket) => {
-  console.log(`✅ User connected: ${socket.username}`);
+  console.log(`✅ Пользователь подключился: ${socket.username}`);
 
   online.set(socket.username, socket.id);
   
@@ -325,7 +325,7 @@ io.on("connection", async (socket) => {
     } catch (err) {}
   }
 
-  /* SEND MESSAGE */
+  /* ОТПРАВКА СООБЩЕНИЯ */
   socket.on("send_message", async (data) => {
     try {
       if (!Message) return;
@@ -340,7 +340,6 @@ io.on("connection", async (socket) => {
       const full = await Message.findById(msg._id);
       
       if (data.to === "favorites") {
-        // Для избранного просто отправляем себе
         socket.emit("new_message", full);
       } else {
         send(data.to, "new_message", full);
@@ -352,11 +351,11 @@ io.on("connection", async (socket) => {
         emitChatListForUser(data.to);
       }
     } catch (err) {
-      console.error("Send message error:", err);
+      console.error("Ошибка отправки:", err);
     }
   });
 
-  /* EDIT MESSAGE */
+  /* РЕДАКТИРОВАНИЕ */
   socket.on("edit_message", async (data) => {
     try {
       const msg = await Message.findById(data.messageId);
@@ -369,11 +368,11 @@ io.on("connection", async (socket) => {
       send(msg.to, "message_updated", msg);
       socket.emit("message_updated", msg);
     } catch (err) {
-      console.error("Edit error:", err);
+      console.error("Ошибка редактирования:", err);
     }
   });
 
-  /* DELETE MESSAGE */
+  /* УДАЛЕНИЕ */
   socket.on("delete_message", async (data) => {
     try {
       const msg = await Message.findById(data.messageId);
@@ -387,12 +386,12 @@ io.on("connection", async (socket) => {
       }
       socket.emit("message_deleted", { messageId: data.messageId });
     } catch (err) {
-      console.error("Delete error:", err);
+      console.error("Ошибка удаления:", err);
       socket.emit("error", { message: "Ошибка удаления" });
     }
   });
 
-  /* GET HISTORY */
+  /* ИСТОРИЯ */
   socket.on("get_history", async (user) => {
     try {
       if (!Message) { socket.emit("chat_history", []); return; }
@@ -418,7 +417,7 @@ io.on("connection", async (socket) => {
     }
   });
 
-  /* READ MESSAGES */
+  /* ПРОЧИТАНО */
   socket.on("read", async (data) => {
     try {
       if (!Message) return;
@@ -438,7 +437,7 @@ io.on("connection", async (socket) => {
         send(data.from, "read_update", { messages: msgs.map(m => m._id.toString()) });
       }
     } catch (err) {
-      console.error("Read error:", err);
+      console.error("Ошибка отметки прочитано:", err);
     }
   });
 
@@ -447,7 +446,7 @@ io.on("connection", async (socket) => {
   socket.on("profile_updated", () => emitChatList());
 
   socket.on("disconnect", () => {
-    console.log(`❌ User disconnected: ${socket.username}`);
+    console.log(`❌ Пользователь отключился: ${socket.username}`);
     online.delete(socket.username);
     if (mongoose.connection.readyState === 1 && User) emitChatList();
   });
@@ -491,10 +490,10 @@ async function emitChatListForUser(username) {
       }
     ]);
     
-    const contactUsernames = messages.length > 0 ? messages[0].contacts : [];
+    const contactUsernames = messages.length > 0 ? messages[0].contacts.filter(u => u !== "favorites") : [];
     
     const contacts = await User.find({
-      username: { $in: contactUsernames.filter(u => u !== "favorites") }
+      username: { $in: contactUsernames }
     }).select('username avatar avatarColor');
     
     const chatList = contacts.map(c => ({
@@ -515,5 +514,5 @@ function send(user, event, data) {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`🚀 Server running on http://127.0.0.1:${PORT}`);
+  console.log(`🚀 Сервер запущен на http://127.0.0.1:${PORT}`);
 });
