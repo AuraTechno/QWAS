@@ -28,7 +28,11 @@ app.get("/health", (req, res) => {
 });
 
 console.log("🔄 Подключение к MongoDB...");
+console.log("📝 URL:", config.MONGO_URL.replace(/:[^:@]+@/, ':****@'));
+
 mongoose.set('strictQuery', false);
+
+// ПРАВИЛЬНОЕ ПОДКЛЮЧЕНИЕ - БЕЗ СТАРЫХ ОПЦИЙ
 mongoose.connect(config.MONGO_URL)
   .then(() => {
     console.log("✅ MongoDB подключена!");
@@ -39,6 +43,15 @@ mongoose.connect(config.MONGO_URL)
   .catch(err => {
     console.error("❌ Ошибка подключения к MongoDB:", err.message);
   });
+
+// Отслеживаем события подключения
+mongoose.connection.on('error', err => {
+  console.error('❌ MongoDB error:', err.message);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('⚠️ MongoDB отключена');
+});
 
 function generateSessionToken() {
   return crypto.randomBytes(32).toString('hex');
@@ -289,15 +302,13 @@ io.on("connection", async (socket) => {
 
       const full = msg.toObject();
       
-      // Отправляем получателю
-      if (data.to !== "favorites") {
+      if (data.to === "favorites") {
+        socket.emit("new_message", full);
+      } else {
         send(data.to, "new_message", full);
+        socket.emit("new_message", full);
       }
       
-      // Отправляем отправителю (для отображения в его интерфейсе)
-      socket.emit("new_message", full);
-      
-      // Обновляем список чатов
       emitChatListForUser(socket.username);
       if (data.to !== "favorites") {
         emitChatListForUser(data.to);
@@ -376,7 +387,6 @@ io.on("connection", async (socket) => {
           ]
         }).sort({ createdAt: 1 }).limit(50).lean();
         
-        // Отмечаем входящие сообщения как прочитанные
         await Message.updateMany(
           { from: user, to: socket.username, status: { $ne: "read" } },
           { $set: { status: "read" } }
