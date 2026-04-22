@@ -641,7 +641,6 @@ body {
 
 <div class="notification-container" id="notificationContainer"></div>
 
-<!-- Авторизация -->
 <div id="auth">
   <div class="auth-container">
     <h1>QWAS</h1>
@@ -652,7 +651,6 @@ body {
   </div>
 </div>
 
-<!-- Регистрация -->
 <div class="modal" id="registerModal">
   <div class="modal-content">
     <div class="modal-header">
@@ -675,7 +673,6 @@ body {
   </div>
 </div>
 
-<!-- Чат -->
 <div id="chat">
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
@@ -728,14 +725,12 @@ body {
   </div>
 </div>
 
-<!-- Меню -->
 <div class="message-menu" id="messageMenu">
   <div class="message-menu-item" onclick="forwardMessage()">↗ Переслать</div>
   <div class="message-menu-item" onclick="editMessage()">✎ Редактировать</div>
   <div class="message-menu-item danger" onclick="deleteMessage()">🗑 Удалить</div>
 </div>
 
-<!-- Пересылка -->
 <div class="modal" id="forwardModal">
   <div class="modal-content">
     <div class="modal-header">
@@ -746,7 +741,6 @@ body {
   </div>
 </div>
 
-<!-- Профиль -->
 <div class="modal" id="profileModal">
   <div class="modal-content">
     <div class="modal-header">
@@ -857,7 +851,7 @@ function openForwardModal() {
   const available = [{ username: FAVORITE_CHAT_ID }, ...chatList.filter(c => c.username !== current)];
   list.innerHTML = available.map(c => `
     <div class="forward-chat-item" onclick="sendForward('${c.username}')">
-      <div class="user-avatar small" style="background: ${c.avatarColor || '#6366f1'};">
+      <div class="user-avatar small" style="background: ${c.avatar ? 'transparent' : (c.avatarColor || '#6366f1')};">
         ${c.avatar ? `<img src="${c.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : (c.username === FAVORITE_CHAT_ID ? '⭐' : getAvatarLetter(c.username))}
       </div>
       <div>${c.username === FAVORITE_CHAT_ID ? 'Избранное' : '@' + c.username}</div>
@@ -1029,7 +1023,6 @@ function renderChatList() {
   }).join('');
 }
 
-// Поиск
 const searchInput = document.getElementById('searchInput');
 const searchResults = document.getElementById('searchResults');
 
@@ -1038,12 +1031,15 @@ searchInput.addEventListener('input', function() {
   if (!q) { searchResults.style.display = 'none'; return; }
   
   let results = [];
-  if ('избранное'.includes(q) || 'favorites'.includes(q) || q.includes('изб')) {
+  if ('избранное'.includes(q) || 'favorites'.includes(q) || q.includes('изб') || '⭐'.includes(q)) {
     results.push({ username: FAVORITE_CHAT_ID, isFavorite: true });
   }
   
   const chatMatches = chatList.filter(c => c.username.toLowerCase().includes(q));
-  const userMatches = allUsers.filter(u => u.username.toLowerCase().includes(q) && !chatList.find(c => c.username === u.username));
+  const userMatches = allUsers.filter(u => 
+    u.username.toLowerCase().includes(q) && 
+    !chatList.find(c => c.username === u.username)
+  );
   
   results = [...results, ...chatMatches, ...userMatches].slice(0, 8);
   
@@ -1082,8 +1078,6 @@ function connectSocket(t) {
   socket.on("new_message", msg => {
     if (msg.from === current || msg.to === current || current === FAVORITE_CHAT_ID) {
       addMessageToChat(msg);
-      
-      // Если сообщение от текущего собеседника - сразу отмечаем как прочитанное
       if (msg.from === current) {
         socket.emit("mark_as_read", { from: msg.from });
       }
@@ -1101,7 +1095,6 @@ function connectSocket(t) {
   socket.on("message_deleted", d => document.getElementById(`msg-${d.messageId}`)?.remove());
   
   socket.on("messages_read", data => {
-    // Обновляем статус прочитанных сообщений в реальном времени
     if (data.chatWith === current || data.by === current) {
       document.querySelectorAll('.message.me').forEach(el => {
         const statusEl = el.querySelector('.message-status');
@@ -1116,9 +1109,7 @@ function connectSocket(t) {
   socket.on("chat_history", msgs => {
     const c = document.getElementById("messages");
     c.innerHTML = msgs.length ? '' : '<div class="empty-state"><div class="empty-state-icon">💬</div><p>Нет сообщений</p></div>';
-    // Сообщения уже в правильном порядке (старые сверху, новые снизу)
     msgs.forEach(m => addMessageToChat(m, true));
-    // Прокручиваем вниз
     c.scrollTop = c.scrollHeight;
   });
   
@@ -1136,10 +1127,18 @@ function selectUser(u) {
   document.getElementById('chatHeader').style.display = 'flex';
   
   const av = document.getElementById('chatAvatar');
+  av.innerHTML = '';
+  av.style.background = userData.avatar ? 'transparent' : (userData.avatarColor || '#6366f1');
+  
   if (userData.avatar) {
-    av.innerHTML = `<img src="${userData.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+    const img = document.createElement('img');
+    img.src = userData.avatar;
+    img.style.width = '100%';
+    img.style.height = '100%';
+    img.style.borderRadius = '50%';
+    img.style.objectFit = 'cover';
+    av.appendChild(img);
   } else {
-    av.style.background = userData.avatarColor || '#6366f1';
     av.textContent = isFav ? '⭐' : getAvatarLetter(u);
   }
   
@@ -1170,9 +1169,14 @@ function addMessageToChat(msg, skipScroll = false) {
   div.addEventListener('touchstart', e => { timer = setTimeout(() => showMessageMenu(msg, e), 500); });
   div.addEventListener('touchend', () => clearTimeout(timer));
   
+  const avatarColor = isMe ? currentUser.avatarColor : '#6366f1';
+  const avatarContent = isMe && currentUser.avatar 
+    ? `<img src="${currentUser.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` 
+    : getAvatarLetter(msg.from);
+  
   div.innerHTML = `
-    <div class="message-avatar" style="background: ${isMe && currentUser.avatar ? 'transparent' : (isMe ? currentUser.avatarColor : '#6366f1')};">
-      ${isMe && currentUser.avatar ? `<img src="${currentUser.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : getAvatarLetter(msg.from)}
+    <div class="message-avatar" style="background: ${(isMe && currentUser.avatar) ? 'transparent' : avatarColor};">
+      ${avatarContent}
     </div>
     <div style="flex:1;">
       ${msg.isForwarded && msg.forwardedFrom ? `<div class="message-forwarded">↪ Переслано от @${msg.forwardedFrom}</div>` : ''}

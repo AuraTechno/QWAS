@@ -174,6 +174,35 @@ app.get("/users/all", async (req, res) => {
   }
 });
 
+/* ПОИСК ПОЛЬЗОВАТЕЛЕЙ */
+app.get("/users/search", async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ ok: false });
+    
+    const data = jwt.verify(token, config.JWT_SECRET);
+    let { q } = req.query;
+    
+    if (!q) {
+      const allUsers = await User.find({
+        username: { $ne: data.username }
+      }).select('username avatar avatarColor').limit(20).lean();
+      return res.json({ ok: true, users: allUsers });
+    }
+    
+    q = q.replace(/^@/, '');
+    
+    const users = await User.find({
+      username: { $regex: q, $options: 'i' },
+      username: { $ne: data.username }
+    }).select('username avatar avatarColor').limit(10).lean();
+    
+    res.json({ ok: true, users });
+  } catch (err) {
+    res.json({ ok: false, users: [] });
+  }
+});
+
 /* СПИСОК ЧАТОВ */
 app.get("/chats", async (req, res) => {
   try {
@@ -334,19 +363,17 @@ io.on("connection", async (socket) => {
     } catch (err) {}
   });
 
-  /* ОТМЕТКА О ПРОЧТЕНИИ В РЕАЛЬНОМ ВРЕМЕНИ */
+  /* ОТМЕТКА О ПРОЧТЕНИИ */
   socket.on("mark_as_read", async (data) => {
     try {
       if (!Message) return;
       
-      // Отмечаем сообщения как прочитанные
       const result = await Message.updateMany(
         { from: data.from, to: socket.username, status: { $ne: "read" } },
         { $set: { status: "read" } }
       );
       
       if (result.modifiedCount > 0) {
-        // Отправляем уведомление отправителю
         send(data.from, "messages_read", { 
           by: socket.username,
           chatWith: data.from 
@@ -374,13 +401,11 @@ io.on("connection", async (socket) => {
           ]
         }).sort({ createdAt: 1 }).limit(50).lean();
         
-        // Отмечаем входящие сообщения как прочитанные при открытии чата
         await Message.updateMany(
           { from: user, to: socket.username, status: { $ne: "read" } },
           { $set: { status: "read" } }
         );
         
-        // Уведомляем отправителя
         send(user, "messages_read", { 
           by: socket.username,
           chatWith: user 
