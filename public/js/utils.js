@@ -14,10 +14,17 @@
     },
     
     formatTime: function(date) {
-      return new Date(date).toLocaleTimeString([], { 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      });
+      if (!date) return '--:--';
+      try {
+        const d = new Date(date);
+        if (isNaN(d.getTime())) return '--:--';
+        return d.toLocaleTimeString([], { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
+      } catch (e) {
+        return '--:--';
+      }
     },
     
     validateUsername: function(username) {

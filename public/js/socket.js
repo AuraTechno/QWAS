@@ -11,12 +11,24 @@
       });
       
       QWAS.State.socket.on('new_message', (msg) => {
-        if (msg.from === QWAS.State.current || msg.to === QWAS.State.current || 
-            QWAS.State.current === QWAS.Config.FAVORITE_CHAT_ID) {
+        // Проверяем, относится ли сообщение к текущему чату
+        const isCurrentChat = msg.from === QWAS.State.current || msg.to === QWAS.State.current;
+        const isFavoriteChat = QWAS.State.current === QWAS.Config.FAVORITE_CHAT_ID && msg.to === QWAS.Config.FAVORITE_CHAT_ID;
+        
+        // Если сообщение для избранного и мы в избранном - показываем
+        // Или если сообщение относится к текущему чату - показываем
+        if (isCurrentChat || isFavoriteChat) {
           QWAS.Messages.add(msg);
-          if (msg.from === QWAS.State.current) {
+          
+          // Отмечаем как прочитанное если сообщение от собеседника
+          if (msg.from === QWAS.State.current && msg.from !== QWAS.State.me) {
             QWAS.State.socket.emit('mark_as_read', { from: msg.from });
           }
+        }
+        
+        // Обновляем список чатов
+        if (msg.from !== QWAS.State.me || msg.to !== QWAS.State.me) {
+          QWAS.Chat.loadChatList();
         }
       });
       

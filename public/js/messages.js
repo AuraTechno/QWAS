@@ -26,6 +26,7 @@
         timer = setTimeout(() => this.showMenu(msg, e), 500);
       });
       div.addEventListener('touchend', () => clearTimeout(timer));
+      div.addEventListener('touchmove', () => clearTimeout(timer));
       
       const avatarColor = isMe ? QWAS.State.currentUser.avatarColor : '#6366f1';
       const avatarContent = isMe && QWAS.State.currentUser.avatar

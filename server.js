@@ -289,15 +289,19 @@ io.on("connection", async (socket) => {
 
       const full = msg.toObject();
       
-      if (data.to === "favorites") {
-        socket.emit("new_message", full);
-      } else {
+      // Отправляем получателю
+      if (data.to !== "favorites") {
         send(data.to, "new_message", full);
-        socket.emit("new_message", full);
       }
       
+      // Отправляем отправителю (для отображения в его интерфейсе)
+      socket.emit("new_message", full);
+      
+      // Обновляем список чатов
       emitChatListForUser(socket.username);
-      if (data.to !== "favorites") emitChatListForUser(data.to);
+      if (data.to !== "favorites") {
+        emitChatListForUser(data.to);
+      }
     } catch (err) {
       console.error("Ошибка отправки:", err);
     }
@@ -372,6 +376,7 @@ io.on("connection", async (socket) => {
           ]
         }).sort({ createdAt: 1 }).limit(50).lean();
         
+        // Отмечаем входящие сообщения как прочитанные
         await Message.updateMany(
           { from: user, to: socket.username, status: { $ne: "read" } },
           { $set: { status: "read" } }
@@ -389,8 +394,14 @@ io.on("connection", async (socket) => {
     }
   });
 
-  socket.on("typing", (to) => send(to, "typing", { from: socket.username }));
-  socket.on("stop_typing", (to) => send(to, "stop_typing", { from: socket.username }));
+  socket.on("typing", (to) => {
+    if (to !== "favorites") send(to, "typing", { from: socket.username });
+  });
+  
+  socket.on("stop_typing", (to) => {
+    if (to !== "favorites") send(to, "stop_typing", { from: socket.username });
+  });
+  
   socket.on("profile_updated", () => emitChatList());
 
   socket.on("disconnect", () => {
