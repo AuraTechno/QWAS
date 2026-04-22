@@ -6,8 +6,21 @@
       QWAS.State.socket = io({ auth: { token } });
       
       QWAS.State.socket.on('chat_list', (chats) => {
-        QWAS.State.chatList = chats;
-        QWAS.Chat.renderList();
+        console.log('📋 Получен список чатов:', chats?.length || 0);
+        QWAS.State.chatList = chats || [];
+        
+        // Проверяем что Chat модуль загружен
+        if (QWAS.Chat && typeof QWAS.Chat.renderList === 'function') {
+          QWAS.Chat.renderList();
+        } else {
+          console.warn('⚠️ QWAS.Chat.renderList еще не доступен');
+          // Попробуем позже
+          setTimeout(() => {
+            if (QWAS.Chat && QWAS.Chat.renderList) {
+              QWAS.Chat.renderList();
+            }
+          }, 100);
+        }
       });
       
       QWAS.State.socket.on('new_message', (msg) => {
@@ -16,26 +29,33 @@
         const isFavoriteChat = QWAS.State.current === QWAS.Config.FAVORITE_CHAT_ID && msg.to === QWAS.Config.FAVORITE_CHAT_ID;
         
         if (isCurrentChat || isFavoriteChat) {
-          QWAS.Messages.add(msg);
+          if (QWAS.Messages && QWAS.Messages.add) {
+            QWAS.Messages.add(msg);
+          }
           
           if (msg.from === QWAS.State.current && msg.from !== QWAS.State.me) {
             QWAS.State.socket.emit('mark_as_read', { from: msg.from });
           }
         }
         
-        QWAS.Chat.loadChatList();
+        // Обновляем список чатов
+        if (QWAS.Chat && QWAS.Chat.loadChatList) {
+          QWAS.Chat.loadChatList();
+        }
       });
       
       QWAS.State.socket.on('message_updated', (msg) => {
         const el = document.getElementById(`msg-${msg._id}`);
         if (el) {
-          el.querySelector('.message-bubble').textContent = msg.message;
+          const bubble = el.querySelector('.message-bubble');
+          if (bubble) bubble.textContent = msg.message;
           el.classList.add('edited');
         }
       });
       
       QWAS.State.socket.on('message_deleted', (data) => {
-        document.getElementById(`msg-${data.messageId}`)?.remove();
+        const el = document.getElementById(`msg-${data.messageId}`);
+        if (el) el.remove();
       });
       
       QWAS.State.socket.on('messages_read', (data) => {
@@ -64,11 +84,17 @@
           // Первая страница - очищаем
           container.innerHTML = '';
           
-          if (messages.length === 0) {
+          if (!messages || messages.length === 0) {
             container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">💬</div><p>Нет сообщений</p></div>';
           } else {
-            messages.forEach(m => QWAS.Messages.add(m, true));
-            QWAS.Messages.ensureSpacer();
+            messages.forEach(m => {
+              if (QWAS.Messages && QWAS.Messages.add) {
+                QWAS.Messages.add(m, true);
+              }
+            });
+            if (QWAS.Messages && QWAS.Messages.ensureSpacer) {
+              QWAS.Messages.ensureSpacer();
+            }
           }
           
           setTimeout(() => {
@@ -78,9 +104,12 @@
           // Подгружаем старые сообщения
           const oldScrollHeight = container.scrollHeight;
           
-          // Добавляем в начало (в обратном порядке)
-          for (let i = messages.length - 1; i >= 0; i--) {
-            QWAS.Messages.prepend(messages[i]);
+          if (messages && messages.length > 0) {
+            for (let i = messages.length - 1; i >= 0; i--) {
+              if (QWAS.Messages && QWAS.Messages.prepend) {
+                QWAS.Messages.prepend(messages[i]);
+              }
+            }
           }
           
           setTimeout(() => {
@@ -105,7 +134,20 @@
       });
       
       QWAS.State.socket.on('all_users', (users) => {
-        QWAS.State.allUsers = users;
+        console.log('👥 Получены пользователи:', users?.length || 0);
+        QWAS.State.allUsers = users || [];
+      });
+      
+      QWAS.State.socket.on('connect', () => {
+        console.log('✅ Socket подключен');
+      });
+      
+      QWAS.State.socket.on('disconnect', () => {
+        console.log('❌ Socket отключен');
+      });
+      
+      QWAS.State.socket.on('connect_error', (err) => {
+        console.error('❌ Ошибка подключения:', err.message);
       });
     }
   };
