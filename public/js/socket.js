@@ -9,12 +9,9 @@
         console.log('📋 Получен список чатов:', chats?.length || 0);
         QWAS.State.chatList = chats || [];
         
-        // Проверяем что Chat модуль загружен
         if (QWAS.Chat && typeof QWAS.Chat.renderList === 'function') {
           QWAS.Chat.renderList();
         } else {
-          console.warn('⚠️ QWAS.Chat.renderList еще не доступен');
-          // Попробуем позже
           setTimeout(() => {
             if (QWAS.Chat && QWAS.Chat.renderList) {
               QWAS.Chat.renderList();
@@ -38,7 +35,6 @@
           }
         }
         
-        // Обновляем список чатов
         if (QWAS.Chat && QWAS.Chat.loadChatList) {
           QWAS.Chat.loadChatList();
         }
@@ -81,7 +77,6 @@
         QWAS.State.currentPage = page || 1;
         
         if (page === 1) {
-          // Первая страница - очищаем
           container.innerHTML = '';
           
           if (!messages || messages.length === 0) {
@@ -101,7 +96,6 @@
             container.scrollTop = container.scrollHeight;
           }, 50);
         } else {
-          // Подгружаем старые сообщения
           const oldScrollHeight = container.scrollHeight;
           
           if (messages && messages.length > 0) {

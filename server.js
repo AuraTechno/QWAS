@@ -21,6 +21,7 @@ app.use(express.static("public"));
 
 const online = new Map();
 const MESSAGES_PER_PAGE = config.MESSAGES_PER_PAGE || 30;
+const paginationState = new Map();
 
 app.get("/health", (req, res) => {
   const mongoStatus = mongoose.connection.readyState;
@@ -259,9 +260,6 @@ io.use((socket, next) => {
   }
 });
 
-// Храним состояние пагинации для каждого сокета
-const paginationState = new Map();
-
 io.on("connection", async (socket) => {
   console.log(`✅ ${socket.username} подключился`);
 
@@ -369,97 +367,137 @@ io.on("connection", async (socket) => {
     }
   });
 
-  /* ЗАГРУЗКА ИСТОРИИ С ПАГИНАЦИЕЙ */
-socket.on("get_history", async (user, page = 1) => {
-  try {
-    if (!Message) { socket.emit("chat_history", { messages: [], hasMore: false, page }); return; }
-    
+  /* ЗАГРУЗКА ИСТОРИИ */
+  socket.on("get_history", async (user, page = 1) => {
+    try {
+      if (!Message) { socket.emit("chat_history", { messages: [], hasMore: false, page }); return; }
+      
+      const state = paginationState.get(socket.id);
+      if (state) {
+        state.currentChat = user;
+        state.page = page;
+        state.isLoading = true;
+      }
+      
+      console.log(`📜 Загрузка страницы ${page} для ${socket.username} <-> ${user}`);
+      
+      const skip = (page - 1) * MESSAGES_PER_PAGE;
+      
+      let query;
+      if (user === "favorites") {
+        query = { to: "favorites", from: socket.username };
+      } else {
+        query = {
+          $or: [
+            { from: socket.username, to: user },
+            { from: user, to: socket.username }
+          ]
+        };
+      }
+      
+      const totalMessages = await Message.countDocuments(query);
+      
+      const msgs = await Message.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(MESSAGES_PER_PAGE)
+        .lean();
+      
+      const hasMore = skip + msgs.length < totalMessages;
+      const messages = msgs.reverse();
+      
+      if (state) {
+        state.hasMore = hasMore;
+        state.isLoading = false;
+      }
+      
+      console.log(`📜 Страница ${page}: ${messages.length} сообщений, всего: ${totalMessages}, hasMore: ${hasMore}`);
+      
+      socket.emit("chat_history", { messages, hasMore, page, total: totalMessages });
+      
+      if (page === 1 && user !== "favorites") {
+        await Message.updateMany(
+          { from: user, to: socket.username, status: { $ne: "read" } },
+          { $set: { status: "read" } }
+        );
+        
+        send(user, "messages_read", { by: socket.username, chatWith: user });
+      }
+    } catch (err) {
+      console.error("❌ Ошибка получения истории:", err);
+      const state = paginationState.get(socket.id);
+      if (state) state.isLoading = false;
+      socket.emit("chat_history", { messages: [], hasMore: false, page });
+    }
+  });
+
+  /* ЗАГРУЗКА СЛЕДУЮЩЕЙ СТРАНИЦЫ */
+  socket.on("load_more", async () => {
     const state = paginationState.get(socket.id);
-    if (state && state.isLoading) {
-      console.log(`⚠️ Уже идёт загрузка для ${socket.username}`);
-      return;
-    }
-    
-    if (state) {
-      state.isLoading = true;
-      state.currentChat = user;
-      state.page = page;
-    }
-    
-    console.log(`📜 Загрузка страницы ${page} для чата ${socket.username} <-> ${user}`);
-    
-    const skip = (page - 1) * MESSAGES_PER_PAGE;
-    
-    let query;
-    if (user === "favorites") {
-      query = { to: "favorites", from: socket.username };
-    } else {
-      query = {
-        $or: [
-          { from: socket.username, to: user },
-          { from: user, to: socket.username }
-        ]
-      };
-    }
-    
-    // Считаем общее количество сообщений
-    const totalMessages = await Message.countDocuments(query);
-    
-    // Получаем сообщения
-    const msgs = await Message.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(MESSAGES_PER_PAGE)
-      .lean();
-    
-    const hasMore = skip + msgs.length < totalMessages;
-    const messages = msgs.reverse();
-    
-    if (state) {
-      state.hasMore = hasMore;
-      state.isLoading = false;
-    }
-    
-    console.log(`📜 Страница ${page}: ${messages.length} сообщений, всего: ${totalMessages}, hasMore: ${hasMore}`);
-    
-    socket.emit("chat_history", { 
-      messages, 
-      hasMore,
-      page,
-      total: totalMessages
+    console.log(`📜 load_more от ${socket.username}:`, {
+      currentChat: state?.currentChat,
+      page: state?.page,
+      hasMore: state?.hasMore,
+      isLoading: state?.isLoading
     });
     
-    // Отмечаем прочитанными (только первая страница)
-    if (page === 1 && user !== "favorites") {
-      await Message.updateMany(
-        { from: user, to: socket.username, status: { $ne: "read" } },
-        { $set: { status: "read" } }
-      );
+    if (state && state.currentChat && state.hasMore && !state.isLoading) {
+      const nextPage = (state.page || 1) + 1;
+      const user = state.currentChat;
       
-      send(user, "messages_read", { 
-        by: socket.username,
-        chatWith: user 
-      });
+      console.log(`📜 Загружаем страницу ${nextPage} для ${user}`);
+      
+      try {
+        if (!Message) {
+          socket.emit("chat_history", { messages: [], hasMore: false, page: nextPage });
+          return;
+        }
+        
+        state.isLoading = true;
+        
+        const skip = (nextPage - 1) * MESSAGES_PER_PAGE;
+        
+        let query;
+        if (user === "favorites") {
+          query = { to: "favorites", from: socket.username };
+        } else {
+          query = {
+            $or: [
+              { from: socket.username, to: user },
+              { from: user, to: socket.username }
+            ]
+          };
+        }
+        
+        const totalMessages = await Message.countDocuments(query);
+        
+        const msgs = await Message.find(query)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(MESSAGES_PER_PAGE)
+          .lean();
+        
+        const hasMore = skip + msgs.length < totalMessages;
+        const messages = msgs.reverse();
+        
+        state.hasMore = hasMore;
+        state.page = nextPage;
+        state.isLoading = false;
+        
+        console.log(`📜 Страница ${nextPage}: ${messages.length} сообщений, hasMore: ${hasMore}`);
+        
+        socket.emit("chat_history", { messages, hasMore, page: nextPage, total: totalMessages });
+      } catch (err) {
+        console.error("❌ Ошибка в load_more:", err);
+        state.isLoading = false;
+        socket.emit("chat_history", { messages: [], hasMore: false, page: nextPage });
+      }
+    } else {
+      console.log(`⚠️ load_more отклонён: hasMore=${state?.hasMore}, isLoading=${state?.isLoading}`);
     }
-  } catch (err) {
-    console.error("❌ Ошибка получения истории:", err);
-    const state = paginationState.get(socket.id);
-    if (state) state.isLoading = false;
-    socket.emit("chat_history", { messages: [], hasMore: false, page });
-  }
-});
+  });
 
-/* ЗАГРУЗКА СЛЕДУЮЩЕЙ СТРАНИЦЫ */
-socket.on("load_more", () => {
-  const state = paginationState.get(socket.id);
-  console.log(`📜 load_more: currentChat=${state?.currentChat}, page=${state?.page}, hasMore=${state?.hasMore}, isLoading=${state?.isLoading}`);
-  
-  if (state && state.currentChat && state.hasMore && !state.isLoading) {
-    console.log(`📜 Загружаем страницу ${state.page + 1}`);
-    socket.emit("get_history", state.currentChat, state.page + 1);
-  }
-});
-  /* СБРОС ПАГИНАЦИИ ПРИ СМЕНЕ ЧАТА */
+  /* СБРОС ПАГИНАЦИИ */
   socket.on("reset_pagination", () => {
     const state = paginationState.get(socket.id);
     if (state) {
@@ -467,6 +505,7 @@ socket.on("load_more", () => {
       state.page = 1;
       state.hasMore = true;
       state.isLoading = false;
+      console.log(`🔄 Пагинация сброшена для ${socket.username}`);
     }
   });
 
