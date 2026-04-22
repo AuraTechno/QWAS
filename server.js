@@ -176,7 +176,7 @@ app.get("/users/all", async (req, res) => {
   }
 });
 
-/* СПИСОК ЧАТОВ */
+/* СПИСОК ЧАТОВ - с сортировкой по последнему сообщению */
 app.get("/chats", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -184,25 +184,69 @@ app.get("/chats", async (req, res) => {
     
     const data = jwt.verify(token, config.JWT_SECRET);
     
-    const messages = await Message.aggregate([
-      { $match: { $or: [{ from: data.username }, { to: data.username }] } },
-      { $group: { _id: null, contacts: { $addToSet: { $cond: [{ $eq: ["$from", data.username] }, "$to", "$from"] } } } }
+    // Получаем все чаты с последним сообщением
+    const chatInfo = await Message.aggregate([
+      { 
+        $match: { 
+          $or: [{ from: data.username }, { to: data.username }],
+          to: { $ne: "favorites" }
+        } 
+      },
+      { 
+        $sort: { createdAt: -1 } 
+      },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $eq: ["$from", data.username] },
+              "$to",
+              "$from"
+            ]
+          },
+          lastMessage: { $first: "$$ROOT" },
+          unreadCount: {
+            $sum: {
+              $cond: [
+                { 
+                  $and: [
+                    { $eq: ["$to", data.username] },
+                    { $ne: ["$status", "read"] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          }
+        }
+      },
+      {
+        $sort: { "lastMessage.createdAt": -1 }
+      }
     ]);
     
-    const contactUsernames = messages.length > 0 ? messages[0].contacts.filter(u => u !== "favorites") : [];
+    // Получаем информацию о пользователях
+    const contacts = await User.find({
+      username: { $in: chatInfo.map(c => c._id) }
+    }).select('username avatar avatarColor').lean();
     
-    const contacts = await User.find({ username: { $in: contactUsernames } })
-      .select('username avatar avatarColor').lean();
+    const chatList = chatInfo.map(chat => {
+      const user = contacts.find(c => c.username === chat._id);
+      return {
+        username: chat._id,
+        avatar: user?.avatar || "",
+        avatarColor: user?.avatarColor || "#6366f1",
+        online: online.has(chat._id),
+        lastMessage: chat.lastMessage.message,
+        lastMessageTime: chat.lastMessage.createdAt,
+        unreadCount: chat.unreadCount || 0
+      };
+    });
     
-    const contactsWithStatus = contacts.map(c => ({
-      username: c.username,
-      avatar: c.avatar,
-      avatarColor: c.avatarColor,
-      online: online.has(c.username)
-    }));
-    
-    res.json({ ok: true, chats: contactsWithStatus });
+    res.json({ ok: true, chats: chatList });
   } catch (err) {
+    console.error("Get chats error:", err);
     res.json({ ok: false, chats: [] });
   }
 });
@@ -265,7 +309,6 @@ io.on("connection", async (socket) => {
 
   online.set(socket.username, socket.id);
   
-  // Инициализируем состояние пагинации
   paginationState.set(socket.id, {
     currentChat: null,
     page: 1,
@@ -306,6 +349,7 @@ io.on("connection", async (socket) => {
         socket.emit("new_message", full);
       }
       
+      // Обновляем список чатов у обоих (сортировка по последнему сообщению)
       emitChatListForUser(socket.username);
       if (data.to !== "favorites") {
         emitChatListForUser(data.to);
@@ -361,6 +405,8 @@ io.on("connection", async (socket) => {
           by: socket.username,
           chatWith: data.from 
         });
+        // Обновляем список чатов чтобы сбросить счётчик непрочитанных
+        emitChatListForUser(socket.username);
       }
     } catch (err) {
       console.error("Ошибка отметки прочитано:", err);
@@ -378,8 +424,6 @@ io.on("connection", async (socket) => {
         state.page = page;
         state.isLoading = true;
       }
-      
-      console.log(`📜 Загрузка страницы ${page} для ${socket.username} <-> ${user}`);
       
       const skip = (page - 1) * MESSAGES_PER_PAGE;
       
@@ -411,8 +455,6 @@ io.on("connection", async (socket) => {
         state.isLoading = false;
       }
       
-      console.log(`📜 Страница ${page}: ${messages.length} сообщений, всего: ${totalMessages}, hasMore: ${hasMore}`);
-      
       socket.emit("chat_history", { messages, hasMore, page, total: totalMessages });
       
       if (page === 1 && user !== "favorites") {
@@ -422,6 +464,7 @@ io.on("connection", async (socket) => {
         );
         
         send(user, "messages_read", { by: socket.username, chatWith: user });
+        emitChatListForUser(socket.username);
       }
     } catch (err) {
       console.error("❌ Ошибка получения истории:", err);
@@ -434,18 +477,10 @@ io.on("connection", async (socket) => {
   /* ЗАГРУЗКА СЛЕДУЮЩЕЙ СТРАНИЦЫ */
   socket.on("load_more", async () => {
     const state = paginationState.get(socket.id);
-    console.log(`📜 load_more от ${socket.username}:`, {
-      currentChat: state?.currentChat,
-      page: state?.page,
-      hasMore: state?.hasMore,
-      isLoading: state?.isLoading
-    });
     
     if (state && state.currentChat && state.hasMore && !state.isLoading) {
       const nextPage = (state.page || 1) + 1;
       const user = state.currentChat;
-      
-      console.log(`📜 Загружаем страницу ${nextPage} для ${user}`);
       
       try {
         if (!Message) {
@@ -484,16 +519,12 @@ io.on("connection", async (socket) => {
         state.page = nextPage;
         state.isLoading = false;
         
-        console.log(`📜 Страница ${nextPage}: ${messages.length} сообщений, hasMore: ${hasMore}`);
-        
         socket.emit("chat_history", { messages, hasMore, page: nextPage, total: totalMessages });
       } catch (err) {
         console.error("❌ Ошибка в load_more:", err);
         state.isLoading = false;
         socket.emit("chat_history", { messages: [], hasMore: false, page: nextPage });
       }
-    } else {
-      console.log(`⚠️ load_more отклонён: hasMore=${state?.hasMore}, isLoading=${state?.isLoading}`);
     }
   });
 
@@ -505,7 +536,6 @@ io.on("connection", async (socket) => {
       state.page = 1;
       state.hasMore = true;
       state.isLoading = false;
-      console.log(`🔄 Пагинация сброшена для ${socket.username}`);
     }
   });
 
@@ -542,25 +572,68 @@ async function emitChatListForUser(username) {
     const socketId = online.get(username);
     if (!socketId) return;
     
-    const messages = await Message.aggregate([
-      { $match: { $or: [{ from: username }, { to: username }] } },
-      { $group: { _id: null, contacts: { $addToSet: { $cond: [{ $eq: ["$from", username] }, "$to", "$from"] } } } }
+    const chatInfo = await Message.aggregate([
+      { 
+        $match: { 
+          $or: [{ from: username }, { to: username }],
+          to: { $ne: "favorites" }
+        } 
+      },
+      { 
+        $sort: { createdAt: -1 } 
+      },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $eq: ["$from", username] },
+              "$to",
+              "$from"
+            ]
+          },
+          lastMessage: { $first: "$$ROOT" },
+          unreadCount: {
+            $sum: {
+              $cond: [
+                { 
+                  $and: [
+                    { $eq: ["$to", username] },
+                    { $ne: ["$status", "read"] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          }
+        }
+      },
+      {
+        $sort: { "lastMessage.createdAt": -1 }
+      }
     ]);
     
-    const contactUsernames = messages.length > 0 ? messages[0].contacts.filter(u => u !== "favorites") : [];
+    const contacts = await User.find({
+      username: { $in: chatInfo.map(c => c._id) }
+    }).select('username avatar avatarColor').lean();
     
-    const contacts = await User.find({ username: { $in: contactUsernames } })
-      .select('username avatar avatarColor').lean();
-    
-    const chatList = contacts.map(c => ({
-      username: c.username,
-      avatar: c.avatar,
-      avatarColor: c.avatarColor,
-      online: online.has(c.username)
-    }));
+    const chatList = chatInfo.map(chat => {
+      const user = contacts.find(c => c.username === chat._id);
+      return {
+        username: chat._id,
+        avatar: user?.avatar || "",
+        avatarColor: user?.avatarColor || "#6366f1",
+        online: online.has(chat._id),
+        lastMessage: chat.lastMessage.message,
+        lastMessageTime: chat.lastMessage.createdAt,
+        unreadCount: chat.unreadCount || 0
+      };
+    });
     
     io.to(socketId).emit("chat_list", chatList);
-  } catch (err) {}
+  } catch (err) {
+    console.error("Emit chat list error:", err);
+  }
 }
 
 function send(user, event, data) {

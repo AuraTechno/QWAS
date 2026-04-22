@@ -9,7 +9,6 @@
         });
         const data = await res.json();
         QWAS.State.allUsers = data.ok ? data.users : [];
-        console.log('📋 Загружено пользователей:', QWAS.State.allUsers.length);
       } catch (err) {
         console.error('Load users error:', err);
         QWAS.State.allUsers = [];
@@ -24,7 +23,6 @@
         const data = await res.json();
         QWAS.State.chatList = data.chats || [];
         this.renderList();
-        console.log('💬 Загружено чатов:', QWAS.State.chatList.length);
       } catch (err) {
         console.error('Load chats error:', err);
         QWAS.State.chatList = [];
@@ -44,12 +42,18 @@
       container.innerHTML = chats.map(u => {
         const isFav = u.username === QWAS.Config.FAVORITE_CHAT_ID;
         const selected = QWAS.State.current === u.username ? 'selected' : '';
+        const unreadBadge = u.unreadCount > 0 ? `<span class="unread-badge">${u.unreadCount}</span>` : '';
+        const lastMessage = u.lastMessage ? QWAS.Utils.truncate(u.lastMessage, 30) : '';
         
         return `
           <div class="user ${selected}" onclick="QWAS.Chat.select('${u.username}')">
             <div class="user-avatar small" id="avatar-${u.username}"></div>
-            <div style="flex:1;">
-              <div style="font-weight:500;">${isFav ? 'Избранное' : '@' + u.username}</div>
+            <div style="flex:1; min-width:0;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:500;">${isFav ? 'Избранное' : '@' + u.username}</span>
+                ${unreadBadge}
+              </div>
+              ${!isFav ? `<div style="font-size:12px; color:var(--text-tertiary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${lastMessage}</div>` : ''}
             </div>
             ${!isFav ? `<span class="${u.online ? 'online' : 'offline'}-indicator"></span>` : ''}
           </div>
@@ -81,8 +85,10 @@
       QWAS.State.hasMoreMessages = true;
       QWAS.State.isLoadingMessages = false;
       QWAS.State.currentPage = 1;
+      QWAS.State.unreadCount = 0;
       
       this.renderList();
+      QWAS.Messages.updateScrollButton();
       
       const isFav = username === QWAS.Config.FAVORITE_CHAT_ID;
       const userData = isFav ? {} : 
@@ -122,6 +128,8 @@
       
       const typingIndicator = document.getElementById('typingIndicator');
       if (typingIndicator) typingIndicator.textContent = '';
+      
+      QWAS.Messages.hideScrollButton();
       
       if (QWAS.State.isMobile) {
         const sidebar = document.getElementById('sidebar');

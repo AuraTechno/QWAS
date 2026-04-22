@@ -34,10 +34,14 @@
       
       this.ensureSpacer();
       
-      if (!skipScroll) {
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+      
+      if (!skipScroll && isNearBottom) {
         setTimeout(() => {
           container.scrollTop = container.scrollHeight;
         }, 10);
+      } else if (!isNearBottom) {
+        this.showScrollButton(msg.from !== QWAS.State.me ? 1 : 0);
       }
     },
     
@@ -238,6 +242,54 @@
       
       this.closeForwardModal();
       QWAS.Notifications.success('Переслано');
+    },
+    
+    showScrollButton: function(count = 1) {
+      const btn = document.getElementById('scrollToBottomBtn');
+      const badge = document.getElementById('scrollUnreadBadge');
+      
+      if (btn) {
+        btn.classList.add('show');
+        if (badge) {
+          QWAS.State.unreadCount += count;
+          badge.textContent = QWAS.State.unreadCount;
+          badge.style.display = 'flex';
+        }
+      }
+    },
+    
+    hideScrollButton: function() {
+      const btn = document.getElementById('scrollToBottomBtn');
+      const badge = document.getElementById('scrollUnreadBadge');
+      
+      if (btn) {
+        btn.classList.remove('show');
+        if (badge) {
+          QWAS.State.unreadCount = 0;
+          badge.textContent = '';
+          badge.style.display = 'none';
+        }
+      }
+    },
+    
+    updateScrollButton: function() {
+      const container = document.getElementById('messages');
+      const btn = document.getElementById('scrollToBottomBtn');
+      if (!container || !btn) return;
+      
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+      
+      if (isNearBottom) {
+        this.hideScrollButton();
+      }
+    },
+    
+    scrollToBottom: function() {
+      const container = document.getElementById('messages');
+      if (container) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        this.hideScrollButton();
+      }
     }
   };
   
@@ -262,16 +314,15 @@
     });
   }
   
-  // Пагинация
+  // Пагинация и кнопка скролла
   const messagesContainer = document.getElementById('messages');
   if (messagesContainer) {
     let isLoadingMore = false;
     
-    const handleScroll = function() {
-      const scrollTop = this.scrollTop;
+    messagesContainer.addEventListener('scroll', () => {
+      const scrollTop = messagesContainer.scrollTop;
       
       if (scrollTop < 30 && QWAS.State.hasMoreMessages && !QWAS.State.isLoadingMessages && !isLoadingMore) {
-        console.log('📜 Отправляем load_more...');
         isLoadingMore = true;
         QWAS.State.isLoadingMessages = true;
         
@@ -283,8 +334,8 @@
           isLoadingMore = false;
         }, 2000);
       }
-    };
-    
-    messagesContainer.addEventListener('scroll', handleScroll);
+      
+      QWAS.Messages.updateScrollButton();
+    });
   }
 })();

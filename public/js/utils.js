@@ -18,12 +18,8 @@
       try {
         const d = new Date(date);
         if (isNaN(d.getTime())) return '';
-        return d.toLocaleTimeString('ru-RU', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        });
+        return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
       } catch (e) {
-        console.error('Ошибка форматирования даты:', e);
         return '';
       }
     },
@@ -34,6 +30,12 @@
     
     cleanUsername: function(username) {
       return username.replace(/^@/, '');
+    },
+    
+    truncate: function(text, maxLength) {
+      if (!text) return '';
+      if (text.length <= maxLength) return text;
+      return text.substring(0, maxLength) + '...';
     },
     
     renderAvatar: function(element, user) {

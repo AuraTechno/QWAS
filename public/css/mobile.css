@@ -17,4 +17,8 @@
   .auth-container {
     padding: 30px 20px;
   }
+  
+  .scroll-to-bottom {
+    bottom: 90px;
+  }
 }
