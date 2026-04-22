@@ -376,7 +376,7 @@ io.on("connection", async (socket) => {
       let msgs;
       if (user === "favorites") {
         msgs = await Message.find({ to: "favorites", from: socket.username })
-          .sort({ createdAt: 1 }).limit(50).lean();
+          .sort({ createdAt: 1 }).lean();
       } else {
         msgs = await Message.find({
           $or: [
