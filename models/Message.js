@@ -4,10 +4,10 @@ const MessageSchema = new mongoose.Schema({
   from: { type: String, required: true },
   to: { type: String, required: true },
   message: { type: String, required: true },
-  isForwarded: { type: Boolean, default: false },
-  forwardedFrom: { type: String, default: null },
   status: { type: String, default: "sent" },
   edited: { type: Boolean, default: false },
+  isForwarded: { type: Boolean, default: false },
+  forwardedFrom: { type: String, default: null },
   createdAt: { type: Date, default: Date.now }
 });
 

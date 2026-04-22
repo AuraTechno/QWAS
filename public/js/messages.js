@@ -1,0 +1,200 @@
+(function() {
+  'use strict';
+  
+  QWAS.Messages = {
+    add: function(msg, skipScroll = false) {
+      const container = document.getElementById('messages');
+      if (container.children.length === 1 && 
+          container.children[0].classList.contains('empty-state')) {
+        container.innerHTML = '';
+      }
+      
+      if (document.getElementById(`msg-${msg._id}`)) return;
+      
+      const isMe = msg.from === QWAS.State.me;
+      const div = document.createElement('div');
+      div.className = `message ${isMe ? 'me' : 'other'} ${msg.edited ? 'edited' : ''}`;
+      div.id = `msg-${msg._id}`;
+      
+      div.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        this.showMenu(msg, e);
+      });
+      
+      let timer;
+      div.addEventListener('touchstart', (e) => {
+        timer = setTimeout(() => this.showMenu(msg, e), 500);
+      });
+      div.addEventListener('touchend', () => clearTimeout(timer));
+      
+      const avatarColor = isMe ? QWAS.State.currentUser.avatarColor : '#6366f1';
+      const avatarContent = isMe && QWAS.State.currentUser.avatar
+        ? `<img src="${QWAS.State.currentUser.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`
+        : QWAS.Utils.getAvatarLetter(msg.from);
+      
+      div.innerHTML = `
+        <div class="message-avatar" style="background: ${(isMe && QWAS.State.currentUser.avatar) ? 'transparent' : avatarColor};">
+          ${avatarContent}
+        </div>
+        <div style="flex:1;">
+          ${msg.isForwarded && msg.forwardedFrom ? 
+            `<div class="message-forwarded">↪ Переслано от @${msg.forwardedFrom}</div>` : ''}
+          <div class="message-bubble">${QWAS.Utils.escapeHtml(msg.message)}</div>
+          <div class="message-meta">
+            <span>${QWAS.Utils.formatTime(msg.createdAt)}</span>
+            ${isMe ? `<span class="message-status ${msg.status === 'read' ? 'read' : ''}">${msg.status === 'read' ? '✓✓' : '✓'}</span>` : ''}
+          </div>
+        </div>
+      `;
+      
+      container.appendChild(div);
+      
+      if (!skipScroll) {
+        container.scrollTop = container.scrollHeight;
+      }
+    },
+    
+    showMenu: function(msg, event) {
+      QWAS.State.selectedMessage = msg;
+      const menu = document.getElementById('messageMenu');
+      const x = event.clientX || (event.touches ? event.touches[0].clientX : 0);
+      const y = event.clientY || (event.touches ? event.touches[0].clientY : 0);
+      
+      menu.style.left = Math.min(x, window.innerWidth - 220) + 'px';
+      menu.style.top = Math.min(y, window.innerHeight - 160) + 'px';
+      menu.classList.add('show');
+      
+      setTimeout(() => {
+        document.addEventListener('click', () => menu.classList.remove('show'), { once: true });
+      }, 100);
+    },
+    
+    send: function() {
+      const input = document.getElementById('msg');
+      const text = input.value.trim();
+      if (!text || !QWAS.State.current) return;
+      
+      if (QWAS.State.editingMessageId) {
+        QWAS.State.socket.emit('edit_message', {
+          messageId: QWAS.State.editingMessageId,
+          newText: text
+        });
+        QWAS.State.editingMessageId = null;
+      } else {
+        QWAS.State.socket.emit('send_message', {
+          to: QWAS.State.current,
+          message: text
+        });
+      }
+      
+      input.value = '';
+    },
+    
+    forward: function() {
+      if (!QWAS.State.selectedMessage) return;
+      document.getElementById('messageMenu').classList.remove('show');
+      this.openForwardModal();
+    },
+    
+    edit: function() {
+      const msg = QWAS.State.selectedMessage;
+      if (!msg || msg.from !== QWAS.State.me) {
+        QWAS.Notifications.error('Только свои сообщения');
+        document.getElementById('messageMenu').classList.remove('show');
+        return;
+      }
+      
+      QWAS.State.editingMessageId = msg._id;
+      document.getElementById('msg').value = msg.message;
+      document.getElementById('msg').focus();
+      document.getElementById('messageMenu').classList.remove('show');
+    },
+    
+    delete: function() {
+      const msg = QWAS.State.selectedMessage;
+      if (!msg || msg.from !== QWAS.State.me) {
+        QWAS.Notifications.error('Только свои сообщения');
+        document.getElementById('messageMenu').classList.remove('show');
+        return;
+      }
+      
+      if (!confirm('Удалить сообщение?')) {
+        document.getElementById('messageMenu').classList.remove('show');
+        return;
+      }
+      
+      QWAS.State.socket.emit('delete_message', { messageId: msg._id });
+      document.getElementById('messageMenu').classList.remove('show');
+    },
+    
+    openForwardModal: function() {
+      const list = document.getElementById('forwardChatList');
+      const available = [
+        { username: QWAS.Config.FAVORITE_CHAT_ID },
+        ...QWAS.State.chatList.filter(c => c.username !== QWAS.State.current)
+      ];
+      
+      list.innerHTML = available.map(c => {
+        const isFav = c.username === QWAS.Config.FAVORITE_CHAT_ID;
+        return `
+          <div class="forward-chat-item" onclick="QWAS.Messages.sendForward('${c.username}')">
+            <div class="user-avatar small" id="forward-avatar-${c.username}"></div>
+            <div>${isFav ? 'Избранное' : '@' + c.username}</div>
+          </div>
+        `;
+      }).join('');
+      
+      available.forEach(c => {
+        const avatarEl = document.getElementById(`forward-avatar-${c.username}`);
+        if (avatarEl) {
+          QWAS.Utils.renderAvatar(avatarEl, {
+            username: c.username,
+            avatar: c.avatar,
+            avatarColor: c.avatarColor
+          });
+          if (c.username === QWAS.Config.FAVORITE_CHAT_ID) {
+            avatarEl.textContent = '⭐';
+            avatarEl.style.background = '#6366f1';
+          }
+        }
+      });
+      
+      document.getElementById('forwardModal').classList.add('show');
+    },
+    
+    closeForwardModal: function() {
+      document.getElementById('forwardModal').classList.remove('show');
+    },
+    
+    sendForward: function(to) {
+      if (!QWAS.State.selectedMessage) return;
+      
+      QWAS.State.socket.emit('send_message', {
+        to,
+        message: QWAS.State.selectedMessage.message,
+        isForwarded: true,
+        forwardedFrom: QWAS.State.selectedMessage.from
+      });
+      
+      this.closeForwardModal();
+      QWAS.Notifications.success('Переслано');
+    }
+  };
+  
+  document.getElementById('msg').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      QWAS.Messages.send();
+    }
+  });
+  
+  document.getElementById('msg').addEventListener('input', () => {
+    if (!QWAS.State.current || QWAS.State.current === QWAS.Config.FAVORITE_CHAT_ID) return;
+    
+    QWAS.State.socket.emit('typing', QWAS.State.current);
+    clearTimeout(QWAS.State.typingTimeout);
+    QWAS.State.typingTimeout = setTimeout(() => {
+      QWAS.State.socket.emit('stop_typing', QWAS.State.current);
+    }, QWAS.Config.TYPING_TIMEOUT);
+  });
+})();

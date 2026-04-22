@@ -1,0 +1,20 @@
+@media (max-width: 768px) {
+  .chat-area {
+    position: absolute;
+    inset: 0;
+  }
+  
+  .mobile-back-btn {
+    display: block;
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 26px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+  
+  .auth-container {
+    padding: 30px 20px;
+  }
+}

@@ -1,6 +1,7 @@
 {
-  "name": "messenger",
+  "name": "qwas-messenger",
   "version": "1.0.0",
+  "description": "QWAS Messenger",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

@@ -174,35 +174,6 @@ app.get("/users/all", async (req, res) => {
   }
 });
 
-/* ПОИСК ПОЛЬЗОВАТЕЛЕЙ */
-app.get("/users/search", async (req, res) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ ok: false });
-    
-    const data = jwt.verify(token, config.JWT_SECRET);
-    let { q } = req.query;
-    
-    if (!q) {
-      const allUsers = await User.find({
-        username: { $ne: data.username }
-      }).select('username avatar avatarColor').limit(20).lean();
-      return res.json({ ok: true, users: allUsers });
-    }
-    
-    q = q.replace(/^@/, '');
-    
-    const users = await User.find({
-      username: { $regex: q, $options: 'i' },
-      username: { $ne: data.username }
-    }).select('username avatar avatarColor').limit(10).lean();
-    
-    res.json({ ok: true, users });
-  } catch (err) {
-    res.json({ ok: false, users: [] });
-  }
-});
-
 /* СПИСОК ЧАТОВ */
 app.get("/chats", async (req, res) => {
   try {
