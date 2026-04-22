@@ -438,13 +438,18 @@ io.on("connection", async (socket) => {
     }
   });
 
-  /* ЗАГРУЗКА СЛЕДУЮЩЕЙ СТРАНИЦЫ */
-  socket.on("load_more", () => {
-    const state = paginationState.get(socket.id);
-    if (state && state.currentChat && state.hasMore && !state.isLoading) {
-      socket.emit("get_history", state.currentChat, state.page + 1);
-    }
-  });
+/* ЗАГРУЗКА СЛЕДУЮЩЕЙ СТРАНИЦЫ */
+socket.on("load_more", () => {
+  const state = paginationState.get(socket.id);
+  console.log(`📜 load_more запрос, state:`, state);
+  
+  if (state && state.currentChat && state.hasMore && !state.isLoading) {
+    console.log(`📜 Загружаем страницу ${state.page + 1} для чата ${state.currentChat}`);
+    socket.emit("get_history", state.currentChat, state.page + 1);
+  } else {
+    console.log(`📜 Не можем загрузить: hasMore=${state?.hasMore}, isLoading=${state?.isLoading}`);
+  }
+});
 
   /* СБРОС ПАГИНАЦИИ ПРИ СМЕНЕ ЧАТА */
   socket.on("reset_pagination", () => {
