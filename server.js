@@ -31,8 +31,6 @@ console.log("🔄 Подключение к MongoDB...");
 console.log("📝 URL:", config.MONGO_URL.replace(/:[^:@]+@/, ':****@'));
 
 mongoose.set('strictQuery', false);
-
-// ПРАВИЛЬНОЕ ПОДКЛЮЧЕНИЕ - БЕЗ СТАРЫХ ОПЦИЙ
 mongoose.connect(config.MONGO_URL)
   .then(() => {
     console.log("✅ MongoDB подключена!");
@@ -43,15 +41,6 @@ mongoose.connect(config.MONGO_URL)
   .catch(err => {
     console.error("❌ Ошибка подключения к MongoDB:", err.message);
   });
-
-// Отслеживаем события подключения
-mongoose.connection.on('error', err => {
-  console.error('❌ MongoDB error:', err.message);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('⚠️ MongoDB отключена');
-});
 
 function generateSessionToken() {
   return crypto.randomBytes(32).toString('hex');
@@ -289,7 +278,12 @@ io.on("connection", async (socket) => {
   /* ОТПРАВКА СООБЩЕНИЯ */
   socket.on("send_message", async (data) => {
     try {
-      if (!Message) return;
+      if (!Message) {
+        console.error("❌ Message модель не загружена");
+        return;
+      }
+      
+      console.log(`📨 Сообщение от ${socket.username} для ${data.to}: ${data.message.substring(0, 30)}...`);
       
       const msg = await Message.create({
         from: socket.username,
@@ -299,6 +293,8 @@ io.on("connection", async (socket) => {
         forwardedFrom: data.forwardedFrom || null,
         status: "sent"
       });
+
+      console.log(`✅ Сообщение сохранено в БД, ID: ${msg._id}`);
 
       const full = msg.toObject();
       
@@ -314,7 +310,7 @@ io.on("connection", async (socket) => {
         emitChatListForUser(data.to);
       }
     } catch (err) {
-      console.error("Ошибка отправки:", err);
+      console.error("❌ Ошибка отправки:", err);
     }
   });
 
@@ -375,6 +371,8 @@ io.on("connection", async (socket) => {
     try {
       if (!Message) { socket.emit("chat_history", []); return; }
       
+      console.log(`📜 Запрос истории: ${socket.username} <-> ${user}`);
+      
       let msgs;
       if (user === "favorites") {
         msgs = await Message.find({ to: "favorites", from: socket.username })
@@ -398,8 +396,10 @@ io.on("connection", async (socket) => {
         });
       }
 
+      console.log(`📜 Найдено ${msgs.length} сообщений`);
       socket.emit("chat_history", msgs);
     } catch (err) {
+      console.error("❌ Ошибка получения истории:", err);
       socket.emit("chat_history", []);
     }
   });

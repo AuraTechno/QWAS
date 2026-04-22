@@ -14,16 +14,17 @@
     },
     
     formatTime: function(date) {
-      if (!date) return '--:--';
+      if (!date) return '';
       try {
         const d = new Date(date);
-        if (isNaN(d.getTime())) return '--:--';
-        return d.toLocaleTimeString([], { 
+        if (isNaN(d.getTime())) return '';
+        return d.toLocaleTimeString('ru-RU', { 
           hour: '2-digit', 
           minute: '2-digit' 
         });
       } catch (e) {
-        return '--:--';
+        console.error('Ошибка форматирования даты:', e);
+        return '';
       }
     },
     
