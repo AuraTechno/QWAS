@@ -21,6 +21,7 @@ app.use(express.static("public"));
 
 const online = new Map();
 
+// Health check
 app.get("/health", (req, res) => {
   const mongoStatus = mongoose.connection.readyState;
   const statusMap = { 0: "disconnected", 1: "connected", 2: "connecting", 3: "disconnecting" };
@@ -63,10 +64,12 @@ app.post("/register", async (req, res) => {
 
     const hash = await bcrypt.hash(password, 10);
     
-    const colors = ["#667eea", "#764ba2", "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#1abc9c", "#e67e22"];
-    const randomColor = colors[Math.floor(Math.random() * colors.length)];
-    
-    await User.create({ username, password: hash, avatarColor: randomColor });
+    await User.create({ 
+      username, 
+      password: hash, 
+      avatar: "", 
+      avatarColor: "#ffffff" 
+    });
 
     res.json({ ok: true, message: "Регистрация успешна! Теперь войдите." });
   } catch (err) {
@@ -100,7 +103,7 @@ app.post("/login", async (req, res) => {
       user: { 
         username: user.username, 
         avatar: user.avatar || "", 
-        avatarColor: user.avatarColor || "#667eea" 
+        avatarColor: user.avatarColor || "#ffffff" 
       },
       message: "Вход выполнен успешно!"
     });
@@ -129,7 +132,7 @@ app.post("/auto-login", async (req, res) => {
       user: { 
         username: user.username, 
         avatar: user.avatar || "", 
-        avatarColor: user.avatarColor || "#667eea" 
+        avatarColor: user.avatarColor || "#ffffff" 
       } 
     });
   } catch (err) {
@@ -266,7 +269,7 @@ app.get("/profile", async (req, res) => {
       user: { 
         username: user.username, 
         avatar: user.avatar || "", 
-        avatarColor: user.avatarColor || "#667eea" 
+        avatarColor: user.avatarColor || "#ffffff" 
       } 
     });
   } catch (err) {
@@ -294,6 +297,28 @@ app.post("/profile/update", async (req, res) => {
     res.json({ ok: true, message: "Профиль обновлён" });
   } catch (err) {
     res.status(500).json({ ok: false, error: "Ошибка сервера" });
+  }
+});
+
+/* DELETE MESSAGE (REST) */
+app.delete("/messages/:id", async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ ok: false });
+    
+    const data = jwt.verify(token, config.JWT_SECRET);
+    const msg = await Message.findById(req.params.id);
+    
+    if (!msg) return res.status(404).json({ ok: false });
+    if (msg.from !== data.username) return res.status(403).json({ ok: false });
+    
+    await Message.deleteOne({ _id: req.params.id });
+    
+    send(msg.to, "message_deleted", { messageId: req.params.id });
+    
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false });
   }
 });
 
@@ -328,6 +353,7 @@ io.on("connection", async (socket) => {
     }
   }
 
+  /* SEND MESSAGE */
   socket.on("send_message", async (data) => {
     try {
       if (!Message) return;
@@ -350,6 +376,39 @@ io.on("connection", async (socket) => {
     }
   });
 
+  /* EDIT MESSAGE */
+  socket.on("edit_message", async (data) => {
+    try {
+      const msg = await Message.findById(data.messageId);
+      if (!msg || msg.from !== socket.username) return;
+      
+      msg.message = data.newText;
+      msg.edited = true;
+      await msg.save();
+      
+      send(msg.to, "message_updated", msg);
+      socket.emit("message_updated", msg);
+    } catch (err) {
+      console.error("Edit message error:", err);
+    }
+  });
+
+  /* DELETE MESSAGE */
+  socket.on("delete_message", async (data) => {
+    try {
+      const msg = await Message.findById(data.messageId);
+      if (!msg || msg.from !== socket.username) return;
+      
+      await Message.deleteOne({ _id: data.messageId });
+      
+      send(msg.to, "message_deleted", { messageId: data.messageId });
+      socket.emit("message_deleted", { messageId: data.messageId });
+    } catch (err) {
+      console.error("Delete message error:", err);
+    }
+  });
+
+  /* GET HISTORY */
   socket.on("get_history", async (user) => {
     try {
       if (!Message) { socket.emit("chat_history", []); return; }
@@ -367,6 +426,7 @@ io.on("connection", async (socket) => {
     }
   });
 
+  /* READ MESSAGES */
   socket.on("read", async (data) => {
     try {
       if (!Message) return;
@@ -390,10 +450,14 @@ io.on("connection", async (socket) => {
     }
   });
 
+  /* TYPING */
   socket.on("typing", (to) => send(to, "typing", { from: socket.username }));
   socket.on("stop_typing", (to) => send(to, "stop_typing", { from: socket.username }));
+  
+  /* PROFILE UPDATED */
   socket.on("profile_updated", () => emitChatList());
 
+  /* DISCONNECT */
   socket.on("disconnect", () => {
     console.log(`❌ User disconnected: ${socket.username}`);
     online.delete(socket.username);

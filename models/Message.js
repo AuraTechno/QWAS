@@ -5,6 +5,7 @@ const MessageSchema = new mongoose.Schema({
   to: { type: String, required: true },
   message: { type: String, required: true },
   status: { type: String, default: "sent" },
+  edited: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 
