@@ -6,7 +6,6 @@
       QWAS.State.socket = io({ auth: { token } });
       
       QWAS.State.socket.on('chat_list', (chats) => {
-        console.log('📋 Получен список чатов:', chats?.length || 0);
         QWAS.State.chatList = chats || [];
         
         if (QWAS.Chat && typeof QWAS.Chat.renderList === 'function') {
@@ -21,7 +20,6 @@
       });
       
       QWAS.State.socket.on('new_message', (msg) => {
-        console.log('📨 Новое сообщение:', msg.message?.substring(0, 30));
         const isCurrentChat = msg.from === QWAS.State.current || msg.to === QWAS.State.current;
         const isFavoriteChat = QWAS.State.current === QWAS.Config.FAVORITE_CHAT_ID && msg.to === QWAS.Config.FAVORITE_CHAT_ID;
         
@@ -67,7 +65,6 @@
       });
       
       QWAS.State.socket.on('chat_history', (data) => {
-        console.log(`📜 chat_history: page=${data.page}, messages=${data.messages?.length}, hasMore=${data.hasMore}`);
         const container = document.getElementById('messages');
         if (!container) return;
         
@@ -96,8 +93,7 @@
             container.scrollTop = container.scrollHeight;
           }, 50);
         } else {
-          const oldScrollHeight = container.scrollHeight;
-          
+          // Добавляем сообщения в начало
           if (messages && messages.length > 0) {
             for (let i = messages.length - 1; i >= 0; i--) {
               if (QWAS.Messages && QWAS.Messages.prepend) {
@@ -106,10 +102,12 @@
             }
           }
           
+          // Восстанавливаем позицию скролла
           setTimeout(() => {
-            const newScrollHeight = container.scrollHeight;
-            container.scrollTop = newScrollHeight - oldScrollHeight;
-          }, 50);
+            if (QWAS.Messages && QWAS.Messages.restoreScrollPosition) {
+              QWAS.Messages.restoreScrollPosition();
+            }
+          }, 20);
         }
         
         QWAS.State.isLoadingMessages = false;
@@ -128,7 +126,6 @@
       });
       
       QWAS.State.socket.on('all_users', (users) => {
-        console.log('👥 Получены пользователи:', users?.length || 0);
         QWAS.State.allUsers = users || [];
       });
       

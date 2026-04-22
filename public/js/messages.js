@@ -2,6 +2,9 @@
   'use strict';
   
   QWAS.Messages = {
+    // Сохраняем ссылку на первое сообщение перед добавлением
+    firstMessageBeforeLoad: null,
+    
     ensureSpacer: function() {
       const container = document.getElementById('messages');
       if (!container) return;
@@ -69,6 +72,60 @@
       }
       
       this.ensureSpacer();
+    },
+    
+    // Сохраняем позицию перед загрузкой
+    saveScrollPosition: function() {
+      const container = document.getElementById('messages');
+      if (!container) return;
+      
+      // Находим первое видимое сообщение
+      const messages = Array.from(container.children).filter(
+        child => child.classList.contains('message')
+      );
+      
+      const containerRect = container.getBoundingClientRect();
+      
+      for (const msg of messages) {
+        const rect = msg.getBoundingClientRect();
+        // Если сообщение видимо (хотя бы частично)
+        if (rect.bottom > containerRect.top && rect.top < containerRect.bottom) {
+          this.firstMessageBeforeLoad = {
+            id: msg.id,
+            offset: rect.top - containerRect.top
+          };
+          break;
+        }
+      }
+      
+      // Если не нашли видимое, сохраняем первое сообщение
+      if (!this.firstMessageBeforeLoad && messages.length > 0) {
+        const firstMsg = messages[0];
+        const rect = firstMsg.getBoundingClientRect();
+        this.firstMessageBeforeLoad = {
+          id: firstMsg.id,
+          offset: rect.top - containerRect.top
+        };
+      }
+    },
+    
+    // Восстанавливаем позицию после загрузки
+    restoreScrollPosition: function() {
+      const container = document.getElementById('messages');
+      if (!container || !this.firstMessageBeforeLoad) return;
+      
+      const targetMsg = document.getElementById(this.firstMessageBeforeLoad.id);
+      if (targetMsg) {
+        const rect = targetMsg.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        const currentOffset = rect.top - containerRect.top;
+        const delta = currentOffset - this.firstMessageBeforeLoad.offset;
+        
+        // Корректируем скролл
+        container.scrollTop = container.scrollTop + delta;
+      }
+      
+      this.firstMessageBeforeLoad = null;
     },
     
     createMessageElement: function(msg) {
@@ -251,7 +308,7 @@
       if (btn) {
         btn.classList.add('show');
         if (badge) {
-          QWAS.State.unreadCount += count;
+          QWAS.State.unreadCount = (QWAS.State.unreadCount || 0) + count;
           badge.textContent = QWAS.State.unreadCount;
           badge.style.display = 'flex';
         }
@@ -322,9 +379,12 @@
     messagesContainer.addEventListener('scroll', () => {
       const scrollTop = messagesContainer.scrollTop;
       
-      if (scrollTop < 30 && QWAS.State.hasMoreMessages && !QWAS.State.isLoadingMessages && !isLoadingMore) {
+      if (scrollTop < 50 && QWAS.State.hasMoreMessages && !QWAS.State.isLoadingMessages && !isLoadingMore) {
         isLoadingMore = true;
         QWAS.State.isLoadingMessages = true;
+        
+        // Сохраняем позицию перед загрузкой
+        QWAS.Messages.saveScrollPosition();
         
         if (QWAS.State.socket) {
           QWAS.State.socket.emit('load_more');
