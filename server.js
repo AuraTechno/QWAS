@@ -20,6 +20,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.static("public"));
 
 const online = new Map();
+const MESSAGES_PER_PAGE = config.MESSAGES_PER_PAGE || 30;
 
 app.get("/health", (req, res) => {
   const mongoStatus = mongoose.connection.readyState;
@@ -28,8 +29,6 @@ app.get("/health", (req, res) => {
 });
 
 console.log("🔄 Подключение к MongoDB...");
-console.log("📝 URL:", config.MONGO_URL.replace(/:[^:@]+@/, ':****@'));
-
 mongoose.set('strictQuery', false);
 mongoose.connect(config.MONGO_URL)
   .then(() => {
@@ -260,10 +259,21 @@ io.use((socket, next) => {
   }
 });
 
+// Храним состояние пагинации для каждого сокета
+const paginationState = new Map();
+
 io.on("connection", async (socket) => {
   console.log(`✅ ${socket.username} подключился`);
 
   online.set(socket.username, socket.id);
+  
+  // Инициализируем состояние пагинации
+  paginationState.set(socket.id, {
+    currentChat: null,
+    page: 1,
+    hasMore: true,
+    isLoading: false
+  });
   
   if (mongoose.connection.readyState === 1 && User) {
     emitChatList();
@@ -278,12 +288,7 @@ io.on("connection", async (socket) => {
   /* ОТПРАВКА СООБЩЕНИЯ */
   socket.on("send_message", async (data) => {
     try {
-      if (!Message) {
-        console.error("❌ Message модель не загружена");
-        return;
-      }
-      
-      console.log(`📨 Сообщение от ${socket.username} для ${data.to}: ${data.message.substring(0, 30)}...`);
+      if (!Message) return;
       
       const msg = await Message.create({
         from: socket.username,
@@ -293,8 +298,6 @@ io.on("connection", async (socket) => {
         forwardedFrom: data.forwardedFrom || null,
         status: "sent"
       });
-
-      console.log(`✅ Сообщение сохранено в БД, ID: ${msg._id}`);
 
       const full = msg.toObject();
       
@@ -310,7 +313,7 @@ io.on("connection", async (socket) => {
         emitChatListForUser(data.to);
       }
     } catch (err) {
-      console.error("❌ Ошибка отправки:", err);
+      console.error("Ошибка отправки:", err);
     }
   });
 
@@ -366,24 +369,57 @@ io.on("connection", async (socket) => {
     }
   });
 
-  /* ИСТОРИЯ */
-  socket.on("get_history", async (user) => {
+  /* ЗАГРУЗКА ИСТОРИИ С ПАГИНАЦИЕЙ */
+  socket.on("get_history", async (user, page = 1) => {
     try {
-      if (!Message) { socket.emit("chat_history", []); return; }
+      if (!Message) { socket.emit("chat_history", { messages: [], hasMore: false }); return; }
       
-      console.log(`📜 Запрос истории: ${socket.username} <-> ${user}`);
+      const state = paginationState.get(socket.id);
+      if (state.isLoading) return;
       
-      let msgs;
+      state.isLoading = true;
+      state.currentChat = user;
+      state.page = page;
+      
+      console.log(`📜 Загрузка страницы ${page} для чата ${socket.username} <-> ${user}`);
+      
+      const skip = (page - 1) * MESSAGES_PER_PAGE;
+      
+      let query;
       if (user === "favorites") {
-        msgs = await Message.find({ to: "favorites", from: socket.username }).sort({ createdAt: 1 }).lean();
+        query = { to: "favorites", from: socket.username };
       } else {
-        msgs = await Message.find({
+        query = {
           $or: [
             { from: socket.username, to: user },
             { from: user, to: socket.username }
           ]
-        }).sort({ createdAt: 1 }).limit(50).lean();
-        
+        };
+      }
+      
+      // Получаем на одно сообщение больше, чтобы понять есть ли ещё
+      const msgs = await Message.find(query)
+        .sort({ createdAt: -1 })  // Сначала новые
+        .skip(skip)
+        .limit(MESSAGES_PER_PAGE + 1)
+        .lean();
+      
+      const hasMore = msgs.length > MESSAGES_PER_PAGE;
+      const messages = msgs.slice(0, MESSAGES_PER_PAGE).reverse(); // Возвращаем в хронологический порядок
+      
+      state.hasMore = hasMore;
+      state.isLoading = false;
+      
+      console.log(`📜 Загружено ${messages.length} сообщений, hasMore: ${hasMore}`);
+      
+      socket.emit("chat_history", { 
+        messages, 
+        hasMore,
+        page 
+      });
+      
+      // Отмечаем входящие сообщения как прочитанные (только для первой страницы)
+      if (page === 1 && user !== "favorites") {
         await Message.updateMany(
           { from: user, to: socket.username, status: { $ne: "read" } },
           { $set: { status: "read" } }
@@ -394,12 +430,30 @@ io.on("connection", async (socket) => {
           chatWith: user 
         });
       }
-
-      console.log(`📜 Найдено ${msgs.length} сообщений`);
-      socket.emit("chat_history", msgs);
     } catch (err) {
       console.error("❌ Ошибка получения истории:", err);
-      socket.emit("chat_history", []);
+      const state = paginationState.get(socket.id);
+      if (state) state.isLoading = false;
+      socket.emit("chat_history", { messages: [], hasMore: false });
+    }
+  });
+
+  /* ЗАГРУЗКА СЛЕДУЮЩЕЙ СТРАНИЦЫ */
+  socket.on("load_more", () => {
+    const state = paginationState.get(socket.id);
+    if (state && state.currentChat && state.hasMore && !state.isLoading) {
+      socket.emit("get_history", state.currentChat, state.page + 1);
+    }
+  });
+
+  /* СБРОС ПАГИНАЦИИ ПРИ СМЕНЕ ЧАТА */
+  socket.on("reset_pagination", () => {
+    const state = paginationState.get(socket.id);
+    if (state) {
+      state.currentChat = null;
+      state.page = 1;
+      state.hasMore = true;
+      state.isLoading = false;
     }
   });
 
@@ -416,6 +470,7 @@ io.on("connection", async (socket) => {
   socket.on("disconnect", () => {
     console.log(`❌ ${socket.username} отключился`);
     online.delete(socket.username);
+    paginationState.delete(socket.id);
     if (mongoose.connection.readyState === 1 && User) emitChatList();
   });
 });

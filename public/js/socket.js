@@ -11,22 +11,17 @@
       });
       
       QWAS.State.socket.on('new_message', (msg) => {
-        // Проверяем, относится ли сообщение к текущему чату
         const isCurrentChat = msg.from === QWAS.State.current || msg.to === QWAS.State.current;
         const isFavoriteChat = QWAS.State.current === QWAS.Config.FAVORITE_CHAT_ID && msg.to === QWAS.Config.FAVORITE_CHAT_ID;
         
-        // Если сообщение для избранного и мы в избранном - показываем
-        // Или если сообщение относится к текущему чату - показываем
         if (isCurrentChat || isFavoriteChat) {
           QWAS.Messages.add(msg);
           
-          // Отмечаем как прочитанное если сообщение от собеседника
           if (msg.from === QWAS.State.current && msg.from !== QWAS.State.me) {
             QWAS.State.socket.emit('mark_as_read', { from: msg.from });
           }
         }
         
-        // Обновляем список чатов
         if (msg.from !== QWAS.State.me || msg.to !== QWAS.State.me) {
           QWAS.Chat.loadChatList();
         }
@@ -56,12 +51,41 @@
         }
       });
       
-      QWAS.State.socket.on('chat_history', (msgs) => {
+      QWAS.State.socket.on('chat_history', (data) => {
         const container = document.getElementById('messages');
-        container.innerHTML = msgs.length ? '' : 
-          '<div class="empty-state"><div class="empty-state-icon">💬</div><p>Нет сообщений</p></div>';
-        msgs.forEach(m => QWAS.Messages.add(m, true));
-        container.scrollTop = container.scrollHeight;
+        const { messages, hasMore, page } = data;
+        
+        QWAS.State.hasMoreMessages = hasMore;
+        QWAS.State.currentPage = page || 1;
+        
+        if (page === 1) {
+          // Первая страница - очищаем контейнер
+          container.innerHTML = messages.length ? '' : 
+            '<div class="empty-state"><div class="empty-state-icon">💬</div><p>Нет сообщений</p></div>';
+          
+          // Сохраняем текущую позицию скролла для восстановления
+          const oldScrollHeight = container.scrollHeight;
+          
+          messages.forEach(m => QWAS.Messages.add(m, true));
+          
+          // Прокручиваем вниз
+          container.scrollTop = container.scrollHeight;
+        } else {
+          // Подгружаем старые сообщения сверху
+          const oldScrollHeight = container.scrollHeight;
+          const oldScrollTop = container.scrollTop;
+          
+          // Вставляем сообщения в начало
+          messages.reverse().forEach(m => {
+            QWAS.Messages.prepend(m);
+          });
+          
+          // Восстанавливаем позицию скролла
+          const newScrollHeight = container.scrollHeight;
+          container.scrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight);
+        }
+        
+        QWAS.State.isLoadingMessages = false;
       });
       
       QWAS.State.socket.on('typing', (d) => {

@@ -66,7 +66,16 @@
     },
     
     select: function(username) {
+      // Сбрасываем пагинацию при смене чата
+      if (QWAS.State.socket) {
+        QWAS.State.socket.emit('reset_pagination');
+      }
+      
       QWAS.State.current = username;
+      QWAS.State.hasMoreMessages = true;
+      QWAS.State.isLoadingMessages = false;
+      QWAS.State.currentPage = 1;
+      
       this.renderList();
       
       const isFav = username === QWAS.Config.FAVORITE_CHAT_ID;
@@ -104,7 +113,7 @@
         document.getElementById('sidebar').classList.add('hidden');
       }
       
-      QWAS.State.socket.emit('get_history', username);
+      QWAS.State.socket.emit('get_history', username, 1);
     },
     
     showSidebar: function() {

@@ -29,7 +29,8 @@
     ],
     
     NOTIFICATION_DURATION: 3000,
-    TYPING_TIMEOUT: 1000
+    TYPING_TIMEOUT: 1000,
+    MESSAGES_PER_PAGE: 30
   };
   
   QWAS.State = {
@@ -44,6 +45,9 @@
     typingTimeout: null,
     selectedMessage: null,
     editingMessageId: null,
-    uploadedAvatar: null
+    uploadedAvatar: null,
+    hasMoreMessages: true,
+    isLoadingMessages: false,
+    currentPage: 1
   };
 })();

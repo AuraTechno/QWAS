@@ -11,6 +11,28 @@
       
       if (document.getElementById(`msg-${msg._id}`)) return;
       
+      const messageElement = this.createMessageElement(msg);
+      container.appendChild(messageElement);
+      
+      if (!skipScroll) {
+        container.scrollTop = container.scrollHeight;
+      }
+    },
+    
+    prepend: function(msg) {
+      const container = document.getElementById('messages');
+      if (container.children.length === 1 && 
+          container.children[0].classList.contains('empty-state')) {
+        container.innerHTML = '';
+      }
+      
+      if (document.getElementById(`msg-${msg._id}`)) return;
+      
+      const messageElement = this.createMessageElement(msg);
+      container.insertBefore(messageElement, container.firstChild);
+    },
+    
+    createMessageElement: function(msg) {
       const isMe = msg.from === QWAS.State.me;
       const div = document.createElement('div');
       div.className = `message ${isMe ? 'me' : 'other'} ${msg.edited ? 'edited' : ''}`;
@@ -48,11 +70,7 @@
         </div>
       `;
       
-      container.appendChild(div);
-      
-      if (!skipScroll) {
-        container.scrollTop = container.scrollHeight;
-      }
+      return div;
     },
     
     showMenu: function(msg, event) {
@@ -182,6 +200,7 @@
     }
   };
   
+  // Обработчики ввода
   document.getElementById('msg').addEventListener('keypress', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -197,5 +216,14 @@
     QWAS.State.typingTimeout = setTimeout(() => {
       QWAS.State.socket.emit('stop_typing', QWAS.State.current);
     }, QWAS.Config.TYPING_TIMEOUT);
+  });
+  
+  // Пагинация при прокрутке
+  const messagesContainer = document.getElementById('messages');
+  messagesContainer.addEventListener('scroll', () => {
+    if (messagesContainer.scrollTop < 100 && QWAS.State.hasMoreMessages && !QWAS.State.isLoadingMessages) {
+      QWAS.State.isLoadingMessages = true;
+      QWAS.State.socket.emit('load_more');
+    }
   });
 })();
