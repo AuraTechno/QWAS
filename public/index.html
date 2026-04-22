@@ -22,6 +22,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .search-container {
   padding: 12px 16px;
   border-bottom: 1px solid #222;
+  position: relative;
 }
 
 .search-box {
@@ -47,6 +48,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   color: #666;
 }
 
+.clear-search {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  display: none;
+}
+
+.clear-search.show {
+  display: block;
+}
+
 .search-results {
   max-height: 300px;
   overflow-y: auto;
@@ -54,6 +69,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   background: #111;
   border-radius: 12px;
   display: none;
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 }
 
 .search-results.show {
@@ -347,6 +367,24 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   color: #fff; font-size: 24px; cursor: pointer; padding: 8px;
 }
 
+/* Кнопка выхода из чата на мобильных */
+.mobile-leave-chat {
+  display: none;
+  background: none;
+  border: none;
+  color: #e74c3c;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 8px;
+  margin-left: auto;
+}
+
+@media (max-width: 768px) {
+  .mobile-leave-chat {
+    display: block;
+  }
+}
+
 .chat-header-info { flex: 1; }
 .chat-header-info h3 { font-size: 16px; margin-bottom: 3px; }
 .chat-header-info .online-status { font-size: 13px; color: #888; }
@@ -411,7 +449,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Заголовок секции */
 .section-title {
   padding: 12px 16px 4px;
   font-size: 13px;
@@ -480,7 +517,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <div class="search-container">
       <div class="search-box">
         <span>🔍</span>
-        <input type="text" id="searchInput" placeholder="Поиск @username..." autocomplete="off" oninput="searchUsers()" onfocus="showSearchResults()">
+        <input type="text" id="searchInput" placeholder="Поиск @username..." autocomplete="off" oninput="handleSearchInput()" onfocus="showSearchResults()">
+        <button class="clear-search" id="clearSearch" onclick="clearSearch()">✕</button>
       </div>
       <div class="search-results" id="searchResults"></div>
     </div>
@@ -497,6 +535,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <h3 id="chatUsername">Выберите чат</h3>
         <div class="online-status" id="chatStatus"></div>
       </div>
+      <button class="mobile-leave-chat" onclick="leaveChat()" title="Выйти из чата">✕</button>
     </div>
     
     <div class="messages-container" id="messages">
@@ -523,8 +562,8 @@ let userToken = "";
 let currentUser = { avatar: "", avatarColor: "#667eea" };
 let selectedColor = "#667eea";
 let uploadedAvatar = null;
-let searchTimeout = null;
 let chatList = [];
+let allUsers = []; // Все пользователи для поиска
 
 const colors = ["#667eea", "#764ba2", "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#1abc9c", "#e67e22", "#9b59b6", "#e91e63", "#00bcd4", "#ff5722"];
 
@@ -644,6 +683,25 @@ function updateMyAvatar() {
   }
 }
 
+function handleSearchInput() {
+  const input = document.getElementById('searchInput');
+  const clearBtn = document.getElementById('clearSearch');
+  
+  if (input.value.length > 0) {
+    clearBtn.classList.add('show');
+    searchUsersLocal(input.value);
+  } else {
+    clearBtn.classList.remove('show');
+    document.getElementById('searchResults').classList.remove('show');
+  }
+}
+
+function clearSearch() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('clearSearch').classList.remove('show');
+  document.getElementById('searchResults').classList.remove('show');
+}
+
 function showSearchResults() {
   const q = document.getElementById('searchInput').value;
   if (q.length >= 1) {
@@ -651,54 +709,93 @@ function showSearchResults() {
   }
 }
 
-async function searchUsers() {
-  const q = document.getElementById('searchInput').value;
+// Локальный поиск без запроса к серверу
+function searchUsersLocal(query) {
   const resultsDiv = document.getElementById('searchResults');
   
-  if (q.length < 1) {
+  if (query.length < 1) {
     resultsDiv.classList.remove('show');
     return;
   }
   
-  try {
-    const response = await fetch(`/users/search?q=${encodeURIComponent(q)}`, {
-      headers: { 'Authorization': `Bearer ${userToken}` }
-    });
-    const data = await response.json();
-    
-    if (data.users.length === 0) {
-      resultsDiv.innerHTML = '<div class="no-results">Пользователи не найдены</div>';
-    } else {
-      resultsDiv.innerHTML = data.users.map(u => `
-        <div class="search-result-item" onclick="startChatWith('${u.username}')">
-          <div class="user-avatar small" style="${u.avatar ? `background-image:url(${u.avatar});background-size:cover` : `background:${u.avatarColor || '#667eea'}`}">
-            ${u.avatar ? '' : getAvatarLetter(u.username)}
-          </div>
-          <div class="user-content">
-            <div class="user-name">@${u.username}</div>
-          </div>
+  // Убираем @ для поиска
+  const cleanQuery = query.replace(/^@/, '').toLowerCase();
+  
+  // Фильтруем пользователей (исключая себя и тех кто уже в чатах)
+  const filtered = allUsers.filter(u => 
+    u.username !== me && 
+    u.username.toLowerCase().includes(cleanQuery)
+  );
+  
+  if (filtered.length === 0) {
+    resultsDiv.innerHTML = '<div class="no-results">Пользователи не найдены</div>';
+  } else {
+    resultsDiv.innerHTML = filtered.map(u => `
+      <div class="search-result-item" onclick="startChatWith('${u.username}')">
+        <div class="user-avatar small" style="${u.avatar ? `background-image:url(${u.avatar});background-size:cover` : `background:${u.avatarColor || '#667eea'}`}">
+          ${u.avatar ? '' : getAvatarLetter(u.username)}
         </div>
-      `).join('');
-    }
-    
-    resultsDiv.classList.add('show');
-  } catch (err) {
-    console.error('Search error:', err);
+        <div class="user-content">
+          <div class="user-name">@${u.username}</div>
+        </div>
+      </div>
+    `).join('');
   }
+  
+  resultsDiv.classList.add('show');
 }
 
 function startChatWith(username) {
-  document.getElementById('searchInput').value = '';
-  document.getElementById('searchResults').classList.remove('show');
-  document.getElementById('searchResults').innerHTML = '';
+  clearSearch();
+  
+  // Проверяем есть ли уже такой чат
+  const existingChat = chatList.find(c => c.username === username);
+  
+  if (!existingChat) {
+    // Добавляем пользователя в список чатов
+    const userData = allUsers.find(u => u.username === username);
+    if (userData) {
+      chatList.push({
+        username: userData.username,
+        avatar: userData.avatar,
+        avatarColor: userData.avatarColor,
+        online: onlineUsers.get(username) || false
+      });
+      renderChatList();
+    }
+  }
+  
   selectUser(username);
+}
+
+// Выход из чата на мобильных
+function leaveChat() {
+  current = "";
+  document.getElementById('chatHeader').style.display = 'none';
+  document.getElementById('msg').disabled = true;
+  document.getElementById('sendBtn').disabled = true;
+  document.getElementById('messages').innerHTML = `
+    <div class="empty-state">
+      <div class="empty-state-icon">💬</div>
+      <h3>Добро пожаловать в QWAS</h3>
+      <p>Выберите чат или найдите пользователя</p>
+    </div>
+  `;
+  document.getElementById('typingIndicator').textContent = '';
+  
+  // Убираем выделение
+  document.querySelectorAll('.user').forEach(el => el.classList.remove('selected'));
+  
+  // На мобильных показываем сайдбар
+  if (window.innerWidth <= 768) {
+    showSidebar();
+  }
 }
 
 function register() {
   let u = document.getElementById('u').value.trim();
   const p = document.getElementById('p').value;
   
-  // Убираем @ если пользователь его ввел
   u = u.replace(/^@/, '');
   
   if(!u||!p) return alert('Введите логин и пароль');
@@ -741,7 +838,20 @@ function login() {
     updateMyAvatar();
     connectSocket(d.token);
     loadChatList();
+    loadAllUsers(); // Загружаем всех пользователей для поиска
   });
+}
+
+async function loadAllUsers() {
+  try {
+    // Получаем всех пользователей для поиска
+    const response = await fetch('/users/search?q=', {
+      headers: { 'Authorization': `Bearer ${userToken}` }
+    });
+    // В реальности нужен отдельный эндпоинт, но пока используем поиск с пустым запросом
+  } catch (err) {
+    console.error('Load users error:', err);
+  }
 }
 
 async function loadChatList() {
@@ -813,7 +923,6 @@ function connectSocket(token) {
       addMessageToChat(msg);
       if(msg.to === me && current === msg.from) socket.emit("read", {from: msg.from, to: me});
     }
-    // Обновляем список чатов при новом сообщении
     loadChatList();
   });
   
@@ -828,6 +937,11 @@ function connectSocket(token) {
   
   socket.on("typing", d => { if(d.from === current) document.getElementById('typingIndicator').textContent = `@${current} печатает...`; });
   socket.on("stop_typing", d => { if(d.from === current) document.getElementById('typingIndicator').textContent = ''; });
+  
+  // Получаем всех пользователей для поиска
+  socket.on("all_users", users => {
+    allUsers = users;
+  });
 }
 
 function selectUser(username) {
@@ -919,7 +1033,7 @@ function send() {
 
 function logout() {
   if(socket) socket.disconnect();
-  me = ""; current = ""; userToken = ""; chatList = [];
+  me = ""; current = ""; userToken = ""; chatList = []; allUsers = [];
   document.getElementById('auth').style.display='block';
   document.getElementById('chat').style.display='none';
   document.getElementById('u').value = '';
@@ -927,8 +1041,15 @@ function logout() {
   closeProfile();
 }
 
-function showSidebar() { document.getElementById('sidebar').classList.remove('hidden'); }
-function hideSidebar() { if(window.innerWidth <= 768) document.getElementById('sidebar').classList.add('hidden'); }
+function showSidebar() { 
+  document.getElementById('sidebar').classList.remove('hidden'); 
+}
+
+function hideSidebar() { 
+  if(window.innerWidth <= 768) {
+    document.getElementById('sidebar').classList.add('hidden');
+  }
+}
 
 document.getElementById("msg").addEventListener("input", () => {
   if(!current) return;
@@ -937,7 +1058,17 @@ document.getElementById("msg").addEventListener("input", () => {
   typingTimeout = setTimeout(() => { socket.emit("stop_typing", current); }, 1000);
 });
 
-document.getElementById("msg").addEventListener("keypress", e => { if(e.key==="Enter") send(); });
+document.getElementById("msg").addEventListener("keypress", e => { 
+  if(e.key==="Enter") {
+    e.preventDefault();
+    send();
+  }
+});
+
+// Обновляем поиск при получении всех пользователей
+function updateAllUsers(users) {
+  allUsers = users;
+}
 </script>
 </body>
 </html>

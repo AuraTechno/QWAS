@@ -1,4 +1,3 @@
-
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -21,6 +20,7 @@ app.use(express.static("public"));
 
 const online = new Map();
 
+// Health check
 app.get("/health", (req, res) => {
   const mongoStatus = mongoose.connection.readyState;
   const statusMap = { 0: "disconnected", 1: "connected", 2: "connecting", 3: "disconnecting" };
@@ -103,6 +103,25 @@ app.post("/login", async (req, res) => {
   }
 });
 
+/* GET ALL USERS (для поиска) */
+app.get("/users/all", async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ ok: false, error: "No token" });
+    
+    const data = jwt.verify(token, config.JWT_SECRET);
+    
+    const users = await User.find({
+      username: { $ne: data.username }
+    }).select('username avatar avatarColor');
+    
+    res.json({ ok: true, users });
+  } catch (err) {
+    console.error("Get all users error:", err);
+    res.json({ ok: false, users: [] });
+  }
+});
+
 /* SEARCH USERS */
 app.get("/users/search", async (req, res) => {
   try {
@@ -112,7 +131,13 @@ app.get("/users/search", async (req, res) => {
     const data = jwt.verify(token, config.JWT_SECRET);
     let { q } = req.query;
     
-    if (!q) return res.json({ ok: true, users: [] });
+    if (!q) {
+      // Если запрос пустой, возвращаем всех пользователей кроме себя
+      const allUsers = await User.find({
+        username: { $ne: data.username }
+      }).select('username avatar avatarColor').limit(20);
+      return res.json({ ok: true, users: allUsers });
+    }
     
     // Убираем @ если есть
     q = q.replace(/^@/, '');
@@ -244,13 +269,23 @@ io.use((socket, next) => {
   }
 });
 
-io.on("connection", (socket) => {
+io.on("connection", async (socket) => {
   console.log(`✅ User connected: ${socket.username}`);
 
   online.set(socket.username, socket.id);
   
   if (mongoose.connection.readyState === 1 && User) {
     emitChatList();
+    
+    // Отправляем список всех пользователей для поиска
+    try {
+      const allUsers = await User.find({
+        username: { $ne: socket.username }
+      }).select('username avatar avatarColor');
+      socket.emit("all_users", allUsers);
+    } catch (err) {
+      console.error("Send all users error:", err);
+    }
   }
 
   socket.on("send_message", async (data) => {
