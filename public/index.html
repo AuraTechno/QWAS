@@ -41,7 +41,6 @@ body {
   overflow: hidden;
 }
 
-/* Уведомления */
 .notification-container {
   position: fixed;
   top: max(16px, env(safe-area-inset-top));
@@ -76,7 +75,6 @@ body {
 .notification-success { border-left: 4px solid var(--success); }
 .notification-error { border-left: 4px solid var(--danger); }
 
-/* Авторизация */
 #auth {
   position: fixed;
   inset: 0;
@@ -144,7 +142,6 @@ body {
   cursor: pointer;
 }
 
-/* Чат */
 #chat {
   position: fixed;
   inset: 0;
@@ -216,7 +213,6 @@ body {
 
 .user-avatar.small { width: 44px; height: 44px; font-size: 16px; }
 
-/* Поиск */
 .search-container {
   padding: 14px 16px;
   border-bottom: 1px solid var(--border);
@@ -301,7 +297,6 @@ body {
   margin-left: auto;
 }
 
-/* Чат */
 .chat-area {
   flex: 1;
   display: flex;
@@ -336,7 +331,6 @@ body {
 .chat-header-info h3 { font-size: 17px; font-weight: 600; }
 .chat-header-info .online-status { font-size: 13px; color: var(--text-secondary); }
 
-/* Сообщения */
 .messages-container {
   flex: 1;
   padding: 20px 16px;
@@ -420,7 +414,13 @@ body {
 }
 .message.me .message-meta { justify-content: flex-end; }
 
-/* Индикатор печати */
+.message-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.message-status.read { color: var(--success); }
+
 .typing-indicator {
   padding: 8px 24px;
   font-size: 14px;
@@ -430,7 +430,6 @@ body {
   align-items: center;
 }
 
-/* Поле ввода */
 .message-input-container {
   padding: 16px 20px;
   padding-bottom: max(16px, env(safe-area-inset-bottom));
@@ -463,7 +462,6 @@ body {
 }
 .send-button:disabled { opacity: 0.4; }
 
-/* Модалки */
 .modal {
   display: none;
   position: fixed;
@@ -588,7 +586,6 @@ body {
 .btn-danger { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
 .btn-secondary { background: var(--surface-light); color: var(--text-primary); }
 
-/* Меню сообщения */
 .message-menu {
   position: fixed;
   background: var(--surface);
@@ -1078,18 +1075,35 @@ function startChatWith(u) {
 
 function connectSocket(t) {
   socket = io({ auth: { token: t } });
+  
   socket.on("chat_list", chats => { chatList = chats; renderChatList(); });
   
   socket.on("new_message", msg => {
-    if (msg.from === current || msg.to === current || current === FAVORITE_CHAT_ID) addMessageToChat(msg);
+    if (msg.from === current || msg.to === current || current === FAVORITE_CHAT_ID) {
+      addMessageToChat(msg);
+    }
   });
   
   socket.on("message_updated", msg => {
     const el = document.getElementById(`msg-${msg._id}`);
-    if (el) { el.querySelector('.message-bubble').textContent = msg.message; el.classList.add('edited'); }
+    if (el) { 
+      el.querySelector('.message-bubble').textContent = msg.message; 
+      el.classList.add('edited'); 
+    }
   });
   
   socket.on("message_deleted", d => document.getElementById(`msg-${d.messageId}`)?.remove());
+  
+  socket.on("messages_read", data => {
+    // Обновляем статус прочитанных сообщений
+    document.querySelectorAll('.message.me').forEach(el => {
+      const statusEl = el.querySelector('.message-status');
+      if (statusEl) {
+        statusEl.textContent = '✓✓';
+        statusEl.classList.add('read');
+      }
+    });
+  });
   
   socket.on("chat_history", msgs => {
     const c = document.getElementById("messages");
@@ -1154,7 +1168,7 @@ function addMessageToChat(msg) {
       <div class="message-bubble">${escapeHtml(msg.message)}</div>
       <div class="message-meta">
         <span>${new Date(msg.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-        ${isMe ? `<span>${msg.status === 'read' ? '✓✓' : '✓'}</span>` : ''}
+        ${isMe ? `<span class="message-status ${msg.status === 'read' ? 'read' : ''}">${msg.status === 'read' ? '✓✓' : '✓'}</span>` : ''}
       </div>
     </div>
   `;

@@ -273,6 +273,7 @@ io.on("connection", async (socket) => {
     } catch (err) {}
   }
 
+  /* ОТПРАВКА СООБЩЕНИЯ */
   socket.on("send_message", async (data) => {
     try {
       if (!Message) return;
@@ -302,6 +303,7 @@ io.on("connection", async (socket) => {
     }
   });
 
+  /* РЕДАКТИРОВАНИЕ */
   socket.on("edit_message", async (data) => {
     try {
       const msg = await Message.findById(data.messageId);
@@ -312,11 +314,12 @@ io.on("connection", async (socket) => {
       await msg.save();
       
       const updated = msg.toObject();
-      send(msg.to, "message_updated", updated);
+      if (msg.to !== "favorites") send(msg.to, "message_updated", updated);
       socket.emit("message_updated", updated);
     } catch (err) {}
   });
 
+  /* УДАЛЕНИЕ */
   socket.on("delete_message", async (data) => {
     try {
       const msg = await Message.findById(data.messageId);
@@ -331,6 +334,7 @@ io.on("connection", async (socket) => {
     } catch (err) {}
   });
 
+  /* ИСТОРИЯ */
   socket.on("get_history", async (user) => {
     try {
       if (!Message) { socket.emit("chat_history", []); return; }
@@ -346,25 +350,21 @@ io.on("connection", async (socket) => {
             { from: user, to: socket.username }
           ]
         }).sort({ createdAt: -1 }).limit(50).lean();
+        
+        // Отмечаем сообщения как прочитанные
+        await Message.updateMany(
+          { from: user, to: socket.username, status: { $ne: "read" } },
+          { $set: { status: "read" } }
+        );
+        
+        // Уведомляем отправителя что сообщения прочитаны
+        send(user, "messages_read", { by: socket.username });
       }
 
       socket.emit("chat_history", msgs.reverse());
     } catch (err) {
       socket.emit("chat_history", []);
     }
-  });
-
-  socket.on("read", async (data) => {
-    try {
-      if (!Message) return;
-      
-      await Message.updateMany(
-        { from: data.from, to: data.to, status: { $ne: "read" } },
-        { $set: { status: "read" } }
-      );
-
-      send(data.from, "read_update", { from: data.from, to: data.to });
-    } catch (err) {}
   });
 
   socket.on("typing", (to) => send(to, "typing", { from: socket.username }));
