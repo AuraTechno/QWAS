@@ -1,7 +1,13 @@
+cd /root/QWAS
+
+cat > public/index.html << 'EOF'
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <title>QWAS Messenger</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>">
 <script src="/socket.io/socket.io.js"></script>
@@ -11,6 +17,7 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -18,24 +25,37 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
   background: #0a0a0a;
   color: #fff;
+  overscroll-behavior: none;
 }
 
 #auth {
-  width: 360px;
-  margin: 100px auto;
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 15px;
-  padding: 30px;
+  padding: 30px 20px;
   background: #1a1a1a;
   border-radius: 16px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+@media (max-width: 480px) {
+  #auth {
+    width: 90%;
+    padding: 25px 16px;
+  }
 }
 
 #auth h1 {
   text-align: center;
   margin-bottom: 20px;
-  font-size: 32px;
+  font-size: clamp(28px, 8vw, 32px);
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -68,26 +88,42 @@ body {
   font-size: 16px;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
+  min-height: 48px;
 }
 
-#auth button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+#auth button:active {
+  transform: scale(0.98);
 }
 
 #auth button:last-child {
   background: #333;
 }
 
-#auth button:last-child:hover {
-  box-shadow: 0 5px 20px rgba(255, 255, 255, 0.1);
-}
-
 #chat {
   display: none;
   height: 100vh;
+  height: 100dvh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
 }
 
+/* Мобильная навигация */
+.mobile-back-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 8px;
+  margin-right: 8px;
+}
+
+/* Сайдбар */
 .sidebar {
   width: 300px;
   background: #111;
@@ -95,16 +131,50 @@ body {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  transition: transform 0.3s ease;
+}
+
+/* На мобильных сайдбар занимает всю ширину */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    z-index: 10;
+    transform: translateX(0);
+  }
+  
+  .sidebar.hidden {
+    transform: translateX(-100%);
+  }
+  
+  .chat-area {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+  }
+  
+  .mobile-back-btn {
+    display: block;
+  }
 }
 
 .sidebar-header {
   padding: 20px 16px;
   border-bottom: 1px solid #222;
   background: #0a0a0a;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .sidebar-header h2 {
-  font-size: 24px;
+  font-size: clamp(20px, 6vw, 24px);
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -115,15 +185,15 @@ body {
 .sidebar-header .user-info {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin-top: 15px;
   padding-top: 15px;
   border-top: 1px solid #222;
 }
 
 .user-avatar {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   display: flex;
@@ -137,14 +207,14 @@ body {
 }
 
 .user-avatar.small {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   font-size: 16px;
 }
 
 .user-avatar.large {
-  width: 50px;
-  height: 50px;
+  width: 52px;
+  height: 52px;
   font-size: 22px;
 }
 
@@ -153,47 +223,55 @@ body {
 }
 
 .user-info-text .username {
-  font-weight: bold;
+  font-weight: 600;
   font-size: 16px;
 }
 
 .user-info-text .status {
-  font-size: 12px;
+  font-size: 13px;
   color: #888;
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 .users-list {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .user {
-  padding: 12px 16px;
+  padding: 14px 16px;
   border-bottom: 1px solid #1a1a1a;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   transition: background 0.2s;
   position: relative;
+  min-height: 72px;
 }
 
-.user:hover {
+.user:active {
   background: #1a1a1a;
+}
+
+@media (hover: hover) {
+  .user:hover {
+    background: #1a1a1a;
+  }
 }
 
 .user.selected {
   background: #1e1e1e;
-  border-left: 3px solid #667eea;
+  border-left: 4px solid #667eea;
 }
 
 .user .online-indicator {
   position: absolute;
-  bottom: 12px;
+  bottom: 14px;
   right: 16px;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: #00ff00;
   border: 2px solid #111;
@@ -201,10 +279,10 @@ body {
 
 .user .offline-indicator {
   position: absolute;
-  bottom: 12px;
+  bottom: 14px;
   right: 16px;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: #666;
   border: 2px solid #111;
@@ -216,14 +294,16 @@ body {
 
 .user-name {
   font-weight: 500;
-  margin-bottom: 4px;
+  font-size: 16px;
+  margin-bottom: 5px;
 }
 
 .user-status {
-  font-size: 12px;
+  font-size: 13px;
   color: #888;
 }
 
+/* Область чата */
 .chat-area {
   flex: 1;
   display: flex;
@@ -232,12 +312,16 @@ body {
 }
 
 .chat-header {
-  padding: 16px 20px;
+  padding: 12px 16px;
   background: #111;
   border-bottom: 1px solid #222;
   display: flex;
   align-items: center;
   gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: 64px;
 }
 
 .chat-header-info {
@@ -245,8 +329,8 @@ body {
 }
 
 .chat-header-info h3 {
-  font-size: 18px;
-  margin-bottom: 4px;
+  font-size: 16px;
+  margin-bottom: 3px;
 }
 
 .chat-header-info .online-status {
@@ -254,20 +338,28 @@ body {
   color: #888;
 }
 
+/* Сообщения */
 .messages-container {
   flex: 1;
-  padding: 20px;
+  padding: 16px 12px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .message {
   display: flex;
-  gap: 10px;
-  max-width: 70%;
+  gap: 8px;
+  max-width: 85%;
   animation: fadeIn 0.3s ease;
+}
+
+@media (min-width: 768px) {
+  .message {
+    max-width: 70%;
+  }
 }
 
 @keyframes fadeIn {
@@ -303,13 +395,16 @@ body {
 
 .message-content {
   flex: 1;
+  min-width: 0;
 }
 
 .message-bubble {
-  padding: 12px 16px;
+  padding: 12px 14px;
   border-radius: 18px;
   word-break: break-word;
   position: relative;
+  font-size: 15px;
+  line-height: 1.4;
 }
 
 .message.me .message-bubble {
@@ -327,7 +422,7 @@ body {
 .message-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-top: 4px;
   font-size: 11px;
   color: #888;
@@ -340,27 +435,34 @@ body {
 
 .message-status {
   color: #4CAF50;
+  font-size: 13px;
 }
 
 .message-time {
   opacity: 0.7;
 }
 
+/* Индикатор печати */
 .typing-indicator {
-  padding: 8px 20px;
+  padding: 8px 16px;
   font-size: 13px;
   color: #888;
   font-style: italic;
   min-height: 36px;
 }
 
+/* Поле ввода */
 .message-input-container {
-  padding: 16px 20px;
+  padding: 12px 16px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
   background: #111;
   border-top: 1px solid #222;
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
 }
 
 .message-input {
@@ -370,19 +472,19 @@ body {
   border: 1px solid #333;
   background: #0a0a0a;
   color: #fff;
-  font-size: 15px;
+  font-size: 16px;
   transition: all 0.3s;
+  min-height: 48px;
 }
 
 .message-input:focus {
   outline: none;
   border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
 }
 
 .message-input:disabled {
   opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .send-button {
@@ -392,7 +494,7 @@ body {
   border: none;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  font-size: 20px;
+  font-size: 22px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -401,9 +503,15 @@ body {
   flex-shrink: 0;
 }
 
-.send-button:hover:not(:disabled) {
-  transform: scale(1.05);
-  box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+.send-button:active {
+  transform: scale(0.95);
+}
+
+@media (hover: hover) {
+  .send-button:hover:not(:disabled) {
+    transform: scale(1.05);
+    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+  }
 }
 
 .send-button:disabled {
@@ -411,6 +519,7 @@ body {
   cursor: not-allowed;
 }
 
+/* Пустые состояния */
 .empty-state {
   text-align: center;
   color: #666;
@@ -418,9 +527,14 @@ body {
 }
 
 .empty-state-icon {
-  font-size: 64px;
+  font-size: clamp(48px, 15vw, 64px);
   margin-bottom: 20px;
   opacity: 0.5;
+}
+
+.empty-state p {
+  font-size: 14px;
+  margin-top: 8px;
 }
 
 .welcome-message {
@@ -430,14 +544,42 @@ body {
 }
 
 .welcome-message h3 {
-  font-size: 24px;
+  font-size: clamp(20px, 6vw, 24px);
   margin-bottom: 10px;
   color: #fff;
 }
 
+/* Кнопка выхода */
+.logout-button {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #888;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+  min-height: 44px;
+}
+
+.logout-button:active {
+  background: #1a1a1a;
+  color: #fff;
+}
+
+@media (hover: hover) {
+  .logout-button:hover {
+    background: #1a1a1a;
+    color: #fff;
+    border-color: #444;
+  }
+}
+
 /* Скроллбар */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -446,46 +588,50 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: #333;
-  border-radius: 3px;
+  border-radius: 2px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #444;
+/* Предотвращение pull-to-refresh на мобильных */
+html, body {
+  overscroll-behavior-y: none;
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
-/* Логаут кнопка */
-.logout-button {
-  margin-top: 10px;
-  padding: 8px 12px;
-  background: transparent;
-  border: 1px solid #333;
-  border-radius: 8px;
-  color: #888;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
+#chat, .sidebar, .chat-area {
+  -webkit-overflow-scrolling: touch;
 }
 
-.logout-button:hover {
-  background: #1a1a1a;
-  color: #fff;
-  border-color: #444;
+/* Адаптация под безопасные зоны iPhone */
+@supports (padding: max(0px)) {
+  .sidebar-header {
+    padding-top: max(20px, env(safe-area-inset-top));
+  }
+  
+  .message-input-container {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  
+  .users-list {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 </style>
 </head>
-
 <body>
 
 <div id="auth">
   <h1>💬 QWAS</h1>
-  <input id="u" placeholder="Имя пользователя" autocomplete="off">
+  <input id="u" placeholder="Имя пользователя" autocomplete="off" autocapitalize="none">
   <input id="p" type="password" placeholder="Пароль">
   <button onclick="login()">Войти</button>
   <button onclick="register()">Создать аккаунт</button>
 </div>
 
 <div id="chat" style="display:none">
-  <div class="sidebar">
+  <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <h2>💬 QWAS</h2>
       <div class="user-info">
@@ -502,6 +648,7 @@ body {
   
   <div class="chat-area">
     <div class="chat-header" id="chatHeader" style="display: none;">
+      <button class="mobile-back-btn" onclick="showSidebar()">←</button>
       <div class="user-avatar small" id="chatAvatar">U</div>
       <div class="chat-header-info">
         <h3 id="chatUsername">Выберите чат</h3>
@@ -523,13 +670,13 @@ body {
       <input 
         class="message-input" 
         id="msg" 
-        placeholder="Напишите сообщение..." 
+        placeholder="Сообщение..." 
         disabled
         autocomplete="off"
+        autocapitalize="sentences"
+        enterkeyhint="send"
       >
-      <button class="send-button" id="sendBtn" onclick="send()" disabled>
-        ➤
-      </button>
+      <button class="send-button" id="sendBtn" onclick="send()" disabled>➤</button>
     </div>
   </div>
 </div>
@@ -540,13 +687,35 @@ let me = "";
 let current = "";
 let typingTimeout = null;
 let onlineUsers = new Map();
+let isMobile = window.innerWidth <= 768;
 
-// Функция получения аватарки (первая буква)
+// Определяем мобильное устройство
+function checkMobile() {
+  isMobile = window.innerWidth <= 768;
+  return isMobile;
+}
+
+window.addEventListener('resize', () => {
+  checkMobile();
+});
+
+// Показать/скрыть сайдбар на мобильных
+function showSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  sidebar.classList.remove('hidden');
+}
+
+function hideSidebar() {
+  if (isMobile) {
+    const sidebar = document.getElementById('sidebar');
+    sidebar.classList.add('hidden');
+  }
+}
+
 function getAvatarLetter(username) {
   return username ? username.charAt(0).toUpperCase() : '?';
 }
 
-// Функция создания аватарки
 function createAvatarElement(username, size = '') {
   const div = document.createElement('div');
   div.className = `user-avatar ${size}`;
@@ -604,7 +773,6 @@ function login() {
     document.getElementById('auth').style.display = "none";
     document.getElementById('chat').style.display = "flex";
     
-    // Обновляем информацию о пользователе
     document.getElementById('myAvatar').textContent = getAvatarLetter(me);
     document.getElementById('myUsername').textContent = me;
     
@@ -622,6 +790,7 @@ function logout() {
   document.getElementById('chat').style.display = "none";
   document.getElementById('u').value = '';
   document.getElementById('p').value = '';
+  document.getElementById('sidebar').classList.remove('hidden');
 }
 
 /* === SOCKET === */
@@ -706,11 +875,9 @@ function renderUsers(users) {
     }
     div.onclick = () => selectUser(u.username);
 
-    // Аватарка
     const avatar = createAvatarElement(u.username, 'small');
     div.appendChild(avatar);
     
-    // Контент
     const content = document.createElement('div');
     content.className = 'user-content';
     
@@ -726,7 +893,6 @@ function renderUsers(users) {
     content.appendChild(status);
     div.appendChild(content);
     
-    // Индикатор онлайн
     const indicator = document.createElement('span');
     indicator.className = u.online ? 'online-indicator' : 'offline-indicator';
     div.appendChild(indicator);
@@ -740,7 +906,6 @@ function selectUser(username) {
   console.log("👤 Selected user:", username);
   current = username;
   
-  // Обновляем UI
   document.querySelectorAll('.user').forEach(el => {
     el.classList.remove('selected');
     const nameEl = el.querySelector('.user-name');
@@ -749,7 +914,6 @@ function selectUser(username) {
     }
   });
   
-  // Показываем хедер чата
   document.getElementById('chatHeader').style.display = 'flex';
   document.getElementById('chatAvatar').textContent = getAvatarLetter(username);
   document.getElementById('chatUsername').textContent = username;
@@ -757,11 +921,13 @@ function selectUser(username) {
   const isOnline = onlineUsers.get(username) || false;
   document.getElementById('chatStatus').textContent = isOnline ? 'Онлайн' : 'Офлайн';
   
-  // Активируем поле ввода
   document.getElementById('msg').disabled = false;
   document.getElementById('sendBtn').disabled = false;
   document.getElementById('messages').innerHTML = '';
   document.getElementById('typingIndicator').textContent = "";
+  
+  // На мобильных скрываем сайдбар после выбора чата
+  hideSidebar();
   
   socket.emit("get_history", username);
 }
@@ -783,12 +949,10 @@ function renderHistory(msgs) {
 function addMessageToChat(msg) {
   const container = document.getElementById("messages");
   
-  // Убираем заглушку если есть
   if (container.children.length === 1 && container.children[0].classList.contains('empty-state')) {
     container.innerHTML = '';
   }
   
-  // Проверяем, нет ли уже такого сообщения
   if (document.getElementById(`msg-${msg._id}`)) {
     return;
   }
@@ -800,14 +964,12 @@ function addMessageToChat(msg) {
   messageDiv.className = `message ${isMe ? "me" : "other"}`;
   messageDiv.id = `msg-${msg._id}`;
 
-  // Аватарка отправителя
   const avatar = createAvatarElement(senderName);
   avatar.style.width = '32px';
   avatar.style.height = '32px';
   avatar.style.fontSize = '14px';
   messageDiv.appendChild(avatar);
   
-  // Контент сообщения
   const content = document.createElement('div');
   content.className = 'message-content';
   
@@ -869,6 +1031,9 @@ function send() {
     clearTimeout(typingTimeout);
     typingTimeout = null;
   }
+  
+  // Фокус обратно на поле ввода
+  input.focus();
 }
 
 /* === TYPING === */
@@ -887,13 +1052,24 @@ document.getElementById("msg").addEventListener("input", () => {
 /* === ENTER KEY === */
 document.getElementById("msg").addEventListener("keypress", e => {
   if (e.key === "Enter") {
+    e.preventDefault();
     send();
   }
 });
 
-// Фокус на поле ввода при загрузке
+// Предотвращаем zoom на двойной тап
+document.addEventListener('dblclick', (e) => {
+  e.preventDefault();
+}, { passive: false });
+
+// Фокус на поле ввода
 document.getElementById('u').focus();
 
+// Инициализация для мобильных
+if (isMobile) {
+  document.getElementById('sidebar').classList.remove('hidden');
+}
 </script>
 </body>
 </html>
+EOF
