@@ -166,36 +166,7 @@ app.get("/users/all", async (req, res) => {
     
     const users = await User.find({
       username: { $ne: data.username }
-    }).select('username avatar avatarColor');
-    
-    res.json({ ok: true, users });
-  } catch (err) {
-    res.json({ ok: false, users: [] });
-  }
-});
-
-/* ПОИСК ПОЛЬЗОВАТЕЛЕЙ */
-app.get("/users/search", async (req, res) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ ok: false });
-    
-    const data = jwt.verify(token, config.JWT_SECRET);
-    let { q } = req.query;
-    
-    if (!q) {
-      const allUsers = await User.find({
-        username: { $ne: data.username }
-      }).select('username avatar avatarColor').limit(20);
-      return res.json({ ok: true, users: allUsers });
-    }
-    
-    q = q.replace(/^@/, '');
-    
-    const users = await User.find({
-      username: { $regex: q, $options: 'i' },
-      username: { $ne: data.username }
-    }).select('username avatar avatarColor').limit(10);
+    }).select('username avatar avatarColor').lean();
     
     res.json({ ok: true, users });
   } catch (err) {
@@ -212,32 +183,14 @@ app.get("/chats", async (req, res) => {
     const data = jwt.verify(token, config.JWT_SECRET);
     
     const messages = await Message.aggregate([
-      {
-        $match: {
-          $or: [{ from: data.username }, { to: data.username }]
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          contacts: { 
-            $addToSet: {
-              $cond: [
-                { $eq: ["$from", data.username] },
-                "$to",
-                "$from"
-              ]
-            }
-          }
-        }
-      }
+      { $match: { $or: [{ from: data.username }, { to: data.username }] } },
+      { $group: { _id: null, contacts: { $addToSet: { $cond: [{ $eq: ["$from", data.username] }, "$to", "$from"] } } } }
     ]);
     
     const contactUsernames = messages.length > 0 ? messages[0].contacts.filter(u => u !== "favorites") : [];
     
-    const contacts = await User.find({
-      username: { $in: contactUsernames }
-    }).select('username avatar avatarColor');
+    const contacts = await User.find({ username: { $in: contactUsernames } })
+      .select('username avatar avatarColor').lean();
     
     const contactsWithStatus = contacts.map(c => ({
       username: c.username,
@@ -259,18 +212,11 @@ app.get("/profile", async (req, res) => {
     if (!token) return res.status(401).json({ ok: false });
     
     const data = jwt.verify(token, config.JWT_SECRET);
-    const user = await User.findOne({ username: data.username }).select('-password');
+    const user = await User.findOne({ username: data.username }).select('-password').lean();
     
     if (!user) return res.status(404).json({ ok: false });
     
-    res.json({ 
-      ok: true, 
-      user: { 
-        username: user.username, 
-        avatar: user.avatar || "", 
-        avatarColor: user.avatarColor || "#6366f1" 
-      } 
-    });
+    res.json({ ok: true, user });
   } catch (err) {
     res.status(401).json({ ok: false });
   }
@@ -313,7 +259,7 @@ io.use((socket, next) => {
 });
 
 io.on("connection", async (socket) => {
-  console.log(`✅ Пользователь подключился: ${socket.username}`);
+  console.log(`✅ ${socket.username} подключился`);
 
   online.set(socket.username, socket.id);
   
@@ -321,14 +267,12 @@ io.on("connection", async (socket) => {
     emitChatList();
     
     try {
-      const allUsers = await User.find({
-        username: { $ne: socket.username }
-      }).select('username avatar avatarColor');
+      const allUsers = await User.find({ username: { $ne: socket.username } })
+        .select('username avatar avatarColor').lean();
       socket.emit("all_users", allUsers);
     } catch (err) {}
   }
 
-  /* ОТПРАВКА СООБЩЕНИЯ */
   socket.on("send_message", async (data) => {
     try {
       if (!Message) return;
@@ -342,7 +286,7 @@ io.on("connection", async (socket) => {
         status: "sent"
       });
 
-      const full = await Message.findById(msg._id);
+      const full = msg.toObject();
       
       if (data.to === "favorites") {
         socket.emit("new_message", full);
@@ -352,15 +296,12 @@ io.on("connection", async (socket) => {
       }
       
       emitChatListForUser(socket.username);
-      if (data.to !== "favorites") {
-        emitChatListForUser(data.to);
-      }
+      if (data.to !== "favorites") emitChatListForUser(data.to);
     } catch (err) {
       console.error("Ошибка отправки:", err);
     }
   });
 
-  /* РЕДАКТИРОВАНИЕ */
   socket.on("edit_message", async (data) => {
     try {
       const msg = await Message.findById(data.messageId);
@@ -370,19 +311,16 @@ io.on("connection", async (socket) => {
       msg.edited = true;
       await msg.save();
       
-      send(msg.to, "message_updated", msg);
-      socket.emit("message_updated", msg);
-    } catch (err) {
-      console.error("Ошибка редактирования:", err);
-    }
+      const updated = msg.toObject();
+      send(msg.to, "message_updated", updated);
+      socket.emit("message_updated", updated);
+    } catch (err) {}
   });
 
-  /* УДАЛЕНИЕ */
   socket.on("delete_message", async (data) => {
     try {
       const msg = await Message.findById(data.messageId);
-      if (!msg) return;
-      if (msg.from !== socket.username) return;
+      if (!msg || msg.from !== socket.username) return;
       
       await Message.deleteOne({ _id: data.messageId });
       
@@ -390,74 +328,43 @@ io.on("connection", async (socket) => {
         send(msg.to, "message_deleted", { messageId: data.messageId });
       }
       socket.emit("message_deleted", { messageId: data.messageId });
-    } catch (err) {
-      console.error("Ошибка удаления:", err);
-    }
+    } catch (err) {}
   });
 
-  /* ИСТОРИЯ */
   socket.on("get_history", async (user) => {
     try {
       if (!Message) { socket.emit("chat_history", []); return; }
       
       let msgs;
       if (user === "favorites") {
-        msgs = await Message.find({
-          to: "favorites",
-          from: socket.username
-        }).sort({ createdAt: -1 });
+        msgs = await Message.find({ to: "favorites", from: socket.username })
+          .sort({ createdAt: -1 }).limit(50).lean();
       } else {
         msgs = await Message.find({
           $or: [
             { from: socket.username, to: user },
             { from: user, to: socket.username }
           ]
-        }).sort({ createdAt: 1 });
+        }).sort({ createdAt: -1 }).limit(50).lean();
       }
 
-      // Получаем информацию об отправителях для аватарок
-      const senderUsernames = [...new Set(msgs.map(m => m.from))];
-      const senders = await User.find({
-        username: { $in: senderUsernames }
-      }).select('username avatar avatarColor');
-      
-      const msgsWithSenders = msgs.map(m => {
-        const sender = senders.find(s => s.username === m.from);
-        return {
-          ...m.toObject(),
-          senderAvatar: sender?.avatar || "",
-          senderAvatarColor: sender?.avatarColor || "#6366f1"
-        };
-      });
-
-      socket.emit("chat_history", msgsWithSenders);
+      socket.emit("chat_history", msgs.reverse());
     } catch (err) {
       socket.emit("chat_history", []);
     }
   });
 
-  /* ПРОЧИТАНО */
   socket.on("read", async (data) => {
     try {
       if (!Message) return;
       
-      const msgs = await Message.find({
-        from: data.from,
-        to: data.to,
-        status: { $ne: "read" }
-      });
+      await Message.updateMany(
+        { from: data.from, to: data.to, status: { $ne: "read" } },
+        { $set: { status: "read" } }
+      );
 
-      if (msgs.length > 0) {
-        await Message.updateMany(
-          { from: data.from, to: data.to, status: { $ne: "read" } },
-          { $set: { status: "read" } }
-        );
-
-        send(data.from, "read_update", { messages: msgs.map(m => m._id.toString()) });
-      }
-    } catch (err) {
-      console.error("Ошибка отметки прочитано:", err);
-    }
+      send(data.from, "read_update", { from: data.from, to: data.to });
+    } catch (err) {}
   });
 
   socket.on("typing", (to) => send(to, "typing", { from: socket.username }));
@@ -465,7 +372,7 @@ io.on("connection", async (socket) => {
   socket.on("profile_updated", () => emitChatList());
 
   socket.on("disconnect", () => {
-    console.log(`❌ Пользователь отключился: ${socket.username}`);
+    console.log(`❌ ${socket.username} отключился`);
     online.delete(socket.username);
     if (mongoose.connection.readyState === 1 && User) emitChatList();
   });
@@ -474,7 +381,6 @@ io.on("connection", async (socket) => {
 async function emitChatList() {
   try {
     if (!User) return;
-    
     const sockets = await io.fetchSockets();
     for (const socket of sockets) {
       await emitChatListForUser(socket.username);
@@ -488,32 +394,14 @@ async function emitChatListForUser(username) {
     if (!socketId) return;
     
     const messages = await Message.aggregate([
-      {
-        $match: {
-          $or: [{ from: username }, { to: username }]
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          contacts: { 
-            $addToSet: {
-              $cond: [
-                { $eq: ["$from", username] },
-                "$to",
-                "$from"
-              ]
-            }
-          }
-        }
-      }
+      { $match: { $or: [{ from: username }, { to: username }] } },
+      { $group: { _id: null, contacts: { $addToSet: { $cond: [{ $eq: ["$from", username] }, "$to", "$from"] } } } }
     ]);
     
     const contactUsernames = messages.length > 0 ? messages[0].contacts.filter(u => u !== "favorites") : [];
     
-    const contacts = await User.find({
-      username: { $in: contactUsernames }
-    }).select('username avatar avatarColor');
+    const contacts = await User.find({ username: { $in: contactUsernames } })
+      .select('username avatar avatarColor').lean();
     
     const chatList = contacts.map(c => ({
       username: c.username,
