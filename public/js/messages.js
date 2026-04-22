@@ -2,10 +2,25 @@
   'use strict';
   
   QWAS.Messages = {
+    // Добавление спейсера для прижатия к низу
+    ensureSpacer: function() {
+      const container = document.getElementById('messages');
+      if (!container) return;
+      
+      let spacer = container.querySelector('.messages-spacer');
+      if (!spacer) {
+        spacer = document.createElement('div');
+        spacer.className = 'messages-spacer';
+        container.appendChild(spacer);
+      }
+      return spacer;
+    },
+    
     add: function(msg, skipScroll = false) {
       const container = document.getElementById('messages');
       if (!container) return;
       
+      // Убираем empty-state если есть
       if (container.children.length === 1 && 
           container.children[0].classList.contains('empty-state')) {
         container.innerHTML = '';
@@ -13,11 +28,20 @@
       
       if (document.getElementById(`msg-${msg._id}`)) return;
       
+      // Убираем спейсер перед добавлением
+      const spacer = container.querySelector('.messages-spacer');
+      if (spacer) spacer.remove();
+      
       const messageElement = this.createMessageElement(msg);
       container.appendChild(messageElement);
       
+      // Возвращаем спейсер
+      this.ensureSpacer();
+      
       if (!skipScroll) {
-        container.scrollTop = container.scrollHeight;
+        setTimeout(() => {
+          container.scrollTop = container.scrollHeight;
+        }, 10);
       }
     },
     
@@ -33,12 +57,20 @@
       if (document.getElementById(`msg-${msg._id}`)) return;
       
       const messageElement = this.createMessageElement(msg);
-      // Вставляем в начало
-      if (container.firstChild) {
-        container.insertBefore(messageElement, container.firstChild);
+      
+      // Находим первый элемент, который не спейсер
+      const firstMessage = Array.from(container.children).find(
+        child => !child.classList.contains('messages-spacer')
+      );
+      
+      if (firstMessage) {
+        container.insertBefore(messageElement, firstMessage);
       } else {
         container.appendChild(messageElement);
       }
+      
+      // Убеждаемся что спейсер в конце
+      this.ensureSpacer();
     },
     
     createMessageElement: function(msg) {
@@ -215,7 +247,7 @@
     }
   };
   
-  // Обработчики
+  // Инициализация
   const msgInput = document.getElementById('msg');
   if (msgInput) {
     msgInput.addEventListener('keypress', (e) => {
@@ -236,33 +268,38 @@
     });
   }
   
-  // Пагинация при прокрутке
+  // Пагинация - обработчик скролла
   const messagesContainer = document.getElementById('messages');
   if (messagesContainer) {
-    // Функция проверки и загрузки
-    const checkAndLoadMore = function() {
+    // Флаг для отслеживания
+    let isLoadingMore = false;
+    
+    const handleScroll = function() {
       const scrollTop = this.scrollTop;
       
-      console.log(`📜 Скролл: scrollTop=${scrollTop}, hasMore=${QWAS.State.hasMoreMessages}, isLoading=${QWAS.State.isLoadingMessages}`);
-      
-      // Если мы вверху (меньше 30px) и есть ещё сообщения
-      if (scrollTop < 30 && QWAS.State.hasMoreMessages && !QWAS.State.isLoadingMessages) {
-        console.log('📜 Загружаем следующую страницу...');
+      // Если скролл в самом верху (меньше 20px)
+      if (scrollTop < 20 && QWAS.State.hasMoreMessages && !QWAS.State.isLoadingMessages && !isLoadingMore) {
+        console.log('📜 Верх страницы, загружаем ещё...');
+        isLoadingMore = true;
         QWAS.State.isLoadingMessages = true;
+        
+        // Загружаем следующую страницу
         QWAS.State.socket.emit('load_more');
+        
+        // Сбрасываем флаг через секунду
+        setTimeout(() => {
+          isLoadingMore = false;
+        }, 1000);
       }
     };
     
-    // Назначаем обработчик скролла
-    messagesContainer.addEventListener('scroll', checkAndLoadMore);
+    messagesContainer.addEventListener('scroll', handleScroll);
     
     // Дополнительно для колесика мыши
     messagesContainer.addEventListener('wheel', function(e) {
-      // Крутим вверх (deltaY < 0)
-      if (e.deltaY < 0 && this.scrollTop < 30 && QWAS.State.hasMoreMessages && !QWAS.State.isLoadingMessages) {
-        console.log('🖱️ Колесико вверх - загружаем...');
-        QWAS.State.isLoadingMessages = true;
-        QWAS.State.socket.emit('load_more');
+      if (e.deltaY < 0 && this.scrollTop < 20 && QWAS.State.hasMoreMessages && !QWAS.State.isLoadingMessages) {
+        console.log('🖱️ Колесико вверх');
+        // handleScroll уже вызовется через scroll
       }
     }, { passive: true });
   }

@@ -652,3 +652,27 @@ body {
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+/* Исправление скролла для пагинации */
+.messages-container {
+  flex: 1;
+  padding: 20px 16px;
+  overflow-y: auto !important;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  max-height: calc(100dvh - 140px);
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Убираем justify-content: flex-end, который мешает скроллу */
+.messages-container {
+  justify-content: flex-start !important;
+}
+
+/* Если сообщений мало, прижимаем их к низу через пустой div */
+.messages-spacer {
+  flex: 1;
+  min-height: 20px;
+}

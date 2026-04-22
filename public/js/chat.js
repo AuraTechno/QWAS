@@ -66,7 +66,7 @@
     },
     
     select: function(username) {
-      // Сбрасываем пагинацию при смене чата
+      // Сбрасываем пагинацию
       if (QWAS.State.socket) {
         QWAS.State.socket.emit('reset_pagination');
       }
@@ -106,6 +106,7 @@
       msgInput.disabled = false;
       sendBtn.disabled = false;
       
+      // Очищаем контейнер перед загрузкой
       document.getElementById('messages').innerHTML = '';
       document.getElementById('typingIndicator').textContent = '';
       
@@ -113,8 +114,9 @@
         document.getElementById('sidebar').classList.add('hidden');
       }
       
+      // Загружаем первую страницу
       QWAS.State.socket.emit('get_history', username, 1);
-    },
+    }
     
     showSidebar: function() {
       document.getElementById('sidebar').classList.remove('hidden');
