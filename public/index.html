@@ -337,6 +337,7 @@ body {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   gap: 12px;
 }
 
@@ -1081,6 +1082,11 @@ function connectSocket(t) {
   socket.on("new_message", msg => {
     if (msg.from === current || msg.to === current || current === FAVORITE_CHAT_ID) {
       addMessageToChat(msg);
+      
+      // Если сообщение от текущего собеседника - сразу отмечаем как прочитанное
+      if (msg.from === current) {
+        socket.emit("mark_as_read", { from: msg.from });
+      }
     }
   });
   
@@ -1095,20 +1101,25 @@ function connectSocket(t) {
   socket.on("message_deleted", d => document.getElementById(`msg-${d.messageId}`)?.remove());
   
   socket.on("messages_read", data => {
-    // Обновляем статус прочитанных сообщений
-    document.querySelectorAll('.message.me').forEach(el => {
-      const statusEl = el.querySelector('.message-status');
-      if (statusEl) {
-        statusEl.textContent = '✓✓';
-        statusEl.classList.add('read');
-      }
-    });
+    // Обновляем статус прочитанных сообщений в реальном времени
+    if (data.chatWith === current || data.by === current) {
+      document.querySelectorAll('.message.me').forEach(el => {
+        const statusEl = el.querySelector('.message-status');
+        if (statusEl) {
+          statusEl.textContent = '✓✓';
+          statusEl.classList.add('read');
+        }
+      });
+    }
   });
   
   socket.on("chat_history", msgs => {
     const c = document.getElementById("messages");
     c.innerHTML = msgs.length ? '' : '<div class="empty-state"><div class="empty-state-icon">💬</div><p>Нет сообщений</p></div>';
-    msgs.forEach(m => addMessageToChat(m));
+    // Сообщения уже в правильном порядке (старые сверху, новые снизу)
+    msgs.forEach(m => addMessageToChat(m, true));
+    // Прокручиваем вниз
+    c.scrollTop = c.scrollHeight;
   });
   
   socket.on("typing", d => { if (d.from === current) document.getElementById('typingIndicator').textContent = `@${current} печатает...`; });
@@ -1144,7 +1155,7 @@ function selectUser(u) {
   socket.emit("get_history", u);
 }
 
-function addMessageToChat(msg) {
+function addMessageToChat(msg, skipScroll = false) {
   const c = document.getElementById("messages");
   if (c.children.length === 1 && c.children[0].classList.contains('empty-state')) c.innerHTML = '';
   if (document.getElementById(`msg-${msg._id}`)) return;
@@ -1160,7 +1171,7 @@ function addMessageToChat(msg) {
   div.addEventListener('touchend', () => clearTimeout(timer));
   
   div.innerHTML = `
-    <div class="message-avatar" style="background: ${isMe && currentUser.avatar ? 'transparent' : '#6366f1'};">
+    <div class="message-avatar" style="background: ${isMe && currentUser.avatar ? 'transparent' : (isMe ? currentUser.avatarColor : '#6366f1')};">
       ${isMe && currentUser.avatar ? `<img src="${currentUser.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : getAvatarLetter(msg.from)}
     </div>
     <div style="flex:1;">
@@ -1173,7 +1184,9 @@ function addMessageToChat(msg) {
     </div>
   `;
   c.appendChild(div);
-  c.scrollTop = c.scrollHeight;
+  if (!skipScroll) {
+    c.scrollTop = c.scrollHeight;
+  }
 }
 
 function send() {

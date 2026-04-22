@@ -334,6 +334,29 @@ io.on("connection", async (socket) => {
     } catch (err) {}
   });
 
+  /* ОТМЕТКА О ПРОЧТЕНИИ В РЕАЛЬНОМ ВРЕМЕНИ */
+  socket.on("mark_as_read", async (data) => {
+    try {
+      if (!Message) return;
+      
+      // Отмечаем сообщения как прочитанные
+      const result = await Message.updateMany(
+        { from: data.from, to: socket.username, status: { $ne: "read" } },
+        { $set: { status: "read" } }
+      );
+      
+      if (result.modifiedCount > 0) {
+        // Отправляем уведомление отправителю
+        send(data.from, "messages_read", { 
+          by: socket.username,
+          chatWith: data.from 
+        });
+      }
+    } catch (err) {
+      console.error("Ошибка отметки прочитано:", err);
+    }
+  });
+
   /* ИСТОРИЯ */
   socket.on("get_history", async (user) => {
     try {
@@ -342,26 +365,29 @@ io.on("connection", async (socket) => {
       let msgs;
       if (user === "favorites") {
         msgs = await Message.find({ to: "favorites", from: socket.username })
-          .sort({ createdAt: -1 }).limit(50).lean();
+          .sort({ createdAt: 1 }).limit(50).lean();
       } else {
         msgs = await Message.find({
           $or: [
             { from: socket.username, to: user },
             { from: user, to: socket.username }
           ]
-        }).sort({ createdAt: -1 }).limit(50).lean();
+        }).sort({ createdAt: 1 }).limit(50).lean();
         
-        // Отмечаем сообщения как прочитанные
+        // Отмечаем входящие сообщения как прочитанные при открытии чата
         await Message.updateMany(
           { from: user, to: socket.username, status: { $ne: "read" } },
           { $set: { status: "read" } }
         );
         
-        // Уведомляем отправителя что сообщения прочитаны
-        send(user, "messages_read", { by: socket.username });
+        // Уведомляем отправителя
+        send(user, "messages_read", { 
+          by: socket.username,
+          chatWith: user 
+        });
       }
 
-      socket.emit("chat_history", msgs.reverse());
+      socket.emit("chat_history", msgs);
     } catch (err) {
       socket.emit("chat_history", []);
     }
