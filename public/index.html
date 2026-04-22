@@ -18,7 +18,68 @@
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #fff; overscroll-behavior: none; }
 
-/* Модальное окно профиля */
+/* Поиск */
+.search-container {
+  padding: 12px 16px;
+  border-bottom: 1px solid #222;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  background: #1a1a1a;
+  border-radius: 24px;
+  padding: 8px 16px;
+  gap: 8px;
+}
+
+.search-box input {
+  flex: 1;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 16px;
+  padding: 8px 0;
+  outline: none;
+}
+
+.search-box input::placeholder {
+  color: #666;
+}
+
+.search-results {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 8px;
+  background: #111;
+  border-radius: 12px;
+  display: none;
+}
+
+.search-results.show {
+  display: block;
+}
+
+.search-result-item {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+.search-result-item:active {
+  background: #1a1a1a;
+}
+
+.no-results {
+  padding: 20px;
+  text-align: center;
+  color: #666;
+}
+
+/* Модальное окно */
 .modal {
   display: none;
   position: fixed;
@@ -132,10 +193,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .color-option:hover { transform: scale(1.1); }
 .color-option.selected { border-color: white; }
 
-.profile-info {
-  margin-bottom: 24px;
-}
-
 .profile-field {
   margin-bottom: 16px;
 }
@@ -155,11 +212,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   background: #0a0a0a;
   color: #fff;
   font-size: 16px;
-}
-
-.profile-field input:focus {
-  outline: none;
-  border-color: #667eea;
 }
 
 .profile-actions {
@@ -183,17 +235,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   color: white;
 }
 
-.btn-secondary {
-  background: #333;
-  color: #fff;
-}
-
 .btn-danger {
   background: #e74c3c;
   color: white;
 }
 
-/* Остальные стили */
+/* Auth */
 #auth {
   width: 100%; max-width: 400px; margin: 0 auto;
   display: flex; flex-direction: column; gap: 15px;
@@ -357,12 +404,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .empty-state { text-align: center; color: #666; padding: 40px 20px; }
 .empty-state-icon { font-size: 64px; margin-bottom: 20px; opacity: 0.5; }
 
-/* Скрываем input file */
 #avatarInput { display: none; }
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Заголовок секции */
+.section-title {
+  padding: 12px 16px 4px;
+  font-size: 13px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 </style>
 </head>
@@ -386,11 +441,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
       <div class="color-picker" id="colorPicker"></div>
     </div>
     
-    <div class="profile-info">
-      <div class="profile-field">
-        <label>Имя пользователя</label>
-        <input type="text" id="profileUsername" readonly>
-      </div>
+    <div class="profile-field">
+      <label>Имя пользователя</label>
+      <input type="text" id="profileUsername" readonly>
     </div>
     
     <div class="profile-actions">
@@ -422,6 +475,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         </div>
       </div>
     </div>
+    
+    <!-- Поиск -->
+    <div class="search-container">
+      <div class="search-box">
+        <span>🔍</span>
+        <input type="text" id="searchInput" placeholder="Поиск @username..." autocomplete="off" oninput="searchUsers()" onfocus="showSearchResults()">
+      </div>
+      <div class="search-results" id="searchResults"></div>
+    </div>
+    
+    <div class="section-title">Чаты</div>
     <div class="users-list" id="users"></div>
   </div>
   
@@ -439,7 +503,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
       <div class="empty-state">
         <div class="empty-state-icon">💬</div>
         <h3>Добро пожаловать в QWAS</h3>
-        <p>Выберите пользователя слева</p>
+        <p>Выберите чат или найдите пользователя</p>
       </div>
     </div>
     
@@ -459,10 +523,11 @@ let userToken = "";
 let currentUser = { avatar: "", avatarColor: "#667eea" };
 let selectedColor = "#667eea";
 let uploadedAvatar = null;
+let searchTimeout = null;
+let chatList = [];
 
 const colors = ["#667eea", "#764ba2", "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#1abc9c", "#e67e22", "#9b59b6", "#e91e63", "#00bcd4", "#ff5722"];
 
-// Инициализация
 document.addEventListener('DOMContentLoaded', () => {
   const picker = document.getElementById('colorPicker');
   colors.forEach(color => {
@@ -471,6 +536,13 @@ document.addEventListener('DOMContentLoaded', () => {
     div.style.background = color;
     div.onclick = () => selectColor(color);
     picker.appendChild(div);
+  });
+  
+  // Закрытие поиска при клике вне
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-container')) {
+      document.getElementById('searchResults').classList.remove('show');
+    }
   });
 });
 
@@ -516,9 +588,8 @@ function handleAvatarUpload(event) {
 
 function openProfile() {
   document.getElementById('profileModal').classList.add('show');
-  document.getElementById('profileUsername').value = me;
+  document.getElementById('profileUsername').value = '@' + me;
   
-  // Загружаем текущие настройки
   selectedColor = currentUser.avatarColor || "#667eea";
   uploadedAvatar = currentUser.avatar || null;
   
@@ -551,13 +622,8 @@ async function saveProfile() {
     if (data.ok) {
       currentUser.avatar = uploadedAvatar;
       currentUser.avatarColor = selectedColor;
-      
-      // Обновляем аватарку в интерфейсе
       updateMyAvatar();
-      
-      // Оповещаем сервер об обновлении
       socket.emit('profile_updated');
-      
       closeProfile();
     }
   } catch (err) {
@@ -578,10 +644,65 @@ function updateMyAvatar() {
   }
 }
 
+function showSearchResults() {
+  const q = document.getElementById('searchInput').value;
+  if (q.length >= 1) {
+    document.getElementById('searchResults').classList.add('show');
+  }
+}
+
+async function searchUsers() {
+  const q = document.getElementById('searchInput').value;
+  const resultsDiv = document.getElementById('searchResults');
+  
+  if (q.length < 1) {
+    resultsDiv.classList.remove('show');
+    return;
+  }
+  
+  try {
+    const response = await fetch(`/users/search?q=${encodeURIComponent(q)}`, {
+      headers: { 'Authorization': `Bearer ${userToken}` }
+    });
+    const data = await response.json();
+    
+    if (data.users.length === 0) {
+      resultsDiv.innerHTML = '<div class="no-results">Пользователи не найдены</div>';
+    } else {
+      resultsDiv.innerHTML = data.users.map(u => `
+        <div class="search-result-item" onclick="startChatWith('${u.username}')">
+          <div class="user-avatar small" style="${u.avatar ? `background-image:url(${u.avatar});background-size:cover` : `background:${u.avatarColor || '#667eea'}`}">
+            ${u.avatar ? '' : getAvatarLetter(u.username)}
+          </div>
+          <div class="user-content">
+            <div class="user-name">@${u.username}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+    
+    resultsDiv.classList.add('show');
+  } catch (err) {
+    console.error('Search error:', err);
+  }
+}
+
+function startChatWith(username) {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchResults').classList.remove('show');
+  document.getElementById('searchResults').innerHTML = '';
+  selectUser(username);
+}
+
 function register() {
-  const u = document.getElementById('u').value.trim();
+  let u = document.getElementById('u').value.trim();
   const p = document.getElementById('p').value;
+  
+  // Убираем @ если пользователь его ввел
+  u = u.replace(/^@/, '');
+  
   if(!u||!p) return alert('Введите логин и пароль');
+  if(!/^[a-zA-Z0-9_]+$/.test(u)) return alert('Имя пользователя может содержать только буквы, цифры и _');
   
   fetch("/register", {
     method:"POST",
@@ -593,8 +714,11 @@ function register() {
 }
 
 function login() {
-  const u = document.getElementById('u').value.trim();
+  let u = document.getElementById('u').value.trim();
   const p = document.getElementById('p').value;
+  
+  u = u.replace(/^@/, '');
+  
   if(!u||!p) return alert('Введите логин и пароль');
   
   fetch("/login", {
@@ -612,19 +736,66 @@ function login() {
     
     document.getElementById('auth').style.display='none';
     document.getElementById('chat').style.display='flex';
-    document.getElementById('myUsername').textContent = me;
+    document.getElementById('myUsername').textContent = '@' + me;
     
     updateMyAvatar();
     connectSocket(d.token);
+    loadChatList();
   });
 }
 
-function logout() {
-  if(socket) socket.disconnect();
-  me = ""; current = ""; userToken = "";
-  document.getElementById('auth').style.display='block';
-  document.getElementById('chat').style.display='none';
-  closeProfile();
+async function loadChatList() {
+  try {
+    const response = await fetch('/chats', {
+      headers: { 'Authorization': `Bearer ${userToken}` }
+    });
+    const data = await response.json();
+    chatList = data.chats;
+    renderChatList();
+  } catch (err) {
+    console.error('Load chats error:', err);
+  }
+}
+
+function renderChatList() {
+  const container = document.getElementById("users");
+  
+  if (chatList.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">💭</div><p>Нет активных чатов</p><p style="font-size:13px;margin-top:8px;">Используйте поиск чтобы начать общение</p></div>';
+    return;
+  }
+  
+  container.innerHTML = '';
+  
+  chatList.sort((a, b) => a.username.localeCompare(b.username));
+  
+  chatList.forEach(u => {
+    const div = document.createElement("div");
+    div.className = "user" + (current === u.username ? " selected" : "");
+    div.onclick = () => selectUser(u.username);
+    
+    const avatar = document.createElement("div");
+    avatar.className = "user-avatar small";
+    if (u.avatar) {
+      avatar.style.backgroundImage = `url(${u.avatar})`;
+      avatar.style.backgroundSize = 'cover';
+    } else {
+      avatar.style.background = u.avatarColor || "#667eea";
+      avatar.textContent = getAvatarLetter(u.username);
+    }
+    div.appendChild(avatar);
+    
+    const content = document.createElement('div');
+    content.className = 'user-content';
+    content.innerHTML = `<div class="user-name">@${u.username}</div><div class="user-status">${u.online?'Онлайн':'Офлайн'}</div>`;
+    div.appendChild(content);
+    
+    const ind = document.createElement('span');
+    ind.className = u.online ? 'online-indicator' : 'offline-indicator';
+    div.appendChild(ind);
+    
+    container.appendChild(div);
+  });
 }
 
 function connectSocket(token) {
@@ -632,10 +803,9 @@ function connectSocket(token) {
   
   socket.on("connect", () => console.log("✅ Connected"));
   
-  socket.on("users", users => {
-    onlineUsers.clear();
-    users.forEach(u => onlineUsers.set(u.username, { online: u.online, avatar: u.avatar, avatarColor: u.avatarColor }));
-    renderUsers(users);
+  socket.on("chat_list", chats => {
+    chatList = chats;
+    renderChatList();
   });
   
   socket.on("new_message", msg => {
@@ -643,6 +813,8 @@ function connectSocket(token) {
       addMessageToChat(msg);
       if(msg.to === me && current === msg.from) socket.emit("read", {from: msg.from, to: me});
     }
+    // Обновляем список чатов при новом сообщении
+    loadChatList();
   });
   
   socket.on("chat_history", msgs => renderHistory(msgs));
@@ -654,65 +826,35 @@ function connectSocket(token) {
     });
   });
   
-  socket.on("typing", d => { if(d.from === current) document.getElementById('typingIndicator').textContent = `${current} печатает...`; });
+  socket.on("typing", d => { if(d.from === current) document.getElementById('typingIndicator').textContent = `@${current} печатает...`; });
   socket.on("stop_typing", d => { if(d.from === current) document.getElementById('typingIndicator').textContent = ''; });
-}
-
-function renderUsers(users) {
-  const c = document.getElementById("users");
-  c.innerHTML = "";
-  users.filter(u => u.username !== me).forEach(u => {
-    const d = document.createElement("div");
-    d.className = "user" + (current === u.username ? " selected" : "");
-    d.onclick = () => selectUser(u.username);
-    
-    const avatar = document.createElement("div");
-    avatar.className = "user-avatar small";
-    if (u.avatar) {
-      avatar.style.backgroundImage = `url(${u.avatar})`;
-      avatar.style.backgroundSize = 'cover';
-    } else {
-      avatar.style.background = u.avatarColor || "#667eea";
-      avatar.textContent = getAvatarLetter(u.username);
-    }
-    d.appendChild(avatar);
-    
-    const content = document.createElement('div');
-    content.className = 'user-content';
-    content.innerHTML = `<div class="user-name">${u.username}</div><div class="user-status">${u.online?'Онлайн':'Офлайн'}</div>`;
-    d.appendChild(content);
-    
-    const ind = document.createElement('span');
-    ind.className = u.online ? 'online-indicator' : 'offline-indicator';
-    d.appendChild(ind);
-    
-    c.appendChild(d);
-  });
 }
 
 function selectUser(username) {
   current = username;
+  
   document.querySelectorAll('.user').forEach(el => {
     el.classList.remove('selected');
-    if(el.querySelector('.user-name')?.textContent === username) el.classList.add('selected');
+    if(el.querySelector('.user-name')?.textContent === '@' + username) el.classList.add('selected');
   });
   
-  const userData = onlineUsers.get(username);
+  const userData = chatList.find(u => u.username === username) || {};
+  
   document.getElementById('chatHeader').style.display = 'flex';
   
   const chatAvatar = document.getElementById('chatAvatar');
-  if (userData?.avatar) {
+  if (userData.avatar) {
     chatAvatar.style.backgroundImage = `url(${userData.avatar})`;
     chatAvatar.style.backgroundSize = 'cover';
     chatAvatar.textContent = '';
   } else {
     chatAvatar.style.backgroundImage = 'none';
-    chatAvatar.style.background = userData?.avatarColor || "#667eea";
+    chatAvatar.style.background = userData.avatarColor || "#667eea";
     chatAvatar.textContent = getAvatarLetter(username);
   }
   
-  document.getElementById('chatUsername').textContent = username;
-  document.getElementById('chatStatus').textContent = userData?.online ? 'Онлайн' : 'Офлайн';
+  document.getElementById('chatUsername').textContent = '@' + username;
+  document.getElementById('chatStatus').textContent = userData.online ? 'Онлайн' : 'Офлайн';
   document.getElementById('msg').disabled = false;
   document.getElementById('sendBtn').disabled = false;
   document.getElementById('messages').innerHTML = '';
@@ -723,7 +865,7 @@ function selectUser(username) {
 
 function renderHistory(msgs) {
   const c = document.getElementById("messages");
-  c.innerHTML = msgs.length ? "" : '<div class="empty-state"><div class="empty-state-icon">💭</div><p>Нет сообщений</p></div>';
+  c.innerHTML = msgs.length ? '' : '<div class="empty-state"><div class="empty-state-icon">💭</div><p>Нет сообщений. Начните общение!</p></div>';
   msgs.forEach(m => addMessageToChat(m));
 }
 
@@ -733,7 +875,7 @@ function addMessageToChat(msg) {
   if(document.getElementById(`msg-${msg._id}`)) return;
   
   const isMe = msg.from === me;
-  const userData = isMe ? currentUser : onlineUsers.get(msg.from);
+  const userData = isMe ? currentUser : (chatList.find(u => u.username === msg.from) || {});
   
   const d = document.createElement("div");
   d.className = `message ${isMe ? "me" : "other"}`;
@@ -741,11 +883,11 @@ function addMessageToChat(msg) {
   
   const avatar = document.createElement("div");
   avatar.style.cssText = "width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:14px;color:#fff;text-transform:uppercase;";
-  if (userData?.avatar) {
+  if (userData.avatar) {
     avatar.style.backgroundImage = `url(${userData.avatar})`;
     avatar.style.backgroundSize = 'cover';
   } else {
-    avatar.style.background = userData?.avatarColor || "#667eea";
+    avatar.style.background = userData.avatarColor || "#667eea";
     avatar.textContent = getAvatarLetter(msg.from);
   }
   d.appendChild(avatar);
@@ -773,6 +915,16 @@ function send() {
   socket.emit("stop_typing", current);
   if(typingTimeout) clearTimeout(typingTimeout);
   i.focus();
+}
+
+function logout() {
+  if(socket) socket.disconnect();
+  me = ""; current = ""; userToken = ""; chatList = [];
+  document.getElementById('auth').style.display='block';
+  document.getElementById('chat').style.display='none';
+  document.getElementById('u').value = '';
+  document.getElementById('p').value = '';
+  closeProfile();
 }
 
 function showSidebar() { document.getElementById('sidebar').classList.remove('hidden'); }

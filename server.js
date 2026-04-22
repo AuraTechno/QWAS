@@ -21,7 +21,6 @@ app.use(express.static("public"));
 
 const online = new Map();
 
-// Health check
 app.get("/health", (req, res) => {
   const mongoStatus = mongoose.connection.readyState;
   const statusMap = { 0: "disconnected", 1: "connected", 2: "connecting", 3: "disconnecting" };
@@ -46,15 +45,22 @@ app.post("/register", async (req, res) => {
   try {
     if (!User) return res.status(503).json({ ok: false, error: "Database not ready" });
     
-    const { username, password } = req.body;
+    let { username, password } = req.body;
     if (!username || !password) return res.json({ ok: false, error: "Username and password required" });
+
+    // Убираем @ если пользователь его ввел
+    username = username.replace(/^@/, '');
+    
+    // Проверяем что username содержит только допустимые символы
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      return res.json({ ok: false, error: "Username can only contain letters, numbers and underscores" });
+    }
 
     const exists = await User.findOne({ username });
     if (exists) return res.json({ ok: false, error: "User exists" });
 
     const hash = await bcrypt.hash(password, 10);
     
-    // Создаем пользователя с дефолтным цветом аватарки
     const colors = ["#667eea", "#764ba2", "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#1abc9c", "#e67e22"];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
     
@@ -72,7 +78,9 @@ app.post("/login", async (req, res) => {
   try {
     if (!User) return res.status(503).json({ ok: false, error: "Database not ready" });
     
-    const { username, password } = req.body;
+    let { username, password } = req.body;
+    username = username.replace(/^@/, '');
+    
     const user = await User.findOne({ username });
     if (!user) return res.json({ ok: false, error: "User not found" });
 
@@ -92,6 +100,86 @@ app.post("/login", async (req, res) => {
   } catch (err) {
     console.error("Login error:", err);
     res.json({ ok: false, error: "Server error" });
+  }
+});
+
+/* SEARCH USERS */
+app.get("/users/search", async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ ok: false, error: "No token" });
+    
+    const data = jwt.verify(token, config.JWT_SECRET);
+    let { q } = req.query;
+    
+    if (!q) return res.json({ ok: true, users: [] });
+    
+    // Убираем @ если есть
+    q = q.replace(/^@/, '');
+    
+    // Ищем пользователей (исключая себя)
+    const users = await User.find({
+      username: { $regex: '^' + q, $options: 'i' },
+      username: { $ne: data.username }
+    }).select('username avatar avatarColor').limit(10);
+    
+    res.json({ ok: true, users });
+  } catch (err) {
+    console.error("Search error:", err);
+    res.json({ ok: false, users: [] });
+  }
+});
+
+/* GET CHAT LIST (только те с кем есть сообщения) */
+app.get("/chats", async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ ok: false, error: "No token" });
+    
+    const data = jwt.verify(token, config.JWT_SECRET);
+    
+    // Находим всех с кем были сообщения
+    const messages = await Message.aggregate([
+      {
+        $match: {
+          $or: [{ from: data.username }, { to: data.username }]
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          contacts: { 
+            $addToSet: {
+              $cond: [
+                { $eq: ["$from", data.username] },
+                "$to",
+                "$from"
+              ]
+            }
+          }
+        }
+      }
+    ]);
+    
+    const contactUsernames = messages.length > 0 ? messages[0].contacts : [];
+    
+    // Получаем информацию о контактах
+    const contacts = await User.find({
+      username: { $in: contactUsernames }
+    }).select('username avatar avatarColor');
+    
+    // Добавляем онлайн статус
+    const contactsWithStatus = contacts.map(c => ({
+      username: c.username,
+      avatar: c.avatar,
+      avatarColor: c.avatarColor,
+      online: online.has(c.username)
+    }));
+    
+    res.json({ ok: true, chats: contactsWithStatus });
+  } catch (err) {
+    console.error("Get chats error:", err);
+    res.json({ ok: false, chats: [] });
   }
 });
 
@@ -134,8 +222,8 @@ app.post("/profile/update", async (req, res) => {
     
     await User.updateOne({ username: data.username }, { $set: update });
     
-    // Оповещаем всех об обновлении аватарки
-    emitUsers();
+    // Оповещаем всех об обновлении
+    emitChatList();
     
     res.json({ ok: true });
   } catch (err) {
@@ -162,11 +250,7 @@ io.on("connection", (socket) => {
   online.set(socket.username, socket.id);
   
   if (mongoose.connection.readyState === 1 && User) {
-    emitUsers();
-  } else {
-    const onlineUsers = Array.from(online.keys()).map(u => ({ username: u, online: true }));
-    socket.emit("users", onlineUsers);
-    socket.broadcast.emit("users", onlineUsers);
+    emitChatList();
   }
 
   socket.on("send_message", async (data) => {
@@ -183,6 +267,10 @@ io.on("connection", (socket) => {
       const full = await Message.findById(msg._id);
       send(data.to, "new_message", full);
       socket.emit("new_message", full);
+      
+      // Обновляем список чатов у обоих пользователей
+      emitChatListForUser(socket.username);
+      emitChatListForUser(data.to);
     } catch (err) {
       console.error("Send message error:", err);
     }
@@ -231,28 +319,72 @@ io.on("connection", (socket) => {
   socket.on("typing", (to) => send(to, "typing", { from: socket.username }));
   socket.on("stop_typing", (to) => send(to, "stop_typing", { from: socket.username }));
   
-  socket.on("profile_updated", () => emitUsers());
+  socket.on("profile_updated", () => emitChatList());
 
   socket.on("disconnect", () => {
     console.log(`❌ User disconnected: ${socket.username}`);
     online.delete(socket.username);
-    if (mongoose.connection.readyState === 1 && User) emitUsers();
+    if (mongoose.connection.readyState === 1 && User) emitChatList();
   });
 });
 
-async function emitUsers() {
+async function emitChatList() {
   try {
     if (!User) return;
-    const users = await User.find({}, "username avatar avatarColor");
     
-    io.emit("users", users.map(u => ({
-      username: u.username,
-      avatar: u.avatar || "",
-      avatarColor: u.avatarColor || "#667eea",
-      online: online.has(u.username)
-    })));
+    const sockets = await io.fetchSockets();
+    for (const socket of sockets) {
+      await emitChatListForUser(socket.username);
+    }
   } catch (err) {
-    console.error("Emit users error:", err);
+    console.error("Emit chat list error:", err);
+  }
+}
+
+async function emitChatListForUser(username) {
+  try {
+    const socketId = online.get(username);
+    if (!socketId) return;
+    
+    // Находим все чаты пользователя
+    const messages = await Message.aggregate([
+      {
+        $match: {
+          $or: [{ from: username }, { to: username }]
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          contacts: { 
+            $addToSet: {
+              $cond: [
+                { $eq: ["$from", username] },
+                "$to",
+                "$from"
+              ]
+            }
+          }
+        }
+      }
+    ]);
+    
+    const contactUsernames = messages.length > 0 ? messages[0].contacts : [];
+    
+    const contacts = await User.find({
+      username: { $in: contactUsernames }
+    }).select('username avatar avatarColor');
+    
+    const chatList = contacts.map(c => ({
+      username: c.username,
+      avatar: c.avatar,
+      avatarColor: c.avatarColor,
+      online: online.has(c.username)
+    }));
+    
+    io.to(socketId).emit("chat_list", chatList);
+  } catch (err) {
+    console.error("Emit chat list for user error:", err);
   }
 }
 
