@@ -6,7 +6,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="QWAS">
 <meta name="theme-color" content="#0a0a0a">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icon-192.png">
@@ -16,236 +15,7 @@
 
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #fff; overscroll-behavior: none; }
-
-.search-container {
-  padding: 12px 16px;
-  border-bottom: 1px solid #222;
-  position: relative;
-}
-
-.search-box {
-  display: flex;
-  align-items: center;
-  background: #1a1a1a;
-  border-radius: 24px;
-  padding: 8px 16px;
-  gap: 8px;
-}
-
-.search-box input {
-  flex: 1;
-  background: none;
-  border: none;
-  color: #fff;
-  font-size: 16px;
-  padding: 8px 0;
-  outline: none;
-}
-
-.search-box input::placeholder { color: #666; }
-
-.clear-search {
-  background: none;
-  border: none;
-  color: #888;
-  font-size: 20px;
-  cursor: pointer;
-  padding: 4px 8px;
-  display: none;
-}
-
-.clear-search.show { display: block; }
-
-.search-results {
-  max-height: 350px;
-  overflow-y: auto;
-  margin-top: 8px;
-  background: #111;
-  border-radius: 12px;
-  display: none;
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  z-index: 100;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-}
-
-.search-results.show { display: block; }
-
-.search-result-item {
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-  border-bottom: 1px solid #1a1a1a;
-}
-
-.search-result-item:active { background: #1a1a1a; }
-
-.no-results {
-  padding: 20px;
-  text-align: center;
-  color: #666;
-}
-
-.modal {
-  display: none;
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.9);
-  z-index: 1000;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(10px);
-}
-
-.modal.show { display: flex; }
-
-.modal-content {
-  background: #1a1a1a;
-  border-radius: 20px;
-  padding: 24px;
-  width: 90%;
-  max-width: 400px;
-  max-height: 80vh;
-  overflow-y: auto;
-  animation: slideUp 0.3s ease;
-}
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.modal-header h2 {
-  font-size: 20px;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  color: #888;
-  font-size: 28px;
-  cursor: pointer;
-  padding: 4px 8px;
-}
-
-.profile-avatar-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.profile-avatar-large {
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 48px;
-  font-weight: bold;
-  color: white;
-  text-transform: uppercase;
-  margin-bottom: 16px;
-  position: relative;
-  cursor: pointer;
-}
-
-.profile-avatar-large:active { transform: scale(0.95); }
-
-.avatar-edit-badge {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: #333;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  border: 2px solid #1a1a1a;
-}
-
-.color-picker {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: center;
-  margin-top: 16px;
-}
-
-.color-option {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  cursor: pointer;
-  border: 3px solid transparent;
-  transition: transform 0.2s;
-}
-
-.color-option.selected { border-color: white; }
-
-.profile-field {
-  margin-bottom: 16px;
-}
-
-.profile-field label {
-  display: block;
-  font-size: 13px;
-  color: #888;
-  margin-bottom: 6px;
-}
-
-.profile-field input {
-  width: 100%;
-  padding: 14px;
-  border-radius: 10px;
-  border: 1px solid #333;
-  background: #0a0a0a;
-  color: #fff;
-  font-size: 16px;
-}
-
-.profile-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.btn {
-  flex: 1;
-  padding: 14px;
-  border-radius: 10px;
-  border: none;
-  font-weight: bold;
-  font-size: 15px;
-  cursor: pointer;
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  color: white;
-}
-
-.btn-danger {
-  background: #e74c3c;
-  color: white;
-}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #fff; }
 
 #auth {
   width: 100%; max-width: 400px; margin: 0 auto;
@@ -273,7 +43,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   cursor: pointer; min-height: 48px;
 }
 
-#chat { display: none; height: 100dvh; position: fixed; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; }
+#chat { display: none; height: 100dvh; display: flex; }
 
 .sidebar {
   width: 300px; background: #111; border-right: 1px solid #222;
@@ -282,13 +52,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 @media (max-width: 768px) {
   .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 100%; z-index: 10; }
-  .sidebar.hidden { transform: translateX(-100%); }
-  .mobile-back-btn { display: block; }
+  .sidebar.hidden { display: none; }
 }
 
 .sidebar-header {
   padding: 20px 16px; border-bottom: 1px solid #222;
-  background: #0a0a0a; position: sticky; top: 0; z-index: 2;
+  background: #0a0a0a;
 }
 
 .sidebar-header h2 {
@@ -306,33 +75,69 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   width: 44px; height: 44px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-weight: bold; font-size: 18px; color: white;
-  text-transform: uppercase; flex-shrink: 0;
-  background-size: cover; background-position: center;
+  text-transform: uppercase; background-size: cover;
 }
 
 .user-avatar.small { width: 40px; height: 40px; font-size: 16px; }
 
-.user-info-text { flex: 1; }
-.user-info-text .username { font-weight: 600; font-size: 16px; }
-.user-info-text .status { font-size: 13px; color: #888; }
+.search-container {
+  padding: 12px 16px;
+  border-bottom: 1px solid #222;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  background: #1a1a1a;
+  border-radius: 24px;
+  padding: 8px 16px;
+  gap: 8px;
+}
+
+.search-box input {
+  flex: 1;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 16px;
+  padding: 8px 0;
+  outline: none;
+}
+
+.search-results {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 8px;
+  background: #1a1a1a;
+  border-radius: 12px;
+}
+
+.search-result-item {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #222;
+}
+
+.search-result-item:active { background: #222; }
 
 .section-title {
   padding: 12px 16px 4px;
   font-size: 13px;
   color: #666;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
-.users-list { flex: 1; overflow-y: auto; }
+.users-list { flex: 1; }
 
 .user {
   padding: 14px 16px; border-bottom: 1px solid #1a1a1a;
   cursor: pointer; display: flex; align-items: center; gap: 14px;
-  position: relative; min-height: 72px;
+  position: relative;
 }
 
-.user:active { background: #1a1a1a; }
 .user.selected { background: #1e1e1e; border-left: 4px solid #667eea; }
 
 .online-indicator, .offline-indicator {
@@ -342,8 +147,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .online-indicator { background: #00ff00; }
 .offline-indicator { background: #666; }
 
-.user-content { flex: 1; }
-.user-name { font-weight: 500; font-size: 16px; margin-bottom: 5px; }
+.user-name { font-weight: 500; font-size: 16px; }
 .user-status { font-size: 13px; color: #888; }
 
 .chat-area { flex: 1; display: flex; flex-direction: column; background: #0a0a0a; }
@@ -351,76 +155,55 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .chat-header {
   padding: 12px 16px; background: #111; border-bottom: 1px solid #222;
   display: flex; align-items: center; gap: 12px;
-  position: sticky; top: 0; z-index: 2; min-height: 64px;
 }
 
 .mobile-back-btn {
   display: none; background: none; border: none;
-  color: #fff; font-size: 24px; cursor: pointer; padding: 8px;
-}
-
-.mobile-leave-chat {
-  display: none;
-  background: none;
-  border: none;
-  color: #e74c3c;
-  font-size: 20px;
-  cursor: pointer;
-  padding: 8px;
-  margin-left: auto;
+  color: #fff; font-size: 24px; cursor: pointer;
 }
 
 @media (max-width: 768px) {
   .mobile-back-btn { display: block; }
-  .mobile-leave-chat { display: block; }
 }
 
 .chat-header-info { flex: 1; }
-.chat-header-info h3 { font-size: 16px; margin-bottom: 3px; }
-.chat-header-info .online-status { font-size: 13px; color: #888; }
 
 .messages-container {
-  flex: 1; padding: 16px 12px; overflow-y: auto;
+  flex: 1; padding: 16px; overflow-y: auto;
   display: flex; flex-direction: column; gap: 8px;
 }
 
 .message {
   display: flex; gap: 8px; max-width: 85%;
-  animation: fadeIn 0.3s ease;
 }
 .message.me { align-self: flex-end; flex-direction: row-reverse; }
 
 .message-bubble {
   padding: 12px 14px; border-radius: 18px;
-  word-break: break-word; font-size: 15px; line-height: 1.4;
+  background: #1e1e1e; color: #fff;
 }
 .message.me .message-bubble {
   background: linear-gradient(135deg, #667eea, #764ba2);
-  color: white;
 }
-.message.other .message-bubble { background: #1e1e1e; color: #fff; }
 
 .message-meta {
   display: flex; align-items: center; gap: 6px;
   margin-top: 4px; font-size: 11px; color: #888;
 }
-.message.me .message-meta { justify-content: flex-end; }
-.message-status { color: #4CAF50; }
 
 .typing-indicator {
   padding: 8px 16px; font-size: 13px; color: #888;
-  font-style: italic; min-height: 36px;
 }
 
 .message-input-container {
   padding: 12px 16px; background: #111; border-top: 1px solid #222;
-  display: flex; gap: 10px; position: sticky; bottom: 0;
+  display: flex; gap: 10px;
 }
 
 .message-input {
   flex: 1; padding: 12px 16px; border-radius: 24px;
   border: 1px solid #333; background: #0a0a0a; color: #fff;
-  font-size: 16px; min-height: 48px;
+  font-size: 16px;
 }
 
 .send-button {
@@ -429,20 +212,98 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   color: white; font-size: 22px; cursor: pointer;
 }
 
-.empty-state { text-align: center; color: #666; padding: 40px 20px; }
+.empty-state { text-align: center; color: #666; padding: 40px; }
 .empty-state-icon { font-size: 64px; margin-bottom: 20px; opacity: 0.5; }
 
-#avatarInput { display: none; }
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+/* Модалка профиля */
+.modal {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.9);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
 }
+
+.modal.show { display: flex; }
+
+.modal-content {
+  background: #1a1a1a;
+  border-radius: 20px;
+  padding: 24px;
+  width: 90%;
+  max-width: 400px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 28px;
+  cursor: pointer;
+}
+
+.profile-avatar-large {
+  width: 120px; height: 120px; border-radius: 50%;
+  margin: 0 auto 16px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 48px; font-weight: bold; color: white;
+  cursor: pointer; position: relative;
+}
+
+.color-picker {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  justify-content: center; margin: 16px 0;
+}
+
+.color-option {
+  width: 36px; height: 36px; border-radius: 50%;
+  cursor: pointer; border: 3px solid transparent;
+}
+
+.color-option.selected { border-color: white; }
+
+.profile-field {
+  margin-bottom: 16px;
+}
+
+.profile-field input {
+  width: 100%; padding: 14px; border-radius: 10px;
+  border: 1px solid #333; background: #0a0a0a; color: #fff;
+}
+
+.profile-actions {
+  display: flex; gap: 12px;
+}
+
+.btn {
+  flex: 1; padding: 14px; border-radius: 10px; border: none;
+  font-weight: bold; cursor: pointer;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+}
+
+.btn-danger {
+  background: #e74c3c;
+  color: white;
+}
+
+#avatarInput { display: none; }
 </style>
 </head>
 <body>
 
-<!-- Модальное окно профиля -->
+<!-- Модалка профиля -->
 <div class="modal" id="profileModal">
   <div class="modal-content">
     <div class="modal-header">
@@ -450,18 +311,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
       <button class="close-btn" onclick="closeProfile()">&times;</button>
     </div>
     
-    <div class="profile-avatar-section">
-      <div class="profile-avatar-large" id="profileAvatarLarge" onclick="document.getElementById('avatarInput').click()">
-        <span id="profileAvatarText">U</span>
-        <img id="profileAvatarImg" style="display:none; width:100%; height:100%; border-radius:50%; object-fit:cover;">
-        <div class="avatar-edit-badge">📷</div>
-      </div>
-      
-      <div class="color-picker" id="colorPicker"></div>
+    <div class="profile-avatar-large" id="profileAvatarLarge" onclick="document.getElementById('avatarInput').click()">
+      <span id="profileAvatarText">U</span>
+      <img id="profileAvatarImg" style="display:none; width:100%; height:100%; border-radius:50%; object-fit:cover;">
     </div>
     
+    <div class="color-picker" id="colorPicker"></div>
+    
     <div class="profile-field">
-      <label>Имя пользователя</label>
       <input type="text" id="profileUsername" readonly>
     </div>
     
@@ -472,37 +329,35 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   </div>
 </div>
 
-<input type="file" id="avatarInput" accept="image/*" onchange="handleAvatarUpload(event)">
+<input type="file" id="avatarInput" accept="image/*">
 
 <div id="auth">
   <h1>💬 QWAS</h1>
-  <input id="u" placeholder="Имя пользователя" autocomplete="off" autocapitalize="none">
+  <input id="u" placeholder="Имя пользователя" autocomplete="off">
   <input id="p" type="password" placeholder="Пароль">
   <button onclick="login()">Войти</button>
   <button onclick="register()">Создать аккаунт</button>
 </div>
 
-<div id="chat">
+<div id="chat" style="display:none">
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <h2>💬 QWAS</h2>
       <div class="user-info" onclick="openProfile()">
         <div class="user-avatar" id="myAvatar">U</div>
-        <div class="user-info-text">
-          <div class="username" id="myUsername">username</div>
-          <div class="status">Онлайн</div>
+        <div>
+          <div id="myUsername">username</div>
+          <div style="font-size:13px;color:#888;">Онлайн</div>
         </div>
       </div>
     </div>
     
-    <!-- Поиск -->
     <div class="search-container">
       <div class="search-box">
         <span>🔍</span>
         <input type="text" id="searchInput" placeholder="Поиск @username..." autocomplete="off">
-        <button class="clear-search" id="clearSearch">✕</button>
       </div>
-      <div class="search-results" id="searchResults"></div>
+      <div class="search-results" id="searchResults" style="display:none;"></div>
     </div>
     
     <div class="section-title">Чаты</div>
@@ -515,9 +370,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
       <div class="user-avatar small" id="chatAvatar">U</div>
       <div class="chat-header-info">
         <h3 id="chatUsername">Выберите чат</h3>
-        <div class="online-status" id="chatStatus"></div>
+        <div id="chatStatus" style="font-size:13px;color:#888;"></div>
       </div>
-      <button class="mobile-leave-chat" onclick="leaveChat()" title="Выйти из чата">✕</button>
     </div>
     
     <div class="messages-container" id="messages">
@@ -531,7 +385,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <div id="typingIndicator" class="typing-indicator"></div>
     
     <div class="message-input-container">
-      <input class="message-input" id="msg" placeholder="Сообщение..." disabled autocomplete="off">
+      <input class="message-input" id="msg" placeholder="Сообщение..." disabled>
       <button class="send-button" id="sendBtn" onclick="send()" disabled>➤</button>
     </div>
   </div>
@@ -539,7 +393,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 <script>
 let socket, me = "", current = "", typingTimeout = null;
-let onlineUsers = new Map();
 let userToken = "";
 let currentUser = { avatar: "", avatarColor: "#667eea" };
 let selectedColor = "#667eea";
@@ -547,54 +400,63 @@ let uploadedAvatar = null;
 let chatList = [];
 let allUsers = [];
 
-const colors = ["#667eea", "#764ba2", "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#1abc9c", "#e67e22", "#9b59b6", "#e91e63", "#00bcd4", "#ff5722"];
+const colors = ["#667eea", "#764ba2", "#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#1abc9c", "#e67e22"];
 
-// Инициализация
-document.addEventListener('DOMContentLoaded', () => {
-  const picker = document.getElementById('colorPicker');
-  colors.forEach(color => {
-    const div = document.createElement('div');
-    div.className = 'color-option';
-    div.style.background = color;
-    div.onclick = () => selectColor(color);
-    picker.appendChild(div);
-  });
+// Инициализация цветов
+colors.forEach(color => {
+  const div = document.createElement('div');
+  div.className = 'color-option';
+  div.style.background = color;
+  div.onclick = () => selectColor(color);
+  document.getElementById('colorPicker').appendChild(div);
+});
+
+// Поиск
+const searchInput = document.getElementById('searchInput');
+const searchResults = document.getElementById('searchResults');
+
+searchInput.addEventListener('input', function() {
+  const query = this.value.trim().toLowerCase();
   
-  // Настройка поиска
-  const searchInput = document.getElementById('searchInput');
-  const clearBtn = document.getElementById('clearSearch');
-  const resultsDiv = document.getElementById('searchResults');
+  if (query.length === 0) {
+    searchResults.style.display = 'none';
+    return;
+  }
   
-  searchInput.addEventListener('input', function() {
-    const val = this.value;
-    clearBtn.style.display = val ? 'block' : 'none';
-    
-    if (val.length >= 1) {
-      searchUsersLocal(val);
-      resultsDiv.classList.add('show');
-    } else {
-      resultsDiv.classList.remove('show');
-    }
-  });
+  // Фильтруем пользователей
+  const filtered = allUsers.filter(u => 
+    u.username !== me && 
+    u.username.toLowerCase().includes(query.replace(/^@/, ''))
+  );
   
-  searchInput.addEventListener('focus', function() {
-    if (this.value.length >= 1) {
-      resultsDiv.classList.add('show');
-    }
-  });
+  if (filtered.length === 0) {
+    searchResults.innerHTML = '<div style="padding:16px;text-align:center;color:#666;">Ничего не найдено</div>';
+  } else {
+    searchResults.innerHTML = filtered.slice(0, 10).map(u => `
+      <div class="search-result-item" onclick="startChatWith('${u.username}')">
+        <div class="user-avatar small" style="background:${u.avatarColor || '#667eea'};">
+          ${getAvatarLetter(u.username)}
+        </div>
+        <div>
+          <div class="user-name">@${u.username}</div>
+        </div>
+      </div>
+    `).join('');
+  }
   
-  clearBtn.addEventListener('click', function() {
-    searchInput.value = '';
-    clearBtn.style.display = 'none';
-    resultsDiv.classList.remove('show');
-  });
-  
-  // Закрытие поиска при клике вне
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('.search-container')) {
-      resultsDiv.classList.remove('show');
-    }
-  });
+  searchResults.style.display = 'block';
+});
+
+searchInput.addEventListener('focus', () => {
+  if (searchInput.value.trim().length > 0) {
+    searchResults.style.display = 'block';
+  }
+});
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.search-container')) {
+    searchResults.style.display = 'none';
+  }
 });
 
 function selectColor(color) {
@@ -602,29 +464,10 @@ function selectColor(color) {
   document.querySelectorAll('.color-option').forEach(el => {
     el.classList.toggle('selected', el.style.background === color);
   });
-  updateAvatarPreview();
 }
 
 function getAvatarLetter(u) { 
   return u ? u.charAt(0).toUpperCase() : '?'; 
-}
-
-function updateAvatarPreview() {
-  const textSpan = document.getElementById('profileAvatarText');
-  const imgEl = document.getElementById('profileAvatarImg');
-  const avatarDiv = document.getElementById('profileAvatarLarge');
-  
-  if (uploadedAvatar) {
-    imgEl.src = uploadedAvatar;
-    imgEl.style.display = 'block';
-    textSpan.style.display = 'none';
-    avatarDiv.style.background = 'transparent';
-  } else {
-    imgEl.style.display = 'none';
-    textSpan.style.display = 'block';
-    textSpan.textContent = getAvatarLetter(me);
-    avatarDiv.style.background = selectedColor;
-  }
 }
 
 function handleAvatarUpload(event) {
@@ -634,23 +477,31 @@ function handleAvatarUpload(event) {
   const reader = new FileReader();
   reader.onload = (e) => {
     uploadedAvatar = e.target.result;
-    updateAvatarPreview();
+    document.getElementById('profileAvatarImg').src = uploadedAvatar;
+    document.getElementById('profileAvatarImg').style.display = 'block';
+    document.getElementById('profileAvatarText').style.display = 'none';
   };
   reader.readAsDataURL(file);
 }
 
+document.getElementById('avatarInput').addEventListener('change', handleAvatarUpload);
+
 function openProfile() {
   document.getElementById('profileModal').classList.add('show');
   document.getElementById('profileUsername').value = '@' + me;
-  
   selectedColor = currentUser.avatarColor || "#667eea";
   uploadedAvatar = currentUser.avatar || null;
   
-  document.querySelectorAll('.color-option').forEach(el => {
-    el.classList.toggle('selected', el.style.background === selectedColor);
-  });
-  
-  updateAvatarPreview();
+  if (uploadedAvatar) {
+    document.getElementById('profileAvatarImg').src = uploadedAvatar;
+    document.getElementById('profileAvatarImg').style.display = 'block';
+    document.getElementById('profileAvatarText').style.display = 'none';
+  } else {
+    document.getElementById('profileAvatarImg').style.display = 'none';
+    document.getElementById('profileAvatarText').style.display = 'block';
+    document.getElementById('profileAvatarText').textContent = getAvatarLetter(me);
+    document.getElementById('profileAvatarLarge').style.background = selectedColor;
+  }
 }
 
 function closeProfile() {
@@ -658,136 +509,51 @@ function closeProfile() {
 }
 
 async function saveProfile() {
-  try {
-    const response = await fetch('/profile/update', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userToken}`
-      },
-      body: JSON.stringify({
-        avatar: uploadedAvatar,
-        avatarColor: selectedColor
-      })
-    });
-    
-    const data = await response.json();
-    if (data.ok) {
-      currentUser.avatar = uploadedAvatar;
-      currentUser.avatarColor = selectedColor;
-      updateMyAvatar();
-      socket.emit('profile_updated');
-      closeProfile();
-    }
-  } catch (err) {
-    console.error('Save profile error:', err);
-  }
+  await fetch('/profile/update', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${userToken}`
+    },
+    body: JSON.stringify({ avatar: uploadedAvatar, avatarColor: selectedColor })
+  });
+  currentUser.avatar = uploadedAvatar;
+  currentUser.avatarColor = selectedColor;
+  updateMyAvatar();
+  closeProfile();
 }
 
 function updateMyAvatar() {
-  const avatarEl = document.getElementById('myAvatar');
+  const el = document.getElementById('myAvatar');
   if (currentUser.avatar) {
-    avatarEl.style.backgroundImage = `url(${currentUser.avatar})`;
-    avatarEl.style.backgroundSize = 'cover';
-    avatarEl.textContent = '';
+    el.style.backgroundImage = `url(${currentUser.avatar})`;
+    el.style.backgroundSize = 'cover';
+    el.textContent = '';
   } else {
-    avatarEl.style.backgroundImage = 'none';
-    avatarEl.style.background = currentUser.avatarColor || '#667eea';
-    avatarEl.textContent = getAvatarLetter(me);
+    el.style.background = currentUser.avatarColor;
+    el.textContent = getAvatarLetter(me);
   }
-}
-
-// Поиск пользователей
-function searchUsersLocal(query) {
-  const resultsDiv = document.getElementById('searchResults');
-  
-  if (query.length < 1) {
-    resultsDiv.classList.remove('show');
-    return;
-  }
-  
-  // Убираем @ для поиска
-  const cleanQuery = query.replace(/^@/, '').toLowerCase();
-  
-  // Фильтруем всех пользователей (исключая себя)
-  const filtered = allUsers.filter(u => 
-    u.username !== me && 
-    u.username.toLowerCase().includes(cleanQuery)
-  );
-  
-  if (filtered.length === 0) {
-    resultsDiv.innerHTML = '<div class="no-results">Пользователи не найдены</div>';
-  } else {
-    resultsDiv.innerHTML = filtered.slice(0, 10).map(u => `
-      <div class="search-result-item" onclick="startChatWith('${u.username}')">
-        <div class="user-avatar small" style="${u.avatar ? `background-image:url(${u.avatar});background-size:cover` : `background:${u.avatarColor || '#667eea'}`}">
-          ${u.avatar ? '' : getAvatarLetter(u.username)}
-        </div>
-        <div class="user-content">
-          <div class="user-name">@${u.username}</div>
-        </div>
-      </div>
-    `).join('');
-  }
-  
-  resultsDiv.classList.add('show');
 }
 
 function startChatWith(username) {
-  // Очищаем поиск
-  document.getElementById('searchInput').value = '';
-  document.getElementById('clearSearch').style.display = 'none';
-  document.getElementById('searchResults').classList.remove('show');
+  searchInput.value = '';
+  searchResults.style.display = 'none';
   
-  // Проверяем есть ли уже такой чат
-  const existingChat = chatList.find(c => c.username === username);
-  
-  if (!existingChat) {
-    // Добавляем пользователя в список чатов
-    const userData = allUsers.find(u => u.username === username);
-    if (userData) {
-      chatList.push({
-        username: userData.username,
-        avatar: userData.avatar,
-        avatarColor: userData.avatarColor,
-        online: false
-      });
+  if (!chatList.find(c => c.username === username)) {
+    const user = allUsers.find(u => u.username === username);
+    if (user) {
+      chatList.push({ ...user, online: false });
       renderChatList();
     }
   }
-  
   selectUser(username);
 }
 
-function leaveChat() {
-  current = "";
-  document.getElementById('chatHeader').style.display = 'none';
-  document.getElementById('msg').disabled = true;
-  document.getElementById('sendBtn').disabled = true;
-  document.getElementById('messages').innerHTML = `
-    <div class="empty-state">
-      <div class="empty-state-icon">💬</div>
-      <h3>Добро пожаловать в QWAS</h3>
-      <p>Выберите чат или найдите пользователя</p>
-    </div>
-  `;
-  document.getElementById('typingIndicator').textContent = '';
-  
-  document.querySelectorAll('.user').forEach(el => el.classList.remove('selected'));
-  
-  if (window.innerWidth <= 768) {
-    showSidebar();
-  }
-}
-
 function register() {
-  let u = document.getElementById('u').value.trim();
+  let u = document.getElementById('u').value.trim().replace(/^@/, '');
   const p = document.getElementById('p').value;
   
-  u = u.replace(/^@/, '');
-  
   if(!u||!p) return alert('Введите логин и пароль');
-  if(!/^[a-zA-Z0-9_]+$/.test(u)) return alert('Имя пользователя может содержать только буквы, цифры и _');
   
   fetch("/register", {
     method:"POST",
@@ -795,125 +561,76 @@ function register() {
     body:JSON.stringify({username:u,password:p})
   })
   .then(r=>r.json())
-  .then(d=>alert(d.ok?'Регистрация успешна!':'Ошибка: '+(d.error||'')));
+  .then(d=>alert(d.ok?'Успешно!':'Ошибка: '+d.error));
 }
 
 async function login() {
-  let u = document.getElementById('u').value.trim();
+  let u = document.getElementById('u').value.trim().replace(/^@/, '');
   const p = document.getElementById('p').value;
-  
-  u = u.replace(/^@/, '');
   
   if(!u||!p) return alert('Введите логин и пароль');
   
-  try {
-    const response = await fetch("/login", {
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({username:u,password:p})
-    });
-    const d = await response.json();
-    
-    if(!d.ok) return alert('Ошибка: '+(d.error||'Неверный логин или пароль'));
-    
-    me = u;
-    userToken = d.token;
-    currentUser = d.user;
-    
-    document.getElementById('auth').style.display='none';
-    document.getElementById('chat').style.display='flex';
-    document.getElementById('myUsername').textContent = '@' + me;
-    
-    updateMyAvatar();
-    
-    // Подключаем сокет
-    connectSocket(d.token);
-    
-    // Загружаем чаты
-    await loadChatList();
-    
-    // Загружаем всех пользователей для поиска
-    await loadAllUsers();
-    
-  } catch (err) {
-    console.error('Login error:', err);
-    alert('Ошибка входа');
-  }
-}
-
-async function loadAllUsers() {
-  try {
-    const response = await fetch('/users/all', {
-      headers: { 'Authorization': `Bearer ${userToken}` }
-    });
-    const data = await response.json();
-    if (data.ok) {
-      allUsers = data.users;
-      console.log('✅ Loaded users for search:', allUsers.length);
-    }
-  } catch (err) {
-    console.error('Load all users error:', err);
-  }
-}
-
-async function loadChatList() {
-  try {
-    const response = await fetch('/chats', {
-      headers: { 'Authorization': `Bearer ${userToken}` }
-    });
-    const data = await response.json();
-    chatList = data.chats;
-    renderChatList();
-  } catch (err) {
-    console.error('Load chats error:', err);
-  }
+  const res = await fetch("/login", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({username:u,password:p})
+  });
+  const d = await res.json();
+  
+  if(!d.ok) return alert('Ошибка: '+d.error);
+  
+  me = u;
+  userToken = d.token;
+  currentUser = d.user;
+  
+  document.getElementById('auth').style.display='none';
+  document.getElementById('chat').style.display='flex';
+  document.getElementById('myUsername').textContent = '@' + me;
+  updateMyAvatar();
+  
+  // Загружаем всех пользователей
+  const usersRes = await fetch('/users/all', {
+    headers: { 'Authorization': `Bearer ${userToken}` }
+  });
+  const usersData = await usersRes.json();
+  allUsers = usersData.users || [];
+  console.log('📋 Загружено пользователей:', allUsers.length);
+  
+  // Загружаем чаты
+  const chatsRes = await fetch('/chats', {
+    headers: { 'Authorization': `Bearer ${userToken}` }
+  });
+  const chatsData = await chatsRes.json();
+  chatList = chatsData.chats || [];
+  renderChatList();
+  
+  connectSocket(d.token);
 }
 
 function renderChatList() {
   const container = document.getElementById("users");
   
   if (chatList.length === 0) {
-    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">💭</div><p>Нет активных чатов</p><p style="font-size:13px;margin-top:8px;">Используйте поиск 🔍</p></div>';
+    container.innerHTML = '<div class="empty-state"><div>💭</div><p>Нет чатов</p></div>';
     return;
   }
   
-  container.innerHTML = '';
-  
-  chatList.sort((a, b) => a.username.localeCompare(b.username));
-  
-  chatList.forEach(u => {
-    const div = document.createElement("div");
-    div.className = "user" + (current === u.username ? " selected" : "");
-    div.onclick = () => selectUser(u.username);
-    
-    const avatar = document.createElement("div");
-    avatar.className = "user-avatar small";
-    if (u.avatar) {
-      avatar.style.backgroundImage = `url(${u.avatar})`;
-      avatar.style.backgroundSize = 'cover';
-    } else {
-      avatar.style.background = u.avatarColor || "#667eea";
-      avatar.textContent = getAvatarLetter(u.username);
-    }
-    div.appendChild(avatar);
-    
-    const content = document.createElement('div');
-    content.className = 'user-content';
-    content.innerHTML = `<div class="user-name">@${u.username}</div><div class="user-status">${u.online?'Онлайн':'Офлайн'}</div>`;
-    div.appendChild(content);
-    
-    const ind = document.createElement('span');
-    ind.className = u.online ? 'online-indicator' : 'offline-indicator';
-    div.appendChild(ind);
-    
-    container.appendChild(div);
-  });
+  container.innerHTML = chatList.sort((a,b) => a.username.localeCompare(b.username)).map(u => `
+    <div class="user ${current === u.username ? 'selected' : ''}" onclick="selectUser('${u.username}')">
+      <div class="user-avatar small" style="background:${u.avatarColor || '#667eea'};">
+        ${getAvatarLetter(u.username)}
+      </div>
+      <div style="flex:1;">
+        <div class="user-name">@${u.username}</div>
+        <div class="user-status">${u.online?'Онлайн':'Офлайн'}</div>
+      </div>
+      <span class="${u.online?'online':'offline'}-indicator"></span>
+    </div>
+  `).join('');
 }
 
 function connectSocket(token) {
   socket = io({ auth: { token } });
-  
-  socket.on("connect", () => console.log("✅ Connected"));
   
   socket.on("chat_list", chats => {
     chatList = chats;
@@ -923,34 +640,29 @@ function connectSocket(token) {
   socket.on("new_message", msg => {
     if(msg.from === current || msg.to === current) {
       addMessageToChat(msg);
-      if(msg.to === me && current === msg.from) socket.emit("read", {from: msg.from, to: me});
+      if(msg.to === me) socket.emit("read", {from: msg.from, to: me});
     }
-    loadChatList();
   });
   
-  socket.on("chat_history", msgs => renderHistory(msgs));
+  socket.on("chat_history", msgs => {
+    const c = document.getElementById("messages");
+    c.innerHTML = msgs.length ? '' : '<div class="empty-state"><div>💭</div><p>Нет сообщений</p></div>';
+    msgs.forEach(m => addMessageToChat(m));
+  });
   
   socket.on("read_update", data => {
     data.messages.forEach(id => {
       const el = document.getElementById(`msg-${id}`);
-      if(el) { 
-        const s = el.querySelector('.message-status'); 
-        if(s) s.textContent = '✓✓'; 
-      }
+      if(el) el.querySelector('.message-status').textContent = '✓✓';
     });
   });
   
-  socket.on("typing", d => { 
-    if(d.from === current) document.getElementById('typingIndicator').textContent = `@${current} печатает...`; 
+  socket.on("typing", d => {
+    if(d.from === current) document.getElementById('typingIndicator').textContent = `@${current} печатает...`;
   });
   
-  socket.on("stop_typing", d => { 
-    if(d.from === current) document.getElementById('typingIndicator').textContent = ''; 
-  });
-  
-  socket.on("all_users", users => {
-    allUsers = users;
-    console.log('✅ Received all users via socket:', users.length);
+  socket.on("stop_typing", d => {
+    if(d.from === current) document.getElementById('typingIndicator').textContent = '';
   });
 }
 
@@ -964,37 +676,22 @@ function selectUser(username) {
     }
   });
   
-  const userData = chatList.find(u => u.username === username) || 
-                   allUsers.find(u => u.username === username) || {};
+  const user = chatList.find(u => u.username === username) || allUsers.find(u => u.username === username) || {};
   
   document.getElementById('chatHeader').style.display = 'flex';
-  
-  const chatAvatar = document.getElementById('chatAvatar');
-  if (userData.avatar) {
-    chatAvatar.style.backgroundImage = `url(${userData.avatar})`;
-    chatAvatar.style.backgroundSize = 'cover';
-    chatAvatar.textContent = '';
-  } else {
-    chatAvatar.style.backgroundImage = 'none';
-    chatAvatar.style.background = userData.avatarColor || "#667eea";
-    chatAvatar.textContent = getAvatarLetter(username);
-  }
-  
+  document.getElementById('chatAvatar').style.background = user.avatarColor || '#667eea';
+  document.getElementById('chatAvatar').textContent = getAvatarLetter(username);
   document.getElementById('chatUsername').textContent = '@' + username;
-  document.getElementById('chatStatus').textContent = userData.online ? 'Онлайн' : 'Офлайн';
+  document.getElementById('chatStatus').textContent = user.online ? 'Онлайн' : 'Офлайн';
   document.getElementById('msg').disabled = false;
   document.getElementById('sendBtn').disabled = false;
   document.getElementById('messages').innerHTML = '';
-  document.getElementById('typingIndicator').textContent = '';
   
-  if(window.innerWidth <= 768) hideSidebar();
+  if(window.innerWidth <= 768) {
+    document.getElementById('sidebar').classList.add('hidden');
+  }
+  
   socket.emit("get_history", username);
-}
-
-function renderHistory(msgs) {
-  const c = document.getElementById("messages");
-  c.innerHTML = msgs.length ? '' : '<div class="empty-state"><div class="empty-state-icon">💭</div><p>Нет сообщений. Начните общение!</p></div>';
-  msgs.forEach(m => addMessageToChat(m));
 }
 
 function addMessageToChat(msg) {
@@ -1003,50 +700,26 @@ function addMessageToChat(msg) {
   if(document.getElementById(`msg-${msg._id}`)) return;
   
   const isMe = msg.from === me;
-  const userData = isMe ? currentUser : (chatList.find(u => u.username === msg.from) || allUsers.find(u => u.username === msg.from) || {});
   
-  const d = document.createElement("div");
-  d.className = `message ${isMe ? "me" : "other"}`;
-  d.id = `msg-${msg._id}`;
+  const div = document.createElement("div");
+  div.className = `message ${isMe ? 'me' : 'other'}`;
+  div.id = `msg-${msg._id}`;
   
-  const avatar = document.createElement("div");
-  avatar.style.cssText = "width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:14px;color:#fff;text-transform:uppercase;";
-  if (userData.avatar) {
-    avatar.style.backgroundImage = `url(${userData.avatar})`;
-    avatar.style.backgroundSize = 'cover';
-  } else {
-    avatar.style.background = userData.avatarColor || "#667eea";
-    avatar.textContent = getAvatarLetter(msg.from);
-  }
-  d.appendChild(avatar);
+  div.innerHTML = `
+    <div style="width:32px;height:32px;border-radius:50%;background:${isMe ? currentUser.avatarColor : '#667eea'};display:flex;align-items:center;justify-content:center;font-weight:bold;color:#fff;">
+      ${getAvatarLetter(msg.from)}
+    </div>
+    <div style="flex:1;">
+      <div class="message-bubble">${msg.message}</div>
+      <div class="message-meta">
+        <span>${new Date(msg.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+        ${isMe ? `<span class="message-status">${msg.status==='read'?'✓✓':'✓'}</span>` : ''}
+      </div>
+    </div>
+  `;
   
-  const cnt = document.createElement("div");
-  cnt.style.flex = "1";
-  
-  const bubble = document.createElement("div");
-  bubble.className = "message-bubble";
-  bubble.textContent = msg.message;
-  cnt.appendChild(bubble);
-  
-  const meta = document.createElement("div");
-  meta.className = "message-meta";
-  
-  const time = document.createElement("span");
-  time.textContent = new Date(msg.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-  meta.appendChild(time);
-  
-  if(isMe) {
-    const status = document.createElement("span");
-    status.className = "message-status";
-    status.textContent = msg.status === "read" ? '✓✓' : '✓';
-    meta.appendChild(status);
-  }
-  
-  cnt.appendChild(meta);
-  d.appendChild(cnt);
-  c.appendChild(d);
-  
-  setTimeout(() => c.scrollTop = c.scrollHeight, 100);
+  c.appendChild(div);
+  c.scrollTop = c.scrollHeight;
 }
 
 function send() {
@@ -1056,54 +729,30 @@ function send() {
   
   socket.emit("send_message", {to: current, message: text});
   input.value = "";
-  socket.emit("stop_typing", current);
-  
-  if(typingTimeout) clearTimeout(typingTimeout);
-  input.focus();
 }
 
 function logout() {
   if(socket) socket.disconnect();
-  me = ""; current = ""; userToken = ""; chatList = []; allUsers = [];
-  document.getElementById('auth').style.display='block';
-  document.getElementById('chat').style.display='none';
-  document.getElementById('u').value = '';
-  document.getElementById('p').value = '';
-  closeProfile();
+  location.reload();
 }
 
-function showSidebar() { 
-  document.getElementById('sidebar').classList.remove('hidden'); 
+function showSidebar() {
+  document.getElementById('sidebar').classList.remove('hidden');
 }
 
-function hideSidebar() { 
-  if(window.innerWidth <= 768) {
-    document.getElementById('sidebar').classList.add('hidden');
-  }
-}
+// Отправка по Enter
+document.getElementById("msg").addEventListener("keypress", e => {
+  if(e.key === "Enter") { e.preventDefault(); send(); }
+});
 
-// Отслеживание печати
+// Печать
+let typingTimer;
 document.getElementById("msg").addEventListener("input", () => {
   if(!current) return;
   socket.emit("typing", current);
-  if(typingTimeout) clearTimeout(typingTimeout);
-  typingTimeout = setTimeout(() => { 
-    socket.emit("stop_typing", current); 
-  }, 1000);
+  clearTimeout(typingTimer);
+  typingTimer = setTimeout(() => socket.emit("stop_typing", current), 1000);
 });
-
-document.getElementById("msg").addEventListener("keypress", e => { 
-  if(e.key === "Enter") {
-    e.preventDefault();
-    send();
-  }
-});
-
-// Предотвращаем pull-to-refresh
-document.addEventListener('touchmove', (e) => {
-  if (e.target.closest('.messages-container')) return;
-}, { passive: false });
 
 </script>
 </body>
-</html>

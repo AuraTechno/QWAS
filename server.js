@@ -107,21 +107,26 @@ app.post("/login", async (req, res) => {
 app.get("/users/all", async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ ok: false, error: "No token" });
+    if (!token) {
+      console.log("❌ No token in /users/all");
+      return res.status(401).json({ ok: false, error: "No token" });
+    }
     
     const data = jwt.verify(token, config.JWT_SECRET);
+    console.log("📋 Fetching all users for:", data.username);
     
     const users = await User.find({
       username: { $ne: data.username }
     }).select('username avatar avatarColor');
     
+    console.log(`✅ Found ${users.length} users for search`);
+    
     res.json({ ok: true, users });
   } catch (err) {
-    console.error("Get all users error:", err);
+    console.error("❌ Get all users error:", err.message);
     res.json({ ok: false, users: [] });
   }
 });
-
 /* SEARCH USERS */
 app.get("/users/search", async (req, res) => {
   try {
