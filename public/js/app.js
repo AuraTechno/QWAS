@@ -1,27 +1,25 @@
 (function() {
   'use strict';
-  
+
   document.addEventListener('DOMContentLoaded', () => {
     QWAS.Auth.checkAutoLogin();
   });
-  
+
   document.getElementById('loginPassword').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') QWAS.Auth.handleLogin();
   });
-  
+
   document.getElementById('regConfirmPassword').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') QWAS.Auth.handleRegister();
   });
-  
+
   document.addEventListener('touchmove', (e) => {
-    if (e.target.closest('.messages-container') || e.target.closest('.users-list')) {
-      return;
-    }
+    if (e.target.closest('.messages-container') || e.target.closest('.users-list') || e.target.closest('.member-select-list')) return;
   }, { passive: false });
-  
+
   document.addEventListener('gesturestart', (e) => e.preventDefault());
   document.addEventListener('dblclick', (e) => e.preventDefault());
-  
+
   window.handleLogin = () => QWAS.Auth.handleLogin();
   window.handleRegister = () => QWAS.Auth.handleRegister();
   window.openRegisterModal = () => QWAS.Auth.openRegisterModal();
@@ -39,6 +37,6 @@
   window.closeForwardModal = () => QWAS.Messages.closeForwardModal();
   window.sendForward = (to) => QWAS.Messages.sendForward(to);
   window.startChatWith = (u) => QWAS.Search.startChat(u);
-  
+
   console.log('✅ QWAS Messenger загружен!');
 })();

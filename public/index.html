@@ -74,6 +74,13 @@
       <div class="search-results" id="searchResults"></div>
     </div>
     
+    <div class="sidebar-actions">
+      <button class="sidebar-action-btn" onclick="QWAS.Groups.openCreateModal()" title="Создать группу">＋</button>
+    </div>
+    
+    <div class="section-title" id="groupsSectionTitle" style="display:none;">Группы и каналы</div>
+    <div class="users-list" id="groupsList" style="display:none;"></div>
+    
     <div class="section-title">Чаты</div>
     <div class="users-list" id="users"></div>
   </div>
@@ -85,6 +92,10 @@
       <div class="chat-header-info">
         <h3 id="chatUsername">Выберите чат</h3>
         <div class="online-status" id="chatStatus"></div>
+      </div>
+      <div class="chat-header-actions" id="chatHeaderActions" style="display:none;">
+        <button class="header-icon-btn" onclick="QWAS.Groups.showMembers()" title="Участники">👥</button>
+        <button class="header-icon-btn" onclick="QWAS.Groups.leaveGroup()" title="Выйти">🚪</button>
       </div>
     </div>
     
@@ -160,7 +171,52 @@
 
 <input type="file" id="avatarInput" accept="image/*">
 
+<!-- Создание группы -->
+<div class="modal" id="createGroupModal">
+  <div class="modal-content" style="max-width:450px;">
+    <div class="modal-header">
+      <h2>Создать группу</h2>
+      <button class="close-btn" onclick="QWAS.Groups.closeCreateModal()">&times;</button>
+    </div>
+    <div class="modal-field">
+      <label>Название</label>
+      <input type="text" id="groupNameInput" placeholder="Название группы" autocomplete="off">
+    </div>
+    <div class="modal-field">
+      <label>Описание (необязательно)</label>
+      <input type="text" id="groupDescInput" placeholder="Описание" autocomplete="off">
+    </div>
+    <div class="modal-field">
+      <label>Тип</label>
+      <select id="groupTypeSelect" style="width:100%; padding:16px; background:var(--bg-primary); border:1px solid var(--border); border-radius:14px; color:var(--text-primary); font-size:16px; outline:none;">
+        <option value="group">👥 Группа</option>
+        <option value="channel">📢 Канал</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label>Участники</label>
+      <div id="groupMemberSelect" class="member-select-list"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="QWAS.Groups.closeCreateModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="QWAS.Groups.handleCreate()">Создать</button>
+    </div>
+  </div>
+</div>
+
+<!-- Участники группы -->
+<div class="modal" id="groupMembersModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Участники</h2>
+      <button class="close-btn" onclick="QWAS.Groups.closeMembersModal()">&times;</button>
+    </div>
+    <div id="groupMembersList" class="member-select-list"></div>
+  </div>
+</div>
+
 <script src="/js/config.js"></script>
+<script src="/js/groups.js"></script>
 <script src="/js/utils.js"></script>
 <script src="/js/notifications.js"></script>
 <script src="/js/socket.js"></script>

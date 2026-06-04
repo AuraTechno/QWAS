@@ -138,6 +138,8 @@
           QWAS.Socket.connect(data.token);
         }
         
+        await this.loadGroups();
+        
       } catch (err) {
         console.error('Login error:', err);
         QWAS.Notifications.error('Ошибка соединения');
@@ -146,17 +148,27 @@
     
     loadInitialData: async function() {
       try {
-        // Загружаем всех пользователей
         if (QWAS.Chat && QWAS.Chat.loadAllUsers) {
           await QWAS.Chat.loadAllUsers();
         }
-        
-        // Загружаем список чатов
         if (QWAS.Chat && QWAS.Chat.loadChatList) {
           await QWAS.Chat.loadChatList();
         }
       } catch (err) {
         console.error('Load initial data error:', err);
+      }
+    },
+
+    loadGroups: async function() {
+      try {
+        const res = await fetch('/groups/my', {
+          headers: { 'Authorization': `Bearer ${QWAS.State.userToken}` }
+        });
+        const data = await res.json();
+        QWAS.Groups.myGroups = data.groups || [];
+        QWAS.Groups.renderGroups();
+      } catch (err) {
+        console.error('Load groups error:', err);
       }
     },
     
@@ -202,6 +214,8 @@
           if (QWAS.Socket && QWAS.Socket.connect) {
             QWAS.Socket.connect(token);
           }
+          
+          await this.loadGroups();
           
           console.log('✅ Авто-вход выполнен');
         } else {

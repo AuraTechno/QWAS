@@ -11,4 +11,8 @@ const MessageSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+MessageSchema.index({ from: 1, to: 1, createdAt: -1 });
+MessageSchema.index({ createdAt: -1 });
+MessageSchema.index({ to: 1, status: 1 });
+
 module.exports = mongoose.model("Message", MessageSchema);
