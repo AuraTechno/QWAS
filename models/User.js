@@ -49,11 +49,18 @@ const UserSchema = new mongoose.Schema({
   },
 
   blocked: [{ type: String, index: true }],
-  contacts: [{ type: String }],
+  contacts: [{ type: String, index: true }],
 
   chatSettings: { type: mongoose.Schema.Types.Mixed, default: {} },
 
   createdAt: { type: Date, default: Date.now }
 });
+
+UserSchema.index({ username: 1, sessionToken: 1 });
+UserSchema.index({ presence: 1, lastSeen: -1 });
+UserSchema.index(
+  { firstName: "text", lastName: "text", username: "text" },
+  { default_language: "russian", name: "user_text_idx" }
+);
 
 module.exports = mongoose.model("User", UserSchema);

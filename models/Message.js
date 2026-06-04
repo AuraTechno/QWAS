@@ -20,10 +20,15 @@ const ReactionSchema = new mongoose.Schema({
 const MessageSchema = new mongoose.Schema({
   from: { type: String, required: true, index: true },
   to: { type: String, required: true, index: true },
+  conversationId: { type: String, required: true, index: true },
+  type: { type: String, enum: ["dm", "group", "favorites"], default: "dm" },
   message: { type: String, default: "" },
   attachments: [AttachmentSchema],
 
   replyTo: { type: mongoose.Schema.Types.ObjectId, ref: "Message", default: null },
+  replyToSnapshot: {
+    from: String, message: String, attachments: [AttachmentSchema]
+  },
 
   status: { type: String, enum: ["sent", "delivered", "read"], default: "sent" },
   edited: { type: Boolean, default: false },
@@ -41,12 +46,23 @@ const MessageSchema = new mongoose.Schema({
 
   mentions: [{ type: String }],
 
+  deliveredTo: [{ type: String }],
+  readBy: [{ type: String }],
+
   createdAt: { type: Date, default: Date.now, index: true }
 });
 
+MessageSchema.index({ conversationId: 1, createdAt: -1 });
+MessageSchema.index({ conversationId: 1, status: 1 });
 MessageSchema.index({ from: 1, to: 1, createdAt: -1 });
 MessageSchema.index({ to: 1, from: 1, createdAt: -1 });
 MessageSchema.index({ to: 1, status: 1 });
 MessageSchema.index({ to: 1, createdAt: -1 });
+MessageSchema.index({ from: 1, to: 1, status: 1, createdAt: -1 });
+MessageSchema.index({ "mentions": 1, conversationId: 1 });
+MessageSchema.index(
+  { message: "text", "attachments.name": "text" },
+  { default_language: "russian", name: "message_text_idx" }
+);
 
 module.exports = mongoose.model("Message", MessageSchema);

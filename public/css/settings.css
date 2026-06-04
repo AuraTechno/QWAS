@@ -406,3 +406,389 @@ body[data-chat-bg="custom"] #messagesWrapper {
 .lightbox-round-wrap video::-webkit-media-controls-panel {
   background: linear-gradient(transparent, rgba(0,0,0,0.7));
 }
+
+/* Drag-drop overlay */
+.drag-drop-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9998;
+  pointer-events: none;
+}
+
+.drag-drop-content {
+  background: var(--bg-secondary, #17212b);
+  border: 2px dashed var(--accent, #5e8ee7);
+  border-radius: 16px;
+  padding: 40px 60px;
+  text-align: center;
+  color: var(--text-primary, #fff);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.drag-drop-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+/* Emoji panel header with search */
+.emoji-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--bg-input, #232e3c);
+}
+
+#emojiSearch {
+  flex: 1;
+  background: var(--bg-input, #232e3c);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 6px 12px;
+  color: var(--text-primary, #fff);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+#emojiSearch:focus {
+  border-color: var(--accent, #5e8ee7);
+}
+
+#emojiSearch::placeholder {
+  color: var(--text-secondary, #708499);
+}
+
+.emoji-skin-tones {
+  display: flex;
+  gap: 2px;
+}
+
+.skin-tone {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 2px 4px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: all 0.15s;
+}
+
+.skin-tone:hover {
+  background: var(--bg-input, #232e3c);
+}
+
+.skin-tone.active {
+  background: var(--accent, #5e8ee7);
+  color: white;
+}
+
+.emoji-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-secondary, #708499);
+  padding: 40px;
+  font-size: 14px;
+}
+
+/* Record mode toggle button */
+.record-mode-btn {
+  color: var(--text-secondary, #708499);
+  transition: color 0.2s, transform 0.2s;
+  position: relative;
+}
+
+.record-mode-btn.video-mode {
+  color: var(--accent, #5e8ee7);
+}
+
+.record-mode-btn:hover {
+  color: var(--accent, #5e8ee7);
+}
+
+/* Recording button pulse */
+.record-btn {
+  position: relative;
+}
+
+.record-btn.recording {
+  color: #ff3b30;
+  animation: rec-pulse 1.4s ease-in-out infinite;
+}
+
+.record-btn.recording::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid #ff3b30;
+  animation: rec-ring 1.4s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes rec-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+@keyframes rec-ring {
+  0% { transform: scale(0.9); opacity: 1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* Voice recording UI extras */
+.voice-lock {
+  position: absolute;
+  right: 60px;
+  bottom: 50%;
+  transform: translateY(50%);
+  color: var(--text-secondary, #708499);
+}
+
+.voice-recording {
+  position: relative;
+}
+
+.voice-slide-hint {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--text-secondary, #708499);
+  background: var(--bg-secondary, #17212b);
+  padding: 2px 10px;
+  border-radius: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.voice-slide-hint.locked {
+  color: var(--accent, #5e8ee7);
+  font-weight: 500;
+}
+
+/* Composer upload progress */
+.composer-att-uploading {
+  min-width: 180px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 12px;
+}
+
+.composer-att-progress {
+  height: 4px;
+  background: var(--bg-input, #232e3c);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.composer-att-progress-bar {
+  height: 100%;
+  background: var(--accent, #5e8ee7);
+  transition: width 0.2s ease;
+}
+
+.composer-att-name {
+  font-size: 12px;
+  color: var(--text-secondary, #708499);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.composer-att-round video {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.composer-att-label {
+  font-size: 11px;
+  color: var(--text-secondary, #708499);
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px;
+}
+
+/* Call overlay - new design */
+.call-overlay {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(180deg, #0a0f1a 0%, #131a26 100%);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 40px 20px;
+  color: white;
+  font-family: inherit;
+  animation: call-fade-in 0.2s ease;
+}
+
+@keyframes call-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.call-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: #000;
+  overflow: hidden;
+}
+
+.call-remote-video,
+.call-local-video {
+  position: absolute;
+  object-fit: cover;
+  background: #000;
+}
+
+.call-remote-video {
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+}
+
+.call-local-video {
+  width: 120px;
+  height: 160px;
+  bottom: 120px;
+  right: 16px;
+  border-radius: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  z-index: 2;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.call-header {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  margin-top: 60px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, transparent 100%);
+  padding: 0 20px 40px;
+  width: 100%;
+  border-radius: 0 0 24px 24px;
+  backdrop-filter: blur(8px);
+}
+
+.call-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 500;
+  background: var(--accent, #5e8ee7);
+  color: white;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.call-name {
+  font-size: 22px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.call-status {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.call-timer {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.call-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 40px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.call-btn {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: white;
+  transition: transform 0.15s, background 0.15s;
+}
+
+.call-btn:hover {
+  transform: scale(1.05);
+}
+
+.call-btn:active {
+  transform: scale(0.95);
+}
+
+.call-btn.accept {
+  background: #34c759;
+}
+
+.call-btn.accept:hover {
+  background: #2da84a;
+}
+
+.call-btn.danger {
+  background: #ff3b30;
+}
+
+.call-btn.danger:hover {
+  background: #e02d22;
+}
+
+.call-btn.secondary {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+}
+
+.call-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.call-btn.secondary.active {
+  background: var(--accent, #5e8ee7);
+}
+
+.round-rec-hint {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  text-align: center;
+  z-index: 2;
+}

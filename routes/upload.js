@@ -19,7 +19,6 @@ const ALLOWED_TYPES = {
   "image/png": "image",
   "image/gif": "image",
   "image/webp": "image",
-  "image/svg+xml": "image",
   "video/mp4": "video",
   "video/webm": "video",
   "video/quicktime": "video",
@@ -41,6 +40,8 @@ const ALLOWED_TYPES = {
 };
 
 const MAX_SIZE = 50 * 1024 * 1024;
+const CHUNK_DIR = path.join(UPLOAD_DIR, "chunks");
+if (!fs.existsSync(CHUNK_DIR)) fs.mkdirSync(CHUNK_DIR, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
@@ -60,6 +61,21 @@ const fileFilter = (req, file, cb) => {
 };
 
 const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_SIZE } });
+
+const chunkStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(CHUNK_DIR, req.params.uploadId);
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => cb(null, `chunk_${req.body.index || 0}`)
+});
+
+const chunkUpload = multer({
+  storage: chunkStorage,
+  fileFilter,
+  limits: { fileSize: MAX_SIZE }
+});
 
 router.post("/", authMiddleware, (req, res) => {
   upload.single("file")(req, res, (err) => {
@@ -94,10 +110,18 @@ router.post("/", authMiddleware, (req, res) => {
 router.post("/chunk/init", authMiddleware, async (req, res) => {
   try {
     const { name, size, mime } = req.body;
+    if (size > MAX_SIZE) {
+      return res.json({ ok: false, error: "Файл слишком большой (макс 50MB)" });
+    }
+    if (!ALLOWED_TYPES[mime]) {
+      return res.json({ ok: false, error: "Неподдерживаемый тип файла" });
+    }
     const uploadId = crypto.randomBytes(12).toString("hex");
-    const dir = path.join(UPLOAD_DIR, "chunks", uploadId);
+    const dir = path.join(CHUNK_DIR, uploadId);
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "meta.json"), JSON.stringify({ name, size, mime, owner: req.user.username }));
+    fs.writeFileSync(path.join(dir, "meta.json"), JSON.stringify({
+      name, size, mime, owner: req.user.username, createdAt: Date.now()
+    }));
     res.json({ ok: true, uploadId });
   } catch (err) {
     res.json({ ok: false, error: "init_failed" });
@@ -105,43 +129,66 @@ router.post("/chunk/init", authMiddleware, async (req, res) => {
 });
 
 router.post("/chunk/:uploadId", authMiddleware, (req, res) => {
-  upload.single("chunk")(req, res, (err) => {
+  const dir = path.join(CHUNK_DIR, req.params.uploadId);
+  if (!fs.existsSync(dir)) return res.json({ ok: false, error: "no_init" });
+  try {
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8"));
+    if (meta.owner !== req.user.username) {
+      return res.json({ ok: false, error: "forbidden" });
+    }
+  } catch {
+    return res.json({ ok: false, error: "no_meta" });
+  }
+  chunkUpload.single("chunk")(req, res, (err) => {
     try {
       if (err) return res.json({ ok: false, error: err.message });
-      const dir = path.join(UPLOAD_DIR, "chunks", req.params.uploadId);
-      if (!fs.existsSync(dir)) return res.json({ ok: false, error: "no_init" });
-      const idx = req.body.index || "0";
-      const tmp = req.file.path;
-      const target = path.join(dir, `chunk_${idx}`);
-      fs.renameSync(tmp, target);
-      res.json({ ok: true, index: parseInt(idx) });
+      res.json({ ok: true, index: parseInt(req.body.index || 0) });
     } catch (e) {
       res.json({ ok: false, error: "chunk_failed" });
     }
   });
 });
 
-router.post("/chunk/:uploadId/complete", authMiddleware, (req, res) => {
+router.post("/chunk/:uploadId/complete", authMiddleware, async (req, res) => {
+  const dir = path.join(CHUNK_DIR, req.params.uploadId);
+  if (!fs.existsSync(dir)) return res.json({ ok: false, error: "no_init" });
+  let meta;
   try {
-    const dir = path.join(UPLOAD_DIR, "chunks", req.params.uploadId);
-    const meta = JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8"));
-    if (meta.size > MAX_SIZE) {
-      fs.rmSync(dir, { recursive: true, force: true });
-      return res.json({ ok: false, error: "Файл слишком большой (макс 50MB)" });
+    meta = JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8"));
+    if (meta.owner !== req.user.username) {
+      return res.json({ ok: false, error: "forbidden" });
     }
+  } catch {
+    return res.json({ ok: false, error: "no_meta" });
+  }
+
+  try {
     const ext = path.extname(meta.name) || "";
     const fname = crypto.randomBytes(16).toString("hex") + ext;
     const target = path.join(UPLOAD_DIR, fname);
 
-    const chunks = fs.readdirSync(dir).filter(f => f.startsWith("chunk_")).sort((a, b) => {
-      return parseInt(a.split("_")[1]) - parseInt(b.split("_")[1]);
-    });
+    const chunks = fs.readdirSync(dir)
+      .filter(f => f.startsWith("chunk_"))
+      .sort((a, b) => parseInt(a.split("_")[1]) - parseInt(b.split("_")[1]));
+
+    let totalSize = 0;
     const out = fs.createWriteStream(target);
     for (const c of chunks) {
       const data = fs.readFileSync(path.join(dir, c));
+      totalSize += data.length;
+      if (totalSize > MAX_SIZE) {
+        out.destroy();
+        fs.rmSync(dir, { recursive: true, force: true });
+        if (fs.existsSync(target)) fs.unlinkSync(target);
+        return res.json({ ok: false, error: "Файл слишком большой (макс 50MB)" });
+      }
       out.write(data);
     }
     out.end();
+    await new Promise((resolve, reject) => {
+      out.on("finish", resolve);
+      out.on("error", reject);
+    });
     fs.rmSync(dir, { recursive: true, force: true });
 
     const type = ALLOWED_TYPES[meta.mime] || "file";
@@ -152,6 +199,7 @@ router.post("/chunk/:uploadId/complete", authMiddleware, (req, res) => {
       file: { type: finalType, url: `/uploads/${fname}`, name: meta.name, size: meta.size, mime: meta.mime }
     });
   } catch (e) {
+    if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
     res.json({ ok: false, error: "complete_failed" });
   }
 });

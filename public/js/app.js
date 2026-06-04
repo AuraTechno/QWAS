@@ -192,11 +192,15 @@
       });
 
       socket.on('call_signal', (data) => {
-        QWAS.Calls.signal(data);
+        QWAS.Calls.onSignal(data);
+      });
+
+      socket.on('call_ice_candidate', (data) => {
+        QWAS.Calls.onIceCandidate(data);
       });
 
       socket.on('call_end', (data) => {
-        QWAS.Calls.end(data);
+        QWAS.Calls.onRemoteEnd(data);
       });
 
       socket.on('group_updated', () => {

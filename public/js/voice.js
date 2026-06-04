@@ -13,6 +13,9 @@
     quality: 'sd',
     fps: 30,
     facing: 'user',
+    amplitudes: [],
+    audioCtx: null,
+    audioAnalyser: null,
 
     qualities: {
       ld:  { width: 240,  height: 240,  bitrate: 400000  },
@@ -29,6 +32,7 @@
 
     open() {
       this.applySettings();
+      this.amplitudes = [];
       this.createOverlay();
       this.start();
     },
@@ -53,17 +57,25 @@
             <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
           </button>
         </div>
+        <div class="round-rec-hint">Удерживайте центральную кнопку</div>
       `;
       document.body.appendChild(o);
       this.overlay = o;
 
       o.querySelector('#roundClose').onclick = () => this.cancel();
       o.querySelector('#roundFlip').onclick = () => this.flip();
-      o.querySelector('#roundToggle').onclick = () => this.toggle();
+      const toggle = o.querySelector('#roundToggle');
+      const start = (e) => { e.preventDefault(); this.record(); };
+      const stop = (e) => { e.preventDefault(); this.stop(); };
+      toggle.addEventListener('mousedown', start);
+      toggle.addEventListener('mouseup', stop);
+      toggle.addEventListener('mouseleave', stop);
+      toggle.addEventListener('touchstart', start, { passive: false });
+      toggle.addEventListener('touchend', stop, { passive: false });
     },
 
     async start() {
-      if (this.active) return;
+      if (this.stream) return;
       const q = this.qualities[this.quality];
       const fps = this.fps;
       const facing = this.facing;
@@ -77,8 +89,10 @@
           },
           audio: true
         });
-        const video = this.overlay.querySelector('#roundPreview');
-        video.srcObject = this.stream;
+        const video = this.overlay?.querySelector('#roundPreview');
+        if (video) {
+          video.srcObject = this.stream;
+        }
         this.active = true;
       } catch (err) {
         QWAS.Toast.error('Не удалось получить доступ к камере: ' + (err.message || err.name));
@@ -89,22 +103,15 @@
     async flip() {
       this.facing = this.facing === 'user' ? 'environment' : 'user';
       if (this.stream) this.stream.getTracks().forEach(t => t.stop());
+      this.stream = null;
       await this.start();
-    },
-
-    toggle() {
-      if (!this.stream) return;
-      if (this.recorder && this.recorder.state === 'recording') {
-        this.stop();
-      } else {
-        this.record();
-      }
     },
 
     record() {
       if (!this.stream) return;
       const q = this.qualities[this.quality];
       this.chunks = [];
+      this.amplitudes = [];
       let mimeType = 'video/webm';
       if (typeof MediaRecorder !== 'undefined') {
         const candidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
@@ -122,12 +129,38 @@
       this.recorder.onstop = () => this.onStop();
       this.recorder.start(100);
       this.startTime = Date.now();
-      this.overlay.classList.add('recording');
-      this.overlay.querySelector('#roundToggle').classList.add('recording');
+      this.overlay?.classList.add('recording');
+      this.overlay?.querySelector('#roundToggle')?.classList.add('recording');
+      this.startAudioAnalyser();
       this.timerInt = setInterval(() => {
         const s = (Date.now() - this.startTime) / 1000;
-        this.overlay.querySelector('#roundTimer').textContent = QWAS.Util.formatDuration(s);
+        this.overlay?.querySelector('#roundTimer') && (this.overlay.querySelector('#roundTimer').textContent = QWAS.Util.formatDuration(s));
+        this.captureAmplitude();
       }, 100);
+    },
+
+    startAudioAnalyser() {
+      try {
+        const audioTracks = this.stream.getAudioTracks();
+        if (!audioTracks.length) return;
+        this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = this.audioCtx.createMediaStreamSource(this.stream);
+        this.audioAnalyser = this.audioCtx.createAnalyser();
+        this.audioAnalyser.fftSize = 256;
+        source.connect(this.audioAnalyser);
+        this.audioData = new Uint8Array(this.audioAnalyser.frequencyBinCount);
+      } catch {}
+    },
+
+    captureAmplitude() {
+      if (!this.audioAnalyser) return;
+      this.audioAnalyser.getByteTimeDomainData(this.audioData);
+      let max = 0;
+      for (let i = 0; i < this.audioData.length; i++) {
+        const v = Math.abs(this.audioData[i] - 128) / 128;
+        if (v > max) max = v;
+      }
+      this.amplitudes.push(Math.round(max * 100));
     },
 
     stop() {
@@ -136,8 +169,10 @@
 
     async onStop() {
       clearInterval(this.timerInt);
-      this.overlay.classList.remove('recording');
+      this.overlay?.classList.remove('recording');
+      this.overlay?.querySelector('#roundToggle')?.classList.remove('recording');
       const duration = (Date.now() - this.startTime) / 1000;
+      if (this.audioCtx) { try { this.audioCtx.close(); } catch {} this.audioCtx = null; }
       if (duration < 0.3 || this.chunks.length === 0) {
         this.cleanup();
         return;
@@ -149,6 +184,7 @@
       const r = await QWAS.API.upload(file, { forceType: 'round' });
       if (r.ok) {
         r.file.duration = Math.round(duration);
+        if (this.amplitudes.length) r.file.waveform = this.amplitudes.slice(0, 200);
         QWAS.State.pendingFiles.push(r.file);
         QWAS.Composer.renderAttachments();
         QWAS.Composer.updateSendButton();
@@ -168,9 +204,11 @@
     },
 
     cleanup() {
+      if (this.audioCtx) { try { this.audioCtx.close(); } catch {} this.audioCtx = null; }
       if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; }
       if (this.timerInt) clearInterval(this.timerInt);
       this.chunks = [];
+      this.amplitudes = [];
       this.recorder = null;
       this.active = false;
       if (this.overlay) { this.overlay.remove(); this.overlay = null; }
@@ -178,7 +216,17 @@
   };
 
   const Voice = {
-    init() {},
+    mode: 'voice',
+    lockTimer: null,
+    locked: false,
+    startX: 0,
+    startY: 0,
+    cancelled: false,
+    amplitudes: [],
+    audioCtx: null,
+    audioAnalyser: null,
+    audioData: null,
+    slideHint: null,
 
     qualities: {
       low:    { audioBitsPerSecond: 32000 },
@@ -191,11 +239,25 @@
       this.quality = this.qualities[s.voiceQuality] ? s.voiceQuality : 'medium';
     },
 
+    setMode(mode) {
+      this.mode = mode === 'video' ? 'video' : 'voice';
+      const btn = document.getElementById('recordBtn');
+      if (btn) {
+        btn.dataset.mode = this.mode;
+        btn.classList.toggle('record-btn-video', this.mode === 'video');
+      }
+    },
+
     async start(e) {
       e.preventDefault();
+      e.stopPropagation();
       if (QWAS.State.recording) return;
       if (!navigator.mediaDevices?.getUserMedia) {
         QWAS.Toast.error('Микрофон недоступен');
+        return;
+      }
+      if (this.mode === 'video') {
+        QWAS.Attach.startRound();
         return;
       }
       this.applySettings();
@@ -213,6 +275,9 @@
         QWAS.State.recording = true;
         QWAS.State.recordStream = stream;
         QWAS.State.recordChunks = [];
+        this.amplitudes = [];
+        this.cancelled = false;
+        this.locked = false;
 
         const mr = new MediaRecorder(stream, { mimeType: this.getMimeType(), audioBitsPerSecond: q.audioBitsPerSecond });
         QWAS.State.mediaRecorder = mr;
@@ -220,18 +285,91 @@
         mr.start(100);
 
         QWAS.State.recordStartTime = Date.now();
+        this.startAudioAnalyser(stream);
+
         const ui = document.getElementById('voiceRecording');
-        if (ui) ui.style.display = 'flex';
+        if (ui) {
+          ui.style.display = 'flex';
+          ui.classList.add('active');
+        }
+        const recordBtn = document.getElementById('recordBtn');
+        if (recordBtn) recordBtn.classList.add('recording');
+
         const timerEl = document.getElementById('voiceTimer');
         if (timerEl) {
+          clearInterval(this.timerInt);
           this.timerInt = setInterval(() => {
             const s = (Date.now() - QWAS.State.recordStartTime) / 1000;
             timerEl.textContent = QWAS.Util.formatDuration(s);
             this.animateWave();
+            this.captureAmplitude();
           }, 100);
         }
+
+        if (e.touches && e.touches[0]) {
+          this.startX = e.touches[0].clientX;
+          this.startY = e.touches[0].clientY;
+        } else {
+          this.startX = e.clientX;
+          this.startY = e.clientY;
+        }
       } catch (err) {
+        console.error('Voice start error:', err);
         QWAS.Toast.error('Нет доступа к микрофону');
+      }
+    },
+
+    startAudioAnalyser(stream) {
+      try {
+        this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = this.audioCtx.createMediaStreamSource(stream);
+        this.audioAnalyser = this.audioCtx.createAnalyser();
+        this.audioAnalyser.fftSize = 256;
+        source.connect(this.audioAnalyser);
+        this.audioData = new Uint8Array(this.audioAnalyser.frequencyBinCount);
+      } catch {}
+    },
+
+    captureAmplitude() {
+      if (!this.audioAnalyser) return;
+      this.audioAnalyser.getByteTimeDomainData(this.audioData);
+      let max = 0;
+      for (let i = 0; i < this.audioData.length; i++) {
+        const v = Math.abs(this.audioData[i] - 128) / 128;
+        if (v > max) max = v;
+      }
+      this.amplitudes.push(Math.round(max * 100));
+    },
+
+    move(e) {
+      if (!QWAS.State.recording || this.locked) return;
+      const t = e.touches?.[0] || e;
+      const dx = this.startX - t.clientX;
+      const dy = this.startY - t.clientY;
+      const slideHint = document.querySelector('.voice-slide-hint');
+      if (slideHint) {
+        if (dy < -60) {
+          slideHint.textContent = '🔒 Запись заблокирована';
+          this.locked = true;
+          this.cancelled = false;
+          if (this.lockTimer) clearTimeout(this.lockTimer);
+          slideHint.classList.add('locked');
+        } else if (dx > 80) {
+          this.cancelled = true;
+          slideHint.textContent = '↩ Отпустите для отмены';
+        } else {
+          this.cancelled = false;
+          slideHint.textContent = '← Свайп для отмены · ↑ Свайп для блокировки';
+          slideHint.classList.remove('locked');
+        }
+      }
+    },
+
+    lockRecord() {
+      this.locked = true;
+      const slideHint = document.querySelector('.voice-slide-hint');
+      if (slideHint) {
+        slideHint.textContent = '🔒 Запись заблокирована · нажмите ✈ для отправки';
       }
     },
 
@@ -244,16 +382,22 @@
     },
 
     animateWave() {
-      const spans = document.querySelectorAll('#voiceWave span');
-      spans.forEach(s => {
-        s.style.height = (15 + Math.random() * 70) + '%';
+      const bars = document.querySelectorAll('#voiceWave span');
+      const amp = this.amplitudes[this.amplitudes.length - 1] || 50;
+      bars.forEach((s, i) => {
+        const base = 20 + amp * 0.7;
+        const variance = Math.sin((Date.now() / 200) + i) * 30;
+        s.style.height = Math.max(10, base + variance) + '%';
       });
     },
 
     async stop() {
       if (!QWAS.State.recording) return;
+      if (this.cancelled) { this.cancel(); return; }
       QWAS.State.recording = false;
       clearInterval(this.timerInt);
+      const recordBtn = document.getElementById('recordBtn');
+      if (recordBtn) recordBtn.classList.remove('recording');
 
       const mr = QWAS.State.mediaRecorder;
       if (!mr) return;
@@ -264,11 +408,12 @@
 
       mr.stop();
       stream.getTracks().forEach(t => t.stop());
+      if (this.audioCtx) { try { this.audioCtx.close(); } catch {} this.audioCtx = null; }
 
       const ui = document.getElementById('voiceRecording');
-      if (ui) ui.style.display = 'none';
+      if (ui) { ui.style.display = 'none'; ui.classList.remove('active'); }
 
-      if (duration < 0.5 || chunks.length === 0) return;
+      if (duration < 0.3 || chunks.length === 0) return;
 
       const blob = new Blob(chunks, { type: mr.mimeType });
       const ext = mr.mimeType.includes('webm') ? 'webm' : mr.mimeType.includes('ogg') ? 'ogg' : 'm4a';
@@ -281,6 +426,7 @@
         return;
       }
       r.file.duration = Math.round(duration);
+      r.file.waveform = this.amplitudes.slice(0, 200);
       QWAS.State.pendingFiles.push(r.file);
       QWAS.Composer.renderAttachments();
       QWAS.Composer.updateSendButton();
@@ -291,11 +437,17 @@
       if (!QWAS.State.recording) return;
       QWAS.State.recording = false;
       clearInterval(this.timerInt);
-      if (QWAS.State.mediaRecorder) QWAS.State.mediaRecorder.stop();
+      const recordBtn = document.getElementById('recordBtn');
+      if (recordBtn) recordBtn.classList.remove('recording');
+      if (QWAS.State.mediaRecorder) { try { QWAS.State.mediaRecorder.stop(); } catch {} }
       if (QWAS.State.recordStream) QWAS.State.recordStream.getTracks().forEach(t => t.stop());
+      if (this.audioCtx) { try { this.audioCtx.close(); } catch {} this.audioCtx = null; }
       QWAS.State.recordChunks = [];
+      QWAS.State.pendingFiles = QWAS.State.pendingFiles.filter(f => f.type !== 'voice');
+      QWAS.Composer.renderAttachments();
+      QWAS.Composer.updateSendButton();
       const ui = document.getElementById('voiceRecording');
-      if (ui) ui.style.display = 'none';
+      if (ui) { ui.style.display = 'none'; ui.classList.remove('active'); }
     }
   };
 

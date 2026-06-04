@@ -55,16 +55,45 @@ router.get("/my", authMiddleware, async (req, res) => {
     const { Group, Message } = getModels();
     if (!Group) return res.json({ ok: false, groups: [] });
 
-    const groups = await Group.find({ "members.username": req.user.username }).lean();
+    const me = req.user.username;
+    const groups = await Group.find({ "members.username": me })
+      .select("_id name avatar avatarColor description type members createdAt")
+      .lean();
 
-    const groupsWithMeta = await Promise.all(groups.map(async (g) => {
-      const lastMsg = await Message.findOne({ to: `group:${g._id}` })
-        .sort({ createdAt: -1 }).lean();
-      const unread = await Message.countDocuments({
-        to: `group:${g._id}`,
-        status: { $ne: "read" },
-        from: { $ne: req.user.username }
-      });
+    if (groups.length === 0) return res.json({ ok: true, groups: [] });
+
+    const groupIds = groups.map(g => g._id);
+    const convIds = groupIds.map(id => `g:${id}`);
+
+    const [lastMsgs, unreadAgg] = await Promise.all([
+      Message.aggregate([
+        { $match: { conversationId: { $in: convIds } } },
+        { $sort: { createdAt: -1 } },
+        {
+          $group: {
+            _id: "$conversationId",
+            lastMessage: { $first: "$$ROOT" }
+          }
+        }
+      ]),
+      Message.aggregate([
+        {
+          $match: {
+            conversationId: { $in: convIds },
+            status: { $ne: "read" },
+            from: { $ne: me }
+          }
+        },
+        { $group: { _id: "$conversationId", count: { $sum: 1 } } }
+      ])
+    ]);
+
+    const lastByConv = Object.fromEntries(lastMsgs.map(l => [l._id, l.lastMessage]));
+    const unreadByConv = Object.fromEntries(unreadAgg.map(u => [u._id, u.count]));
+
+    const groupsWithMeta = groups.map(g => {
+      const conv = `g:${g._id}`;
+      const lm = lastByConv[conv];
       return {
         _id: g._id,
         name: g.name,
@@ -73,12 +102,12 @@ router.get("/my", authMiddleware, async (req, res) => {
         description: g.description,
         type: g.type,
         memberCount: g.members.length,
-        myRole: g.members.find(m => m.username === req.user.username)?.role,
-        lastMessage: lastMsg?.message || (lastMsg?.attachments?.length ? "📎 Вложение" : ""),
-        lastMessageTime: lastMsg?.createdAt || g.createdAt,
-        unreadCount: unread
+        myRole: g.members.find(m => m.username === me)?.role,
+        lastMessage: lm?.message || (lm?.attachments?.length ? "📎 Вложение" : ""),
+        lastMessageTime: lm?.createdAt || g.createdAt,
+        unreadCount: unreadByConv[conv] || 0
       };
-    }));
+    });
 
     groupsWithMeta.sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
     res.json({ ok: true, groups: groupsWithMeta });

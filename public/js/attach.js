@@ -8,7 +8,6 @@
       input.type = 'file';
       input.id = 'filePicker';
       input.style.display = 'none';
-      input.accept = '*/*';
       document.body.appendChild(input);
       input.addEventListener('change', (e) => this.onFile(e));
 
@@ -27,6 +26,75 @@
       audioInput.style.display = 'none';
       document.body.appendChild(audioInput);
       audioInput.addEventListener('change', (e) => this.onFile(e, 'audio'));
+
+      this.initDragDrop();
+      this.initPaste();
+    },
+
+    initDragDrop() {
+      const wrapper = document.getElementById('messagesWrapper') || document.getElementById('chatContent');
+      if (!wrapper) return;
+      let dragCounter = 0;
+      const overlay = document.createElement('div');
+      overlay.className = 'drag-drop-overlay';
+      overlay.id = 'dragDropOverlay';
+      overlay.innerHTML = `<div class="drag-drop-content"><div class="drag-drop-icon">📎</div><div>Перетащите файл сюда</div></div>`;
+      overlay.style.display = 'none';
+      document.body.appendChild(overlay);
+
+      wrapper.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        dragCounter++;
+        if (e.dataTransfer.types.includes('Files')) overlay.style.display = 'flex';
+      });
+      wrapper.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dragCounter--;
+        if (dragCounter <= 0) { dragCounter = 0; overlay.style.display = 'none'; }
+      });
+      wrapper.addEventListener('dragover', (e) => { e.preventDefault(); });
+      wrapper.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragCounter = 0;
+        overlay.style.display = 'none';
+        const files = e.dataTransfer?.files;
+        if (!files || files.length === 0) return;
+        for (const f of files) this.handleFileObject(f);
+      });
+    },
+
+    initPaste() {
+      const ta = document.getElementById('msgInput');
+      if (!ta) return;
+      ta.addEventListener('paste', (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (const it of items) {
+          if (it.kind === 'file') {
+            const f = it.getAsFile();
+            if (f) {
+              e.preventDefault();
+              this.handleFileObject(f);
+            }
+          }
+        }
+      });
+    },
+
+    handleFileObject(file) {
+      const input = document.getElementById('filePicker');
+      if (input) {
+        try {
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          input.files = dt.files;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        } catch {
+          this.onFile({ target: { files: [file], dataset: {} } });
+        }
+      } else {
+        this.onFile({ target: { files: [file], dataset: {} } });
+      }
     },
 
     toggle() { QWAS.Composer.toggleAttach(); },
@@ -107,23 +175,58 @@
 
       if (file.size > QWAS.Config.MAX_FILE_SIZE) {
         QWAS.Toast.error('Файл слишком большой (макс 50 МБ)');
+        e.target.value = '';
         return;
       }
 
+      const placeholder = {
+        type: requestedType,
+        url: '',
+        name: file.name,
+        size: file.size,
+        mime: file.type,
+        uploading: true,
+        progress: 0
+      };
+      const uploadIdx = QWAS.State.pendingFiles.length;
+      QWAS.State.pendingFiles.push(placeholder);
+      QWAS.Composer.renderAttachments();
       QWAS.Toast.info('Загружаем файл...');
 
-      const r = file.size > 2 * 1024 * 1024
-        ? await QWAS.API.uploadSmart(file, requestedType === 'image' || requestedType === 'video' || requestedType === 'audio' ? { forceType: requestedType } : {}, () => {})
-        : await QWAS.API.upload(file, requestedType === 'image' || requestedType === 'video' || requestedType === 'audio' ? { forceType: requestedType } : {});
-      if (!r.ok) {
-        QWAS.Toast.error(r.error || 'Ошибка загрузки');
-        return;
-      }
+      const onProgress = (p) => {
+        const list = QWAS.State.pendingFiles;
+        const target = list[uploadIdx];
+        if (target && target.uploading) {
+          target.progress = p;
+          QWAS.Composer.renderAttachments();
+        }
+      };
 
-      QWAS.State.pendingFiles.push(r.file);
-      QWAS.Composer.renderAttachments();
-      QWAS.Composer.updateSendButton();
-      QWAS.Toast.success('Файл добавлен');
+      try {
+        const r = file.size > 2 * 1024 * 1024
+          ? await QWAS.API.uploadSmart(file, ['image', 'video', 'audio'].includes(requestedType) ? { forceType: requestedType } : {}, onProgress)
+          : await QWAS.API.upload(file, ['image', 'video', 'audio'].includes(requestedType) ? { forceType: requestedType } : {});
+
+        const list = QWAS.State.pendingFiles;
+        if (list[uploadIdx] && list[uploadIdx].uploading) {
+          if (r.ok) {
+            list[uploadIdx] = r.file;
+            QWAS.Toast.success('Файл добавлен');
+          } else {
+            list.splice(uploadIdx, 1);
+            QWAS.Toast.error(r.error || 'Ошибка загрузки');
+          }
+        }
+        QWAS.Composer.renderAttachments();
+        QWAS.Composer.updateSendButton();
+      } catch (e) {
+        const list = QWAS.State.pendingFiles;
+        if (list[uploadIdx] && list[uploadIdx].uploading) list.splice(uploadIdx, 1);
+        QWAS.Composer.renderAttachments();
+        QWAS.Toast.error('Ошибка загрузки');
+      } finally {
+        e.target.value = '';
+      }
     },
 
     playVoice(btn) {
@@ -136,7 +239,7 @@
       const icon = btn.querySelector('svg');
 
       btn.classList.add('playing');
-      icon.innerHTML = '<path fill="currentColor" d="M6 6h4v12H6zm8 0h4v12h-4z"/>';
+      if (icon) icon.innerHTML = '<path fill="currentColor" d="M6 6h4v12H6zm8 0h4v12h-4z"/>';
 
       audio.play().catch(() => {});
 
@@ -144,7 +247,7 @@
       const tick = () => {
         if (audio.paused || audio.ended) {
           btn.classList.remove('playing');
-          icon.innerHTML = '<path fill="currentColor" d="M8 5v14l11-7z"/>';
+          if (icon) icon.innerHTML = '<path fill="currentColor" d="M8 5v14l11-7z"/>';
           bars.forEach(b => { b.style.opacity = ''; });
           return;
         }
@@ -157,7 +260,7 @@
       };
       audio.addEventListener('ended', () => {
         btn.classList.remove('playing');
-        icon.innerHTML = '<path fill="currentColor" d="M8 5v14l11-7z"/>';
+        if (icon) icon.innerHTML = '<path fill="currentColor" d="M8 5v14l11-7z"/>';
         bars.forEach(b => { b.style.opacity = ''; });
       });
       audio.addEventListener('play', tick);

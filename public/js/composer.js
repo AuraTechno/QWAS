@@ -40,6 +40,49 @@
           this.onScroll();
         }, 100));
       }
+
+      this.initVoiceRecord();
+    },
+
+    initVoiceRecord() {
+      const recordBtn = document.getElementById('recordBtn');
+      if (!recordBtn) return;
+
+      const startHandler = (e) => QWAS.Voice.start(e);
+      const endHandler = (e) => {
+        if (!QWAS.State.recording) return;
+        if (QWAS.Voice.locked) return;
+        QWAS.Voice.stop();
+      };
+      const moveHandler = (e) => QWAS.Voice.move(e);
+
+      recordBtn.addEventListener('mousedown', startHandler);
+      recordBtn.addEventListener('mouseup', endHandler);
+      recordBtn.addEventListener('mouseleave', endHandler);
+      recordBtn.addEventListener('mousemove', moveHandler);
+      recordBtn.addEventListener('touchstart', startHandler, { passive: false });
+      recordBtn.addEventListener('touchend', endHandler, { passive: false });
+      recordBtn.addEventListener('touchmove', moveHandler, { passive: false });
+      recordBtn.addEventListener('touchcancel', () => QWAS.Voice.cancel());
+
+      const modeBtn = document.getElementById('recordModeBtn');
+      if (modeBtn) {
+        modeBtn.addEventListener('click', () => {
+          const next = QWAS.Voice.mode === 'voice' ? 'video' : 'voice';
+          QWAS.Voice.setMode(next);
+          modeBtn.classList.toggle('video-mode', next === 'video');
+          modeBtn.title = next === 'video' ? 'Режим: видео (нажмите для голоса)' : 'Режим: голос (нажмите для видео)';
+          try { localStorage.setItem('qwas_record_mode', next); } catch {}
+        });
+        const saved = (() => { try { return localStorage.getItem('qwas_record_mode'); } catch { return null; } })();
+        if (saved === 'video') QWAS.Voice.setMode('video');
+        if (QWAS.Voice.mode === 'video') {
+          modeBtn.classList.add('video-mode');
+          modeBtn.title = 'Режим: видео (нажмите для голоса)';
+        } else {
+          modeBtn.title = 'Режим: голос (нажмите для видео)';
+        }
+      }
     },
 
     autoresize() {
@@ -70,8 +113,6 @@
               QWAS.State.current,
               [...(resp.messages || []), ...(QWAS.State.messagesByChat.get(QWAS.State.current) || [])]
             );
-            const wrap = document.getElementById('messagesWrapper');
-            const scrollTop = wrap.scrollTop;
             QWAS.Messages.renderAll(QWAS.State.messagesByChat.get(QWAS.State.current) || []);
             QWAS.Messages.restoreScrollPosition();
             QWAS.State.loadingMore = false;
@@ -132,6 +173,10 @@
       p.style.display = show ? 'flex' : 'none';
       if (show) {
         QWAS.Emoji.populate();
+        setTimeout(() => {
+          const search = document.getElementById('emojiSearch');
+          if (search) search.focus();
+        }, 50);
       }
     },
 
@@ -157,12 +202,56 @@
         return;
       }
       container.style.display = 'flex';
-      container.innerHTML = atts.map((a, i) => `
-        <div class="composer-att">
-          ${a.type === 'image' ? `<img src="${QWAS.Util.escapeAttr(a.url)}" alt="">` : `<div class="composer-att-icon">📎</div>`}
+      container.innerHTML = atts.map((a, i) => {
+        if (a.uploading) {
+          return `<div class="composer-att composer-att-uploading">
+            <div class="composer-att-progress">
+              <div class="composer-att-progress-bar" style="width:${Math.round((a.progress || 0) * 100)}%"></div>
+            </div>
+            <div class="composer-att-name">${QWAS.Util.escapeHtml(a.name || 'файл')} · ${Math.round((a.progress || 0) * 100)}%</div>
+            <button class="composer-att-remove" onclick="QWAS.State.pendingFiles.splice(${i},1);QWAS.Composer.renderAttachments()">✕</button>
+          </div>`;
+        }
+        if (a.type === 'image') {
+          return `<div class="composer-att">
+            <img src="${QWAS.Util.escapeAttr(a.url)}" alt="">
+            <button class="composer-att-remove" onclick="QWAS.Composer.removeAttachment(${i})">✕</button>
+          </div>`;
+        }
+        if (a.type === 'round') {
+          return `<div class="composer-att composer-att-round">
+            <video src="${QWAS.Util.escapeAttr(a.url)}" muted playsinline></video>
+            <span class="composer-att-label">⭕ Кружок</span>
+            <button class="composer-att-remove" onclick="QWAS.Composer.removeAttachment(${i})">✕</button>
+          </div>`;
+        }
+        if (a.type === 'video') {
+          return `<div class="composer-att">
+            <video src="${QWAS.Util.escapeAttr(a.url)}" muted></video>
+            <span class="composer-att-label">🎥 ${QWAS.Util.escapeHtml(a.name || 'Видео')}</span>
+            <button class="composer-att-remove" onclick="QWAS.Composer.removeAttachment(${i})">✕</button>
+          </div>`;
+        }
+        if (a.type === 'voice') {
+          return `<div class="composer-att">
+            <div class="composer-att-icon">🎤</div>
+            <span class="composer-att-label">Голосовое ${a.duration ? QWAS.Util.formatDuration(a.duration) : ''}</span>
+            <button class="composer-att-remove" onclick="QWAS.Composer.removeAttachment(${i})">✕</button>
+          </div>`;
+        }
+        if (a.type === 'location') {
+          return `<div class="composer-att">
+            <div class="composer-att-icon">📍</div>
+            <span class="composer-att-label">${QWAS.Util.escapeHtml(a.name || 'Местоположение')}</span>
+            <button class="composer-att-remove" onclick="QWAS.Composer.removeAttachment(${i})">✕</button>
+          </div>`;
+        }
+        return `<div class="composer-att">
+          <div class="composer-att-icon">📎</div>
+          <span class="composer-att-label">${QWAS.Util.escapeHtml(a.name || 'Файл')}</span>
           <button class="composer-att-remove" onclick="QWAS.Composer.removeAttachment(${i})">✕</button>
-        </div>
-      `).join('');
+        </div>`;
+      }).join('');
     },
 
     removeAttachment(i) {

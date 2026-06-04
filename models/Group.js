@@ -29,6 +29,17 @@ const GroupSchema = new mongoose.Schema({
 });
 
 GroupSchema.index({ "members.username": 1 });
+GroupSchema.index({ "members.username": 1, lastMessageAt: -1 });
 GroupSchema.index({ createdBy: 1 });
+GroupSchema.index(
+  { name: "text", description: "text", username: "text" },
+  { default_language: "russian", name: "group_text_idx" }
+);
+
+GroupSchema.virtual("lastMessageAt").get(function () {
+  return this._lastMessageAt || this.createdAt;
+});
+GroupSchema.set("toJSON", { virtuals: true });
+GroupSchema.set("toObject", { virtuals: true });
 
 module.exports = mongoose.model("Group", GroupSchema);
