@@ -48,6 +48,7 @@
     uploadedAvatar: null,
     hasMoreMessages: true,
     isLoadingMessages: false,
-    currentPage: 1
+    currentPage: 1,
+    unreadCount: 0
   };
 })();

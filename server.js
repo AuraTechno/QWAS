@@ -24,8 +24,9 @@ const io = new Server(server, {
 });
 
 app.use(helmet());
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "50mb" }));
 app.use(express.static("public"));
+app.use("/uploads", express.static("uploads"));
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -48,6 +49,7 @@ app.use("/", require("./routes/auth"));
 app.use("/profile", require("./routes/profile"));
 app.use("/chats", require("./routes/chats"));
 app.use("/groups", require("./routes/groups"));
+app.use("/upload", require("./routes/upload"));
 
 logger.info("Подключение к MongoDB...");
 mongoose.set("strictQuery", false);

@@ -115,7 +115,10 @@
     
     <div id="typingIndicator" class="typing-indicator"></div>
     
+    <div class="file-preview" id="filePreview"></div>
+    
     <div class="message-input-container">
+      <button class="file-upload-btn" id="fileUploadBtn" onclick="document.getElementById('fileInput').click()" title="Прикрепить файл">📎</button>
       <input class="message-input" id="msg" placeholder="Сообщение..." disabled>
       <button class="send-button" id="sendBtn" onclick="QWAS.Messages.send()" disabled>➤</button>
     </div>
@@ -170,6 +173,15 @@
 </div>
 
 <input type="file" id="avatarInput" accept="image/*">
+<input type="file" id="fileInput" accept="image/*,.pdf,.zip,.rar,.mp4,.mp3,.ogg,.txt" style="display:none;">
+
+<!-- Лайтбокс -->
+<div class="modal" id="lightboxModal" onclick="QWAS.Messages.closeLightbox()">
+  <div class="lightbox-content">
+    <button class="lightbox-close" onclick="QWAS.Messages.closeLightbox()">&times;</button>
+    <img id="lightboxImage" class="lightbox-image">
+  </div>
+</div>
 
 <!-- Создание группы -->
 <div class="modal" id="createGroupModal">

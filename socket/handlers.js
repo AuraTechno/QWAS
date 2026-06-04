@@ -67,7 +67,8 @@ function setupSocketHandlers(io, socket, online) {
       const msg = await Message.create({
         from: socket.username,
         to,
-        message: data.message,
+        message: data.message || "",
+        attachments: data.attachments || [],
         isForwarded: data.isForwarded || false,
         forwardedFrom: data.forwardedFrom || null,
         status: "sent"
