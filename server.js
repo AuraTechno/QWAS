@@ -101,6 +101,11 @@ app.get("/health", async (req, res) => {
   }
 });
 
+// ICE servers (для WebRTC звонков) — публичный endpoint
+app.get("/api/ice", (req, res) => {
+  res.json({ ok: true, iceServers: [...config.ICE_SERVERS, ...config.TURN_SERVERS] });
+});
+
 // Routes
 app.use("/", require("./routes/auth"));
 app.use("/profile", require("./routes/profile"));

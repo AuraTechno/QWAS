@@ -3,24 +3,66 @@
   'use strict';
   window.QWAS = window.QWAS || {};
 
-  const ICE = [
+  // STUN-серверы для определения внешнего IP.
+  // TURN-серверы (для NAT traversal) подгружаются с сервера через /api/ice,
+  // иначе звонки за symmetric NAT (~10% юзеров) будут падать.
+  const ICE_STUN_FALLBACK = [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun.miwifi.com:3478' }
+    { urls: 'stun:stun1.l.google.com:19302' }
   ];
+
+  // Кеш ICE-серверов, заполняется на init
+  let ICE_CACHE = null;
+  let ICE_FETCH_PROMISE = null;
+
+  function getIceServers() {
+    if (ICE_CACHE) return ICE_CACHE;
+    return ICE_STUN_FALLBACK;
+  }
+
+  async function fetchIceServers() {
+    if (ICE_CACHE) return ICE_CACHE;
+    if (ICE_FETCH_PROMISE) return ICE_FETCH_PROMISE;
+    ICE_FETCH_PROMISE = fetch('/api/ice')
+      .then(r => r.json())
+      .then(data => {
+        if (data && Array.isArray(data.iceServers) && data.iceServers.length) {
+          ICE_CACHE = data.iceServers;
+        } else {
+          ICE_CACHE = ICE_STUN_FALLBACK.slice();
+        }
+        return ICE_CACHE;
+      })
+      .catch(() => { ICE_CACHE = ICE_STUN_FALLBACK.slice(); return ICE_CACHE; });
+    return ICE_FETCH_PROMISE;
+  }
+
+  // SVG-иконки для кнопок (mute/camera)
+  const ICONS = {
+    mic: '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3m5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z"/></svg>',
+    micOff: '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23A6.92 6.92 0 0 0 19 11m-4 .08L15 11c0 1.66-1.34 3-3 3v1.5c2.21 0 4.16-1.21 5.21-3M4.27 3 3 4.27 7.73 9H6c0 1.66 1.34 3 3 3v6h2v-1.73L14.73 17H10v-1c-.71 0-1.39-.16-2-.43L6.27 15 4.27 13 6.73 10.54 3.18 7 4.27 6.18 5 5.45 6 4.45 8.27 2.18 4.27 3M19 11h-1.7c0-.74-.16-1.43-.43-2.05l1.23 1.23A6.92 6.92 0 0 1 19 11z"/></svg>',
+    cam: '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11z"/></svg>',
+    camOff: '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M21 6.5 17.5 10 21 13.5V6.5M3.27 2 2 3.27 4.73 6H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12c.21 0 .39-.08.55-.18L19.73 21 21 19.73 3.27 2M16 16.5 5.5 6H16v10.5z"/></svg>',
+    end: '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
+    accept: '<svg viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M20 15.5c-1.25 0-2.45-.2-3.57-.57a1 1 0 0 0-1.02.24l-2.2 2.2a15.05 15.05 0 0 1-6.59-6.58l2.2-2.21a1 1 0 0 0 .25-1A11.36 11.36 0 0 1 8.5 4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1c0 9.39 7.61 17 17 17a1 1 0 0 0 1-1v-3.5a1 1 0 0 0-1-1"/></svg>',
+    reject: '<svg viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>'
+  };
 
   const Calls = {
     pc: null,
     localStream: null,
     remoteStream: null,
-    currentCall: null, // { peerName, type, isCaller, isP2P }
+    currentCall: null, // { peerName, type, isCaller }
     ringtone: null,
+    ringtoneCtx: null,
     timer: null,
     timerStart: 0,
     overlay: null,
+    _pendingOffer: null,
 
     init() {
       this._injectStyles();
+      fetchIceServers();
     },
 
     _injectStyles() {
@@ -49,6 +91,10 @@
     },
 
     async start(type) {
+      if (this.currentCall) {
+        QWAS.Toast.error('Звонок уже идёт');
+        return;
+      }
       if (!QWAS.State.currentChatInfo || !QWAS.State.currentChatInfo.chat) {
         QWAS.Toast.error('Откройте чат');
         return;
@@ -63,17 +109,18 @@
       try {
         const constraints = {
           audio: true,
-          video: type === 'video' ? { width: 1280, height: 720 } : false
+          video: type === 'video' ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false
         };
         this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
       } catch (err) {
         QWAS.Toast.error('Нет доступа к медиа: ' + (err.message || err.name));
         return;
       }
+      await fetchIceServers();
       this._showOverlay(peerName, type, true);
       this._playRingtone();
       // Создаём peer connection
-      this.pc = new RTCPeerConnection({ iceServers: ICE });
+      this.pc = new RTCPeerConnection({ iceServers: getIceServers() });
       this.localStream.getTracks().forEach(t => this.pc.addTrack(t, this.localStream));
       this.pc.ontrack = (e) => this._onTrack(e);
       this.pc.onicecandidate = (e) => {
@@ -82,8 +129,10 @@
         }
       };
       this.pc.onconnectionstatechange = () => {
-        if (['failed', 'disconnected', 'closed'].includes(this.pc?.connectionState)) {
-          this.end();
+        if (!this.pc) return;
+        if (['failed', 'disconnected', 'closed'].includes(this.pc.connectionState)) {
+          this._cleanup();
+          QWAS.Toast.error('Связь потеряна');
         }
       };
 
@@ -94,7 +143,7 @@
         this.currentCall = { peerName: peerName, type, isCaller: true };
       } catch (err) {
         QWAS.Toast.error('Не удалось начать звонок');
-        this.end();
+        this._cleanup();
       }
     },
 
@@ -117,16 +166,17 @@
       try {
         const constraints = {
           audio: true,
-          video: call.type === 'video' ? { width: 1280, height: 720 } : false
+          video: call.type === 'video' ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false
         };
         this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
       } catch (err) {
         QWAS.Toast.error('Нет доступа к медиа');
-        this.end();
+        this._cleanup();
         return;
       }
+      await fetchIceServers();
       this._stopRingtone();
-      this.pc = new RTCPeerConnection({ iceServers: ICE });
+      this.pc = new RTCPeerConnection({ iceServers: getIceServers() });
       this.localStream.getTracks().forEach(t => this.pc.addTrack(t, this.localStream));
       this.pc.ontrack = (e) => this._onTrack(e);
       this.pc.onicecandidate = (e) => {
@@ -135,14 +185,24 @@
         }
       };
       this.pc.onconnectionstatechange = () => {
-        if (['failed', 'disconnected', 'closed'].includes(this.pc?.connectionState)) {
-          this.end();
+        if (!this.pc) return;
+        if (['failed', 'disconnected', 'closed'].includes(this.pc.connectionState)) {
+          this._cleanup();
+          QWAS.Toast.error('Связь потеряна');
         }
       };
-      await this.pc.setRemoteDescription(new RTCSessionDescription(this._pendingOffer));
-      const answer = await this.pc.createAnswer();
-      await this.pc.setLocalDescription(answer);
-      QWAS.State.socket && QWAS.State.socket.emit('call_answer', { to: call.peerName, answer });
+      try {
+        await this.pc.setRemoteDescription(new RTCSessionDescription(this._pendingOffer));
+        const answer = await this.pc.createAnswer();
+        await this.pc.setLocalDescription(answer);
+        QWAS.State.socket && QWAS.State.socket.emit('call_answer', { to: call.peerName, answer });
+      } catch (err) {
+        QWAS.Toast.error('Не удалось ответить на звонок');
+        this._cleanup();
+        return;
+      }
+      // Переключаем оверлей: accept/reject → mute/camera/end, статус → "В разговоре"
+      this._swapToInCall(call.peerName, call.type);
       this._startTimer();
     },
 
@@ -180,14 +240,19 @@
     },
 
     _onTrack(e) {
+      const stream = e.streams && e.streams[0];
+      if (!stream) return;
       const video = this.overlay?.querySelector('#callRemoteVideo');
       const audio = this.overlay?.querySelector('#callRemoteAudio');
-      if (video && e.streams[0]) {
-        video.srcObject = e.streams[0];
+      // Видео-элемент существует всегда, но для аудио-звонка он display:none.
+      // Используем audio-элемент, если видео скрыто или его нет.
+      const videoVisible = video && video.style.display !== 'none' && getComputedStyle(video).display !== 'none';
+      if (videoVisible) {
+        video.srcObject = stream;
         video.play().catch(() => {});
       }
-      if (audio && e.streams[0] && !video) {
-        audio.srcObject = e.streams[0];
+      if (audio) {
+        audio.srcObject = stream;
         audio.play().catch(() => {});
       }
     },
@@ -202,11 +267,10 @@
           <video id="callRemoteVideo" class="call-remote-video" autoplay playsinline ${type === 'video' ? '' : 'style="display:none"'}></video>
           <audio id="callRemoteAudio" autoplay></audio>
           ${type === 'video' ? '' : `
-            <div class="call-avatar" id="callAvatar"></div>
             <div class="call-header" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
               <div class="call-avatar" style="width:80px;height:80px;font-size:32px">${QWAS.Util.getInitials(peerName)}</div>
               <div class="call-name" style="margin-top:12px;font-size:22px">${QWAS.Util.escapeHtml(peerName)}</div>
-              <div class="call-status">${isCaller ? 'Вызов...' : 'Входящий звонок'}</div>
+              <div class="call-status" id="callStatus">${isCaller ? 'Вызов...' : 'Входящий звонок'}</div>
             </div>
           `}
           ${type === 'video' ? `
@@ -221,24 +285,14 @@
           <div class="call-timer" id="callTimer" style="display:none">0:00</div>
           ${type === 'video' ? '<video id="callLocalVideo" class="call-local-video" autoplay muted playsinline></video>' : ''}
         </div>
-        <div class="call-actions">
+        <div class="call-actions" id="callActions">
           ${!isCaller ? `
-            <button class="call-btn accept" id="callAcceptBtn" title="Принять">
-              <svg viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M20 15.5c-1.25 0-2.45-.2-3.57-.57a1 1 0 0 0-1.02.24l-2.2 2.2a15.05 15.05 0 0 1-6.59-6.58l2.2-2.21a1 1 0 0 0 .25-1A11.36 11.36 0 0 1 8.5 4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1c0 9.39 7.61 17 17 17a1 1 0 0 0 1-1v-3.5a1 1 0 0 0-1-1"/></svg>
-            </button>
-            <button class="call-btn danger" id="callRejectBtn" title="Отклонить">
-              <svg viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
-            </button>
+            <button class="call-btn accept" id="callAcceptBtn" title="Принять">${ICONS.accept}</button>
+            <button class="call-btn danger" id="callRejectBtn" title="Отклонить">${ICONS.reject}</button>
           ` : `
-            <button class="call-btn secondary" id="callMuteBtn" title="Микрофон">
-              <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3m5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z"/></svg>
-            </button>
-            ${type === 'video' ? `<button class="call-btn secondary" id="callCameraBtn" title="Камера">
-              <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11z"/></svg>
-            </button>` : ''}
-            <button class="call-btn danger" id="callEndBtn" title="Завершить">
-              <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
-            </button>
+            <button class="call-btn secondary" id="callMuteBtn" title="Микрофон">${ICONS.mic}</button>
+            ${type === 'video' ? `<button class="call-btn secondary" id="callCameraBtn" title="Камера">${ICONS.cam}</button>` : ''}
+            <button class="call-btn danger" id="callEndBtn" title="Завершить">${ICONS.end}</button>
           `}
         </div>
       `;
@@ -249,22 +303,52 @@
       if (local && this.localStream) {
         local.srcObject = this.localStream;
       }
-      // Bind buttons
-      const acceptBtn = o.querySelector('#callAcceptBtn');
-      const rejectBtn = o.querySelector('#callRejectBtn');
-      const endBtn = o.querySelector('#callEndBtn');
-      const muteBtn = o.querySelector('#callMuteBtn');
-      const camBtn = o.querySelector('#callCameraBtn');
+      this._bindActionButtons();
+    },
+
+    _swapToInCall(peerName, type) {
+      // Меняет accept/reject на mute/camera/end (для callee после принятия).
+      // Также обновляет #callStatus на "В разговоре".
+      const actions = this.overlay?.querySelector('#callActions');
+      if (!actions) return;
+      actions.innerHTML = `
+        <button class="call-btn secondary" id="callMuteBtn" title="Микрофон">${ICONS.mic}</button>
+        ${type === 'video' ? `<button class="call-btn secondary" id="callCameraBtn" title="Камера">${ICONS.cam}</button>` : ''}
+        <button class="call-btn danger" id="callEndBtn" title="Завершить">${ICONS.end}</button>
+      `;
+      const status = this.overlay.querySelector('#callStatus');
+      if (status) status.textContent = 'В разговоре';
+      // Показать локальный preview для видео
+      const local = this.overlay.querySelector('#callLocalVideo');
+      if (local && this.localStream && !local.srcObject) {
+        local.srcObject = this.localStream;
+      }
+      this._bindActionButtons();
+    },
+
+    _bindActionButtons() {
+      if (!this.overlay) return;
+      const acceptBtn = this.overlay.querySelector('#callAcceptBtn');
+      const rejectBtn = this.overlay.querySelector('#callRejectBtn');
+      const endBtn = this.overlay.querySelector('#callEndBtn');
+      const muteBtn = this.overlay.querySelector('#callMuteBtn');
+      const camBtn = this.overlay.querySelector('#callCameraBtn');
       if (acceptBtn) acceptBtn.addEventListener('click', () => this.accept());
       if (rejectBtn) rejectBtn.addEventListener('click', () => this.reject());
       if (endBtn) endBtn.addEventListener('click', () => this.end());
       if (muteBtn) muteBtn.addEventListener('click', () => {
         const t = this.localStream?.getAudioTracks()[0];
-        if (t) { t.enabled = !t.enabled; muteBtn.classList.toggle('active', !t.enabled); }
+        if (!t) return;
+        t.enabled = !t.enabled;
+        muteBtn.classList.toggle('active', !t.enabled);
+        muteBtn.innerHTML = !t.enabled ? ICONS.micOff : ICONS.mic;
       });
       if (camBtn) camBtn.addEventListener('click', () => {
         const t = this.localStream?.getVideoTracks()[0];
-        if (t) { t.enabled = !t.enabled; camBtn.classList.toggle('active', !t.enabled); }
+        if (!t) return;
+        t.enabled = !t.enabled;
+        camBtn.classList.toggle('active', !t.enabled);
+        camBtn.innerHTML = !t.enabled ? ICONS.camOff : ICONS.cam;
       });
     },
 
@@ -286,15 +370,19 @@
 
     _playRingtone() {
       try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (!this.ringtoneCtx) {
+          this.ringtoneCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const ctx = this.ringtoneCtx;
         const beep = () => {
+          if (!ctx || ctx.state === 'closed') return;
           const o = ctx.createOscillator();
           const g = ctx.createGain();
           o.connect(g); g.connect(ctx.destination);
           o.frequency.value = 440;
           g.gain.value = 0.05;
           o.start();
-          setTimeout(() => { o.stop(); }, 200);
+          setTimeout(() => { try { o.stop(); } catch {} }, 200);
         };
         this.ringtone = setInterval(beep, 1500);
         beep();
@@ -303,6 +391,7 @@
 
     _stopRingtone() {
       if (this.ringtone) { clearInterval(this.ringtone); this.ringtone = null; }
+      if (this.ringtoneCtx) { try { this.ringtoneCtx.close(); } catch {} this.ringtoneCtx = null; }
     },
 
     _cleanup() {

@@ -38,11 +38,21 @@ module.exports = {
   CHATS_PER_PAGE: parseInt(process.env.CHATS_PER_PAGE) || 100,
 
   // WebRTC ICE
+  // STUN: comma-separated urls (ICE_SERVERS=stun:a,stun:b)
+  // TURN: semicolon-separated entries (TURN_URLS="turn:host:3478,user,pass;turn:host:443?transport=tcp,user,pass")
   ICE_SERVERS: (process.env.ICE_SERVERS || "stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302")
     .split(",")
     .map(s => s.trim())
     .filter(Boolean)
     .map(url => ({ urls: url })),
+  TURN_SERVERS: (process.env.TURN_URLS || "")
+    .split(";")
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(entry => {
+      const [url, username, credential] = entry.split(",").map(x => x.trim());
+      return { urls: url, username, credential };
+    }),
 
   // CORS
   CORS_ORIGIN: process.env.CORS_ORIGIN || "*"

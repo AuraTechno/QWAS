@@ -1,4 +1,4 @@
-const CACHE_NAME = 'qwas-v9';
+const   CACHE_NAME = 'qwas-v10';
 const urlsToCache = [
   '/',
   '/index.html',
