@@ -176,60 +176,57 @@
       if (m.isDeleted) return this.renderDeleted(m);
       const me = QWAS.State.me;
       const isMine = me && (m.fromId === me.id || m.fromUsername === me.username);
-      const from = m.fromUsername || m.fromId;
       const fromName = isMine ? 'Вы' : (m.fromFirstName || m.fromUsername || '...');
-      // Группировка: показываем аватарку только у первого подряд
       const prevIsSame = prev && !prev.isDeleted && prev.fromId === m.fromId && (new Date(m.createdAt) - new Date(prev.createdAt) < 5 * 60 * 1000);
       const nextIsSame = next && !next.isDeleted && next.fromId === m.fromId && (new Date(next.createdAt) - new Date(m.createdAt) < 5 * 60 * 1000);
       const showAvatar = !isMine && !prevIsSame;
       const showName = !isMine && !prevIsSame;
-      const compact = !isMine && prevIsSame;
+      const firstInGroup = !prevIsSame;
+      const lastInGroup = !nextIsSame;
 
-      const avatar = compact ? '<div class="msg-avatar-spacer"></div>'
-        : (isMine ? '<div class="msg-avatar-spacer"></div>'
-        : QWAS.Util.avatarHtml({ firstName: m.fromFirstName, lastName: m.fromLastName, username: m.fromUsername }, 32));
+      const avatarSlot = showAvatar
+        ? `<div class="message-avatar-slot">${QWAS.Util.avatarHtml({ firstName: m.fromFirstName, lastName: m.fromLastName, username: m.fromUsername }, 32)}</div>`
+        : '<div class="message-avatar-slot"></div>';
 
       const time = new Date(m.createdAt).toTimeString().slice(0, 5);
-      const editedMark = m.isEdited ? '<span class="msg-edited">ред.</span>' : '';
+      const editedMark = m.isEdited ? '<span class="edited">ред.</span>' : '';
       const status = isMine ? this._renderStatus(m) : '';
 
       const body = this.renderBody(m);
       const reply = m.replySnapshot ? this.renderReply(m.replySnapshot) : (m.replyToId ? this.renderReplyStub(m.replyToId) : '');
-      const fwd = m.forwardedFromName ? `<div class="msg-forwarded">Переслано от <b>${QWAS.Util.escapeHtml(m.forwardedFromName)}</b></div>` : '';
+      const fwd = m.forwardedFromName ? `<div class="forwarded-label">Переслано от <b>${QWAS.Util.escapeHtml(m.forwardedFromName)}</b></div>` : '';
 
       const reactionsHtml = this.renderReactions(m);
-
       const attachmentsHtml = this.renderAttachments(m);
 
       const contextActions = `
-        <div class="msg-actions">
-          <button class="msg-action" data-action="react" data-id="${m.id}" data-emoji="👍" title="Реакция">👍</button>
-          <button class="msg-action" data-action="reply" data-id="${m.id}" title="Ответить">↩</button>
-          <button class="msg-action" data-action="copy" data-id="${m.id}" title="Копировать">📋</button>
-          ${isMine ? `<button class="msg-action" data-action="edit" data-id="${m.id}" title="Редактировать">✎</button>
-                      <button class="msg-action" data-action="delete" data-id="${m.id}" title="Удалить">🗑</button>` : ''}
-          <button class="msg-action" data-action="forward" data-id="${m.id}" title="Переслать">↗</button>
-          <button class="msg-action" data-action="pin" data-id="${m.id}" title="Закрепить">📌</button>
+        <div class="message-actions">
+          <button class="message-action" data-action="react" data-id="${m.id}" data-emoji="👍" title="Реакция">👍</button>
+          <button class="message-action" data-action="reply" data-id="${m.id}" title="Ответить">↩</button>
+          <button class="message-action" data-action="copy" data-id="${m.id}" title="Копировать">📋</button>
+          ${isMine ? `<button class="message-action" data-action="edit" data-id="${m.id}" title="Редактировать">✎</button>
+                      <button class="message-action" data-action="delete" data-id="${m.id}" title="Удалить">🗑</button>` : ''}
+          <button class="message-action" data-action="forward" data-id="${m.id}" title="Переслать">↗</button>
+          <button class="message-action" data-action="pin" data-id="${m.id}" title="Закрепить">📌</button>
         </div>`;
 
-      const cls = [
-        'msg',
-        isMine ? 'msg-out' : 'msg-in',
-        compact ? 'msg-compact' : '',
-        nextIsSame ? 'msg-last-in-group' : ''
+      const bubbleCls = [
+        'bubble',
+        firstInGroup ? 'first-in-group' : '',
+        lastInGroup ? 'last-in-group' : ''
       ].filter(Boolean).join(' ');
 
-      return `<div class="${cls}" data-msg-id="${m.id}">
-        <div class="msg-avatar">${avatar}</div>
-        <div class="msg-bubble-wrap">
-          ${showName ? `<div class="msg-author">${QWAS.Util.escapeHtml(fromName)}</div>` : ''}
-          <div class="msg-bubble">
+      return `<div class="message-group ${isMine ? 'out' : 'in'}" data-msg-id="${m.id}">
+        ${avatarSlot}
+        <div class="bubble-wrap">
+          ${showName ? `<div class="message-author">${QWAS.Util.escapeHtml(fromName)}</div>` : ''}
+          <div class="${bubbleCls}">
             ${fwd}
             ${reply}
             ${attachmentsHtml}
             ${body}
-            <div class="msg-meta">
-              <span class="msg-time">${time}</span>
+            <div class="bubble-meta">
+              <span class="time">${time}</span>
               ${editedMark}
               ${status}
             </div>
@@ -243,10 +240,12 @@
     renderDeleted(m) {
       const me = QWAS.State.me;
       const isMine = me && (m.fromId === me.id || m.fromUsername === me.username);
-      return `<div class="msg msg-deleted ${isMine ? 'msg-out' : 'msg-in'}" data-msg-id="${m.id}">
-        <div class="msg-avatar-spacer"></div>
-        <div class="msg-bubble msg-bubble-deleted">
-          <i>Сообщение удалено</i>
+      return `<div class="message-group message-deleted ${isMine ? 'out' : 'in'}" data-msg-id="${m.id}">
+        <div class="message-avatar-slot"></div>
+        <div class="bubble-wrap">
+          <div class="bubble bubble-deleted">
+            <i>Сообщение удалено</i>
+          </div>
         </div>
       </div>`;
     },
@@ -255,32 +254,28 @@
       if (!snap) return '';
       const name = snap.fromUsername === QWAS.State.me?.username ? 'Вы' : (snap.fromFirstName || snap.fromUsername);
       const text = snap.text || (snap.attachments ? '📎 Вложение' : '...');
-      return `<div class="msg-reply">
-        <div class="msg-reply-author">${QWAS.Util.escapeHtml(name)}</div>
-        <div class="msg-reply-text">${QWAS.Util.escapeHtml(text)}</div>
+      return `<div class="reply-quote">
+        <div class="reply-author">${QWAS.Util.escapeHtml(name)}</div>
+        <div class="reply-text">${QWAS.Util.escapeHtml(text)}</div>
       </div>`;
     },
 
     renderReplyStub(replyToId) {
-      return `<div class="msg-reply msg-reply-stub" data-scroll-to="${replyToId}">
-        <div class="msg-reply-author">↩ Ответ</div>
+      return `<div class="reply-quote reply-stub" data-scroll-to="${replyToId}">
+        <div class="reply-author">↩ Ответ</div>
       </div>`;
     },
 
     renderBody(m) {
       if (!m.text) return '';
-      // Просто экранируем и сохраняем переносы строк
-      return `<div class="msg-text">${this.formatText(m.text)}</div>`;
+      return `<div class="bubble-text">${this.formatText(m.text)}</div>`;
     },
 
     formatText(text) {
       if (!text) return '';
       let safe = QWAS.Util.escapeHtml(text);
-      // URL → ссылки
       safe = safe.replace(/(https?:\/\/[^\s<]+)/g, (m) => `<a href="${m}" target="_blank" rel="noopener">${m}</a>`);
-      // @username → упоминание
-      safe = safe.replace(/(^|\s)@([a-z0-9_]{3,32})/gi, '$1<span class="msg-mention">@$2</span>');
-      // Переносы строк
+      safe = safe.replace(/(^|\s)@([a-z0-9_]{3,32})/gi, '$1<span class="mention">@$2</span>');
       safe = safe.replace(/\n/g, '<br>');
       return safe;
     },
@@ -290,76 +285,85 @@
       const out = [];
       for (const a of m.attachments) {
         if (m.type === 'image' || a.type === 'image') {
-          out.push(`<img class="msg-image" src="${QWAS.Util.escapeAttr(a.url)}" alt="${QWAS.Util.escapeAttr(a.name || '')}" loading="lazy">`);
+          out.push(`<div class="att-image" data-lightbox>
+            <img src="${QWAS.Util.escapeAttr(a.url)}" alt="${QWAS.Util.escapeAttr(a.name || '')}" loading="lazy">
+          </div>`);
         } else if (m.type === 'round' || a.type === 'round') {
-          out.push(`<div class="msg-round" data-play-voice>
+          out.push(`<div class="att-round" data-play-voice>
             <video src="${QWAS.Util.escapeAttr(a.url)}" playsinline></video>
-            <button class="msg-round-play">▶</button>
-            <span class="msg-round-label">⭕ Видеосообщение</span>
+            <div class="att-round-overlay">
+              <button class="att-round-play">▶</button>
+            </div>
+            <span class="att-round-duration">⭕ Видеосообщение</span>
           </div>`);
         } else if (m.type === 'voice' || a.type === 'voice') {
           const dur = a.duration ? QWAS.Util.formatDuration(a.duration) : '';
-          out.push(`<div class="msg-voice" data-play-voice>
-            <button class="msg-voice-play">
-              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+          out.push(`<div class="att-voice" data-play-voice>
+            <button class="att-voice-btn">
+              <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
             </button>
-            <div class="msg-voice-wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-            <div class="msg-voice-time">${dur}</div>
+            <div class="att-voice-wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            <div class="att-voice-duration">${dur}</div>
           </div>`);
         } else if (m.type === 'video' || a.type === 'video') {
-          out.push(`<video class="msg-video" src="${QWAS.Util.escapeAttr(a.url)}" controls playsinline></video>`);
+          out.push(`<div class="att-video">
+            <video src="${QWAS.Util.escapeAttr(a.url)}" controls playsinline></video>
+            <div class="att-video-play">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+            </div>
+          </div>`);
         } else if (m.type === 'location' || a.type === 'location') {
           const lat = (a.lat || m.locationData?.lat);
           const lng = (a.lng || m.locationData?.lng);
           if (lat != null && lng != null) {
             const mapUrl = `https://yandex.ru/maps/?text=${lat},${lng}`;
-            out.push(`<a class="msg-location" href="${mapUrl}" target="_blank" rel="noopener">
-              <div class="msg-location-icon">📍</div>
-              <div class="msg-location-text">${QWAS.Util.escapeHtml(a.name || 'Местоположение')}</div>
-              <div class="msg-location-coords">${lat.toFixed ? lat.toFixed(5) : lat}, ${lng.toFixed ? lng.toFixed(5) : lng}</div>
+            out.push(`<a class="location-message" href="${mapUrl}" target="_blank" rel="noopener">
+              <div class="location-map"><div class="location-pin"></div></div>
+              <div class="location-info">
+                <div class="location-text">${QWAS.Util.escapeHtml(a.name || 'Местоположение')}</div>
+                <div class="location-coords">${typeof lat === 'number' ? lat.toFixed(5) : lat}, ${typeof lng === 'number' ? lng.toFixed(5) : lng}</div>
+              </div>
             </a>`);
           }
         } else if (m.type === 'contact' || a.type === 'contact') {
           const c = m.contactData || {};
-          out.push(`<div class="msg-contact">
-            <div class="msg-contact-avatar">${QWAS.Util.getInitials(c.firstName, c.lastName)}</div>
-            <div>
-              <div class="msg-contact-name">${QWAS.Util.escapeHtml((c.firstName || '') + ' ' + (c.lastName || ''))}</div>
-              ${c.phone ? `<div class="msg-contact-phone">${QWAS.Util.escapeHtml(c.phone)}</div>` : ''}
+          out.push(`<div class="contact-message">
+            <div class="avatar">${QWAS.Util.getInitials(c.firstName, c.lastName)}</div>
+            <div class="contact-info">
+              <div class="contact-name">${QWAS.Util.escapeHtml((c.firstName || '') + ' ' + (c.lastName || ''))}</div>
+              ${c.phone ? `<div class="contact-username">${QWAS.Util.escapeHtml(c.phone)}</div>` : ''}
             </div>
           </div>`);
         } else if (m.type === 'poll' || a.type === 'poll') {
           const p = m.pollData || a.pollData || {};
           out.push(this.renderPoll(m.id, p, !!m.pollVoted));
         } else {
-          // file
-          out.push(`<a class="msg-file" href="${QWAS.Util.escapeAttr(a.url)}" target="_blank" rel="noopener" data-download="${QWAS.Util.escapeAttr(a.url)}" data-name="${QWAS.Util.escapeAttr(a.name || 'файл')}">
-            <div class="msg-file-icon">📎</div>
-            <div class="msg-file-info">
-              <div class="msg-file-name">${QWAS.Util.escapeHtml(a.name || 'файл')}</div>
-              <div class="msg-file-size">${QWAS.Util.formatBytes(a.size)}</div>
+          out.push(`<a class="att-file" href="${QWAS.Util.escapeAttr(a.url)}" target="_blank" rel="noopener" data-download="${QWAS.Util.escapeAttr(a.url)}" data-name="${QWAS.Util.escapeAttr(a.name || 'файл')}">
+            <div class="att-file-icon">📎</div>
+            <div class="att-file-info">
+              <div class="att-file-name">${QWAS.Util.escapeHtml(a.name || 'файл')}</div>
+              <div class="att-file-size">${QWAS.Util.formatBytes(a.size)}</div>
             </div>
-            <button class="msg-file-download">⬇</button>
           </a>`);
         }
       }
-      return `<div class="msg-attachments">${out.join('')}</div>`;
+      return `<div class="attachments">${out.join('')}</div>`;
     },
 
     renderPoll(messageId, poll, voted) {
       const opts = poll.options || [];
       const total = opts.reduce((s, o) => s + (o.votes || 0), 0);
-      return `<div class="msg-poll">
-        <div class="msg-poll-q">${QWAS.Util.escapeHtml(poll.question || 'Опрос')}</div>
+      return `<div class="poll-message">
+        <div class="poll-question">${QWAS.Util.escapeHtml(poll.question || 'Опрос')}</div>
         ${opts.map((o, i) => {
           const pct = total > 0 ? Math.round((o.votes || 0) / total * 100) : 0;
           const isVoted = voted && voted === i;
-          return `<div class="msg-poll-opt ${isVoted ? 'voted' : ''}" data-poll-vote="${i}">
-            <div class="msg-poll-bar" style="width:${pct}%"></div>
-            <div class="msg-poll-label">${QWAS.Util.escapeHtml(o.text)} <span class="msg-poll-pct">${pct}%</span></div>
+          return `<div class="poll-option ${isVoted ? 'selected' : ''}" data-poll-vote="${i}">
+            <div class="poll-option-bar" style="width:${pct}%"></div>
+            <div class="poll-option-label">${QWAS.Util.escapeHtml(o.text)} <span class="poll-option-pct">${pct}%</span></div>
           </div>`;
         }).join('')}
-        <div class="msg-poll-total">${total} голос${total === 1 ? '' : (total >= 2 && total <= 4 ? 'а' : 'ов')}</div>
+        <div class="poll-total">${total} голос${total === 1 ? '' : (total >= 2 && total <= 4 ? 'а' : 'ов')}</div>
       </div>`;
     },
 
@@ -367,21 +371,19 @@
       if (!m.reactions) return '';
       const emojis = Object.keys(m.reactions);
       if (!emojis.length) return '';
-      return `<div class="msg-reactions">
+      return `<div class="reactions-row">
         ${emojis.map(e => {
           const users = m.reactions[e] || [];
-          return `<button class="msg-reaction" data-action="react" data-id="${m.id}" data-emoji="${e}">${e} <span>${users.length}</span></button>`;
+          return `<button class="reaction" data-action="react" data-id="${m.id}" data-emoji="${e}">${e} <span>${users.length}</span></button>`;
         }).join('')}
       </div>`;
     },
 
     _renderStatus(m) {
-      // status: sending / sent / read
-      let cls = 'msg-status-pending';
-      if (m._status === 'sent') cls = 'msg-status-sent';
-      if (m._status === 'read') cls = 'msg-status-read';
-      if (m._status === 'failed') cls = 'msg-status-failed';
-      return `<span class="msg-status ${cls}">${m._status === 'failed' ? '✕' : (m._status === 'read' ? '✓✓' : '✓')}</span>`;
+      let cls = '';
+      if (m._status === 'read') cls = 'read';
+      const icon = m._status === 'failed' ? '✕' : (m._status === 'read' ? '✓✓' : '✓');
+      return `<span class="status ${cls}">${icon}</span>`;
     },
 
     // === События сокета ===

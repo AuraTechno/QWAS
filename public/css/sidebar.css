@@ -376,6 +376,8 @@
 [data-theme="light"] .chat-item.active { color: white; }
 [data-theme="light"] .chat-item.active .chat-item-name { color: white; }
 
+.chat-item-pin, .chat-item-mute { font-size: 13px; flex-shrink: 0; }
+
 .chats-empty {
   display: flex;
   flex-direction: column;

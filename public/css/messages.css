@@ -718,3 +718,94 @@
 
 [data-theme="light"] .bubble { color: var(--bubble-other-text); }
 [data-theme="light"] .message-group.out .bubble { color: var(--bubble-me-text); }
+
+.bubble-wrap > .message-author {
+  font-weight: 500;
+  color: var(--accent);
+  font-size: 13px;
+  margin-left: 4px;
+  margin-bottom: 2px;
+}
+
+.message-actions {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+  gap: 2px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-full);
+  padding: 4px;
+  box-shadow: var(--shadow-2);
+  z-index: 5;
+  border: 1px solid var(--border-light);
+}
+
+.message-group:hover .message-actions { display: flex; }
+
+.message-group.in .message-actions { right: 100%; margin-right: 8px; }
+.message-group.out .message-actions { left: 100%; margin-left: 8px; flex-direction: row-reverse; }
+
+.message-action {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.message-action:hover { background: var(--bg-hover); color: var(--text-primary); transform: scale(1.1); }
+
+.message-group.deleted { opacity: 0.6; }
+.bubble-deleted { font-style: italic; opacity: 0.7; }
+.bubble-deleted i { font-style: italic; }
+
+.reply-stub { opacity: 0.7; }
+
+.poll-option-label { position: relative; z-index: 1; }
+.poll-option-pct { font-weight: 500; margin-left: 6px; }
+.poll-total { margin-top: 6px; font-size: 12px; opacity: 0.7; text-align: center; }
+
+.location-text { font-weight: 500; }
+.location-coords { font-size: 12px; opacity: 0.7; margin-top: 2px; }
+
+.messages-date-sep {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 12px 0;
+}
+
+.messages-date-sep span {
+  background: rgba(0,0,0,0.4);
+  color: white;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 500;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+[data-theme="light"] .messages-date-sep span {
+  background: rgba(0,0,0,0.1);
+  color: var(--text-primary);
+}
+
+.messages-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}

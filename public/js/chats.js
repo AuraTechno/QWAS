@@ -67,7 +67,7 @@
       container.innerHTML = filtered.map(c => this.renderItem(c)).join('');
 
       // Делегирование клика
-      container.querySelectorAll('.chats-item').forEach(el => {
+      container.querySelectorAll('.chat-item').forEach(el => {
         el.addEventListener('click', () => {
           const id = parseInt(el.dataset.chatId);
           if (id) QWAS.Chat && QWAS.Chat.open(id);
@@ -122,25 +122,25 @@
         last = `${QWAS.Util.escapeHtml(fromName)}: ${QWAS.Util.escapeHtml(last)}`;
       }
       const time = c.lastMessageAt ? QWAS.Util.formatTime(c.lastMessageAt) : '';
-      const unread = c.unreadCount > 0 ? `<span class="chats-unread">${c.unreadCount > 99 ? '99+' : c.unreadCount}</span>` : '';
-      const muted = c.isMuted ? '<span class="chats-muted">🔕</span>' : '';
-      const pinned = c.isPinned ? '<span class="chats-pinned">📌</span>' : '';
-      const verified = (c.type === 'channel' || c.type === 'group') && c.username ? '<span class="chats-verified">✓</span>' : '';
+      const unread = c.unreadCount > 0 ? `<span class="chat-item-unread">${c.unreadCount > 99 ? '99+' : c.unreadCount}</span>` : '';
+      const muted = c.isMuted ? '<span class="chat-item-mute">🔕</span>' : '';
+      const pinned = c.isPinned ? '<span class="chat-item-pin">📌</span>' : '';
+      const verified = (c.type === 'channel' || c.type === 'group') && c.username ? '<span class="verified">✓</span>' : '';
       const isActive = QWAS.State.current === c.chatId ? ' active' : '';
       const onlineDot = isOnline ? '<span class="online-dot"></span>' : '';
 
-      return `<div class="chats-item${isActive}" data-chat-id="${c.chatId}">
-        <div class="chats-avatar">
+      return `<div class="chat-item${isActive}" data-chat-id="${c.chatId}">
+        <div class="chat-item-avatar">
           ${avatar}
           ${onlineDot}
         </div>
-        <div class="chats-body">
-          <div class="chats-top">
-            <div class="chats-title">${QWAS.Util.escapeHtml(title)} ${verified} ${pinned} ${muted}</div>
-            <div class="chats-time">${time}</div>
+        <div class="chat-item-content">
+          <div class="chat-item-row1">
+            <div class="chat-item-name">${QWAS.Util.escapeHtml(title)} ${verified} ${pinned} ${muted}</div>
+            <div class="chat-item-meta">${time}</div>
           </div>
-          <div class="chats-bottom">
-            <div class="chats-last">${last || '<i>Нет сообщений</i>'}</div>
+          <div class="chat-item-row2">
+            <div class="chat-item-preview">${last || '<i>Нет сообщений</i>'}</div>
             ${unread}
           </div>
         </div>
