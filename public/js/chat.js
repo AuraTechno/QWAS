@@ -9,6 +9,49 @@
       this.bindPinnedBarClose();
       this.bindEmptyActions();
       this.bindTyping();
+      this.bindSwipeBack();
+      this.bindPopState();
+    },
+
+    bindSwipeBack() {
+      // Свайп вправо от левого края экрана → закрыть чат
+      const area = document.getElementById('chatArea');
+      if (!area) return;
+      let startX = 0, startY = 0, tracking = false;
+      const onStart = (e) => {
+        if (window.innerWidth > 900) return;
+        const t = e.touches ? e.touches[0] : e;
+        if (!t) return;
+        startX = t.clientX;
+        startY = t.clientY;
+        // Только если начало близко к левому краю
+        tracking = startX <= 30;
+      };
+      const onMove = (e) => {
+        if (!tracking) return;
+        const t = e.touches ? e.touches[0] : e;
+        if (!t) return;
+        const dx = t.clientX - startX;
+        const dy = Math.abs(t.clientY - startY);
+        if (dy > 50) { tracking = false; return; }
+        if (dx > 80) {
+          tracking = false;
+          this.close();
+        }
+      };
+      const onEnd = () => { tracking = false; };
+      area.addEventListener('touchstart', onStart, { passive: true });
+      area.addEventListener('touchmove', onMove, { passive: true });
+      area.addEventListener('touchend', onEnd, { passive: true });
+    },
+
+    bindPopState() {
+      // Кнопка "назад" в браузере закрывает чат
+      window.addEventListener('popstate', (e) => {
+        if (QWAS.State.current && window.innerWidth <= 900) {
+          this.close();
+        }
+      });
     },
 
     bindHeaderButtons() {
@@ -88,9 +131,14 @@
       // Помечаем прочитанным
       QWAS.Chats.markRead(chatId);
 
-      // Закрыть мобильный sidebar
-      if (window.innerWidth <= 800) {
-        document.body.classList.remove('sidebar-open');
+      // Мобильный: показать чат со слайдом
+      if (window.innerWidth <= 900) {
+        const main = document.getElementById('mainScreen');
+        if (main) {
+          main.classList.add('chat-open');
+          // Запускаем историю для браузерной кнопки "назад"
+          try { history.pushState({ chat: chatId }, '', '#chat/' + chatId); } catch (e) {}
+        }
       }
 
       // Скроллим вниз
@@ -123,8 +171,10 @@
 
       QWAS.Chats.render();
 
-      if (window.innerWidth <= 800) {
-        document.body.classList.add('sidebar-open');
+      if (window.innerWidth <= 900) {
+        const main = document.getElementById('mainScreen');
+        if (main) main.classList.remove('chat-open');
+        try { if (location.hash.startsWith('#chat/')) history.back(); } catch (e) {}
       }
     },
 

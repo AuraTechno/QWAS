@@ -1,4 +1,4 @@
-// Запись голоса и видео-кружков, hold-to-record
+// Запись голоса и видео-кружков, click-to-record
 (function() {
   'use strict';
   window.QWAS = window.QWAS || {};
@@ -56,11 +56,14 @@
           <button class="round-rec-btn primary" id="roundToggle" title="Начать запись">
             <span class="rec-dot"></span>
           </button>
+          <button class="round-rec-btn secondary" id="roundSend" title="Отправить" style="display:none">
+            <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M2 21 23 12 2 3v7l15 2-15 2z"/></svg>
+          </button>
           <button class="round-rec-btn secondary" id="roundClose" title="Отмена">
             <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
           </button>
         </div>
-        <div class="round-rec-hint">Удерживайте центральную кнопку</div>
+        <div class="round-rec-hint" id="roundHint">Нажмите ● для записи</div>
       `;
       document.body.appendChild(o);
       this.overlay = o;
@@ -68,13 +71,25 @@
       o.querySelector('#roundClose').addEventListener('click', () => this.cancel());
       o.querySelector('#roundFlip').addEventListener('click', () => this.flip());
       const toggle = o.querySelector('#roundToggle');
-      const start = (e) => { e.preventDefault(); if (!this.recording) this._record(); };
-      const stop = (e) => { e.preventDefault(); if (this.recording) this._stopAndSend(); };
-      toggle.addEventListener('mousedown', start);
-      toggle.addEventListener('mouseup', stop);
-      toggle.addEventListener('mouseleave', stop);
-      toggle.addEventListener('touchstart', start, { passive: false });
-      toggle.addEventListener('touchend', stop, { passive: false });
+      const send = o.querySelector('#roundSend');
+      const hint = o.querySelector('#roundHint');
+
+      // По клику: запуск → стоп → отправка
+      toggle.addEventListener('click', () => {
+        if (this.recording) {
+          this._stopAndSend();
+        } else {
+          this._record();
+          toggle.classList.add('recording');
+          toggle.title = 'Остановить и отправить';
+          if (send) send.style.display = 'flex';
+          if (hint) hint.textContent = 'Нажмите снова для остановки';
+        }
+      });
+      // Отдельная кнопка отправки (на случай если хочется без автоотправки)
+      if (send) {
+        send.addEventListener('click', () => { if (this.recording) this._stopAndSend(); });
+      }
     },
 
     async _start() {
@@ -265,10 +280,9 @@
     }
   };
 
-  // === Voice (hold-to-record для голосовых) ===
+  // === Voice (click-to-record для голосовых) ===
   const Voice = {
     mode: 'voice',
-    locked: false,
     _stream: null,
     _recorder: null,
     _chunks: [],
@@ -277,9 +291,6 @@
     _audioCtx: null,
     _analyser: null,
     _amplitudes: [],
-    _lockOrigin: null,
-    _moveHandlers: null,
-    _slideHintShown: false,
     _maxDuration: 300,
 
     setMode(m) {
@@ -293,9 +304,9 @@
         QWAS.Toast.warn('Откройте чат');
         return;
       }
-      e.preventDefault();
-      // Если режим видео — запускаем VideoRecorder
-      if (this.mode === 'video' || (e.shiftKey && this.mode === 'voice')) {
+      if (e) e.preventDefault();
+      // Если режим видео — открываем VideoRecorder
+      if (this.mode === 'video') {
         if (QWAS.VideoRecorder) QWAS.VideoRecorder.open();
         return;
       }
@@ -311,9 +322,7 @@
       this._chunks = [];
       this._amplitudes = [];
       this._startTime = Date.now();
-      this.locked = false;
       QWAS.State.recording = true;
-      this._lockOrigin = { x: this._clientX(e), y: this._clientY(e) };
 
       // MediaRecorder
       const mime = this._pickAudioMime();
@@ -322,7 +331,7 @@
           mimeType: mime || undefined,
           audioBitsPerSecond: this._bitrate()
         });
-      } catch (e) {
+      } catch (err) {
         QWAS.Toast.error('Запись не поддерживается');
         this.cancel();
         return;
@@ -375,7 +384,19 @@
 
     _showRecordingUI() {
       const ui = document.getElementById('voiceRecording');
-      if (ui) ui.style.display = 'flex';
+      if (!ui) return;
+      ui.style.display = 'flex';
+      // Привязка кнопок (один раз)
+      if (!ui.dataset.bound) {
+        ui.dataset.bound = '1';
+        const cancel = document.getElementById('voiceCancelBtn');
+        if (cancel) cancel.addEventListener('click', () => this.cancel());
+        const send = document.getElementById('voiceSendBtn');
+        if (send) send.addEventListener('click', () => this.stop());
+      }
+      // Скрываем ненужные элементы (lock не используется в click-to-record)
+      const lock = document.getElementById('voiceLockBtn');
+      if (lock) lock.style.display = 'none';
       this._updateWave();
     },
 
@@ -416,47 +437,18 @@
     },
 
     move(e) {
-      if (!QWAS.State.recording) return;
-      if (this.locked) return;
-      const x = this._clientX(e);
-      const y = this._clientY(e);
-      if (x == null || y == null || !this._lockOrigin) return;
-      const dx = this._lockOrigin.x - x;
-      const dy = this._lockOrigin.y - y;
-      if (dx > 80) {
-        // slide left to cancel
-        const ui = document.getElementById('voiceRecording');
-        if (ui) ui.classList.add('voice-cancelling');
-      } else {
-        const ui = document.getElementById('voiceRecording');
-        if (ui) ui.classList.remove('voice-cancelling');
-      }
-      if (dy < -60) {
-        // slide up to lock
-        this.lockRecord();
-      }
-    },
-
-    lockRecord() {
-      if (!QWAS.State.recording) return;
-      this.locked = true;
-      const ui = document.getElementById('voiceRecording');
-      if (ui) ui.classList.add('voice-locked');
+      // Не используется (click-to-record), оставлено для совместимости
     },
 
     async stop() {
       if (!QWAS.State.recording) return;
       QWAS.State.recording = false;
-      const ui = document.getElementById('voiceRecording');
-      const cancelled = ui && ui.classList.contains('voice-cancelling');
       clearInterval(this._timerInt);
       this._timerInt = null;
       this._hideRecordingUI();
-      if (ui) ui.classList.remove('voice-cancelling', 'voice-locked');
       if (this._recorder && this._recorder.state !== 'inactive') {
         try { this._recorder.stop(); } catch {}
       }
-      // ждём onStop? onStop вызывается асинхронно, но мы можем вызвать обработку через событие
     },
 
     cancel() {
@@ -468,20 +460,19 @@
         try { this._recorder.stop(); } catch {}
       }
       this._chunks = [];
+      this._amplitudes = [];
       this._cleanupStream();
     },
 
     async _onStop() {
-      const cancelled = this._chunks.length === 0 || (this._amplitudes.length === 0 && (Date.now() - this._startTime) < 500);
-      // Определяем отмену через UI класс не доступен тут, используем durations
-      const wasCancelled = this._chunks.length === 0;
       const duration = (Date.now() - this._startTime) / 1000;
       this._cleanupStream();
+      const chunks = this._chunks;
       this._chunks = [];
       this._amplitudes = [];
-      if (duration < 0.5) return; // слишком короткое
+      if (duration < 0.3 || chunks.length === 0) return; // слишком короткое
 
-      const blob = new Blob(this._chunks, { type: this._chunks[0]?.type || 'audio/webm' });
+      const blob = new Blob(chunks, { type: chunks[0]?.type || 'audio/webm' });
       const file = new File([blob], `voice_${Date.now()}.webm`, { type: blob.type });
 
       const idx = QWAS.State.pendingFiles.length;
@@ -525,17 +516,6 @@
       if (this._stream) { this._stream.getTracks().forEach(t => t.stop()); this._stream = null; }
       if (this._audioCtx) { try { this._audioCtx.close(); } catch {} this._audioCtx = null; }
       this._analyser = null;
-    },
-
-    _clientX(e) {
-      if (e.touches && e.touches.length) return e.touches[0].clientX;
-      if (e.changedTouches && e.changedTouches.length) return e.changedTouches[0].clientX;
-      return e.clientX;
-    },
-    _clientY(e) {
-      if (e.touches && e.touches.length) return e.touches[0].clientY;
-      if (e.changedTouches && e.changedTouches.length) return e.changedTouches[0].clientY;
-      return e.clientY;
     }
   };
 

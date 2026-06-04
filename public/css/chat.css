@@ -330,6 +330,13 @@
   flex-shrink: 0;
 }
 
+.composer .attach-menu,
+.composer .emoji-panel,
+.composer .voice-recording {
+  position: absolute;
+  bottom: calc(100% - 4px);
+}
+
 .composer-btn {
   width: 44px;
   height: 44px;

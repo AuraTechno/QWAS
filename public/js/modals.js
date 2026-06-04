@@ -17,19 +17,22 @@
     },
 
     _build(title, content, actions = [{ label: 'Закрыть', type: 'secondary', onclick: 'QWAS.Modals.close()' }]) {
+      const typeMap = { primary: 'btn-primary', secondary: 'btn-secondary', danger: 'btn-danger', ghost: 'btn-ghost' };
       const overlay = document.createElement('div');
       overlay.className = 'modal-overlay';
       overlay.innerHTML = `
-        <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal">
           <div class="modal-header">
             <div class="modal-title">${title}</div>
             <button class="modal-close" aria-label="Закрыть">✕</button>
           </div>
           <div class="modal-body">${content}</div>
-          <div class="modal-actions">
-            ${actions.map((a, i) => `<button class="btn ${a.type || 'primary'}" data-action="${i}">${QWAS.Util.escapeHtml(a.label)}</button>`).join('')}
+          <div class="modal-footer">
+            ${actions.map((a, i) => `<button class="${typeMap[a.type] || 'btn-primary'}" data-action="${i}">${QWAS.Util.escapeHtml(a.label)}</button>`).join('')}
           </div>
         </div>`;
+      const modalEl = overlay.querySelector('.modal');
+      modalEl.addEventListener('click', (e) => e.stopPropagation());
       overlay.querySelector('.modal-close').addEventListener('click', () => this.close());
       overlay.querySelectorAll('[data-action]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -385,11 +388,11 @@
             </div>
           ` : ''}
           <div class="info-actions">
-            <button class="btn" data-info-action="pin">${c.isPinned ? 'Открепить' : 'Закрепить'}</button>
-            <button class="btn" data-info-action="mute">${c.isMuted ? 'Вкл. звук' : 'Откл. звук'}</button>
-            <button class="btn" data-info-action="archive">${c.isArchived ? 'Разархивировать' : 'В архив'}</button>
-            <button class="btn" data-info-action="media">Медиа</button>
-            <button class="btn danger" data-info-action="delete">Удалить чат</button>
+            <button class="btn-secondary" data-info-action="pin">${c.isPinned ? 'Открепить' : 'Закрепить'}</button>
+            <button class="btn-secondary" data-info-action="mute">${c.isMuted ? 'Вкл. звук' : 'Откл. звук'}</button>
+            <button class="btn-secondary" data-info-action="archive">${c.isArchived ? 'Разархивировать' : 'В архив'}</button>
+            <button class="btn-secondary" data-info-action="media">Медиа</button>
+            <button class="btn-danger" data-info-action="delete">Удалить чат</button>
           </div>
         </div>
       `;
@@ -513,7 +516,7 @@
             <input class="input poll-opt" placeholder="Вариант 1">
             <input class="input poll-opt" placeholder="Вариант 2">
           </div>
-          <button class="btn" id="pollAddOpt">+ вариант</button>
+          <button class="btn-secondary" id="pollAddOpt">+ вариант</button>
         </div>
       `;
       const overlay = this._build('Создать опрос', content, [

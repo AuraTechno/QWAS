@@ -57,22 +57,16 @@
     bindRecordButton() {
       const btn = document.getElementById('recordBtn');
       if (!btn) return;
-      const start = (e) => { e.preventDefault(); if (!QWAS.Voice) return; QWAS.Voice.start(e); };
-      const end = (e) => {
-        if (!QWAS.Voice || !QWAS.State.recording) return;
-        if (QWAS.Voice.locked) return;
+      // По клику: первое нажатие — начать запись, второе — остановить и отправить
+      btn.addEventListener('click', (e) => {
         e.preventDefault();
-        QWAS.Voice.stop();
-      };
-      const move = (e) => { if (QWAS.Voice) QWAS.Voice.move(e); };
-      btn.addEventListener('mousedown', start);
-      btn.addEventListener('mouseup', end);
-      btn.addEventListener('mouseleave', end);
-      btn.addEventListener('mousemove', move);
-      btn.addEventListener('touchstart', start, { passive: false });
-      btn.addEventListener('touchend', end, { passive: false });
-      btn.addEventListener('touchmove', move, { passive: false });
-      btn.addEventListener('touchcancel', () => QWAS.Voice && QWAS.Voice.cancel());
+        if (!QWAS.Voice) return;
+        if (QWAS.State.recording) {
+          QWAS.Voice.stop();
+        } else {
+          QWAS.Voice.start(e);
+        }
+      });
     },
 
     bindModeButton() {

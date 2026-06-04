@@ -98,6 +98,9 @@
         if (!el) return;
         el.addEventListener('click', () => {
           if (map[id] === 'round') return this.startRound();
+          if (map[id] === 'location') return this.pickLocation();
+          if (map[id] === 'contact') return this.pickContact();
+          if (map[id] === 'poll') return this.pickPoll();
           this.pick(map[id]);
         });
       });

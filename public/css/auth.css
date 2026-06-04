@@ -110,7 +110,22 @@
   gap: 10px;
 }
 
-.auth-field-row input { flex: 1; }
+.auth-field-row .auth-field { flex: 1; min-width: 0; }
+.auth-field-row .auth-field input {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  font-size: 15px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.auth-field-row .auth-field input:focus {
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+}
 
 .auth-eye {
   position: absolute;
