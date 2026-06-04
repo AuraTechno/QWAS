@@ -12,7 +12,7 @@
       LOGIN: '/login',
       AUTO_LOGIN: '/auto-login',
       LOGOUT: '/logout',
-      USERS_ALL: '/users/all',
+      USERS_ALL: '/profile/all',
       CHATS: '/chats',
       PROFILE: '/profile',
       PROFILE_UPDATE: '/profile/update'

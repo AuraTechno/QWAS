@@ -1,0 +1,2 @@
+chat.js:13 Load users error: SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+loadAllUsers	@	chat.js:13
