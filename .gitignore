@@ -1,6 +1,13 @@
 node_modules/
 .env
+.env.qwasbak
 uploads/
+uploads.qwasbak
 logs/
 *.log
 .idea/
+.vscode/
+.DS_Store
+*.swp
+*.bak
+.qwas-cache/
