@@ -23,7 +23,7 @@ const io = new Server(server, {
   cors: { origin: allowedOrigin, methods: ["GET", "POST"] }
 });
 
-app.use(helmet());
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: "50mb" }));
 app.use(express.static("public"));
 app.use("/uploads", express.static("uploads"));
