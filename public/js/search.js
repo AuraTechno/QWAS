@@ -68,19 +68,23 @@
 
       const seen = new Set();
       for (const c of QWAS.State.chats || []) {
+        if (!c || !c.username) continue;
         if (seen.has(c.username)) continue;
         const name = (c.name || c.firstName || '').toLowerCase();
-        if (name.includes(ql) || c.username.toLowerCase().includes(ql)) {
+        const cUser = (c.username || '').toLowerCase();
+        if (name.includes(ql) || cUser.includes(ql)) {
           results.push(c);
           seen.add(c.username);
         }
       }
 
       for (const u of QWAS.State.allUsers || []) {
+        if (!u || !u.username) continue;
         if (seen.has(u.username)) continue;
         const fName = (u.firstName || '').toLowerCase();
         const lName = (u.lastName || '').toLowerCase();
-        if (fName.includes(ql) || lName.includes(ql) || u.username.toLowerCase().includes(ql)) {
+        const uName = (u.username || '').toLowerCase();
+        if (fName.includes(ql) || lName.includes(ql) || uName.includes(ql)) {
           results.push(u);
           seen.add(u.username);
         }

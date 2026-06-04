@@ -113,4 +113,19 @@
       }
     }
   };
+
+  QWAS.UI = QWAS.UI || {
+    toggleMainMenu() {
+      const retry = () => QWAS.UI && QWAS.Modals && QWAS.Modals.toggleMainMenu();
+      if (QWAS.Modals) QWAS.Modals.toggleMainMenu();
+      else setTimeout(retry, 50);
+    },
+    openNewChat() {
+      if (QWAS.Modals) QWAS.Modals.openNewChat();
+    }
+  };
+
+  window.addEventListener('error', (e) => {
+    if (e.error) console.error('[QWAS]', e.error.message, '@', e.filename + ':' + e.lineno);
+  });
 })();

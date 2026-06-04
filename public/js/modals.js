@@ -274,7 +274,7 @@
             </div>
           `).join('')}
         </div>
-        <input type="hidden" id="forwardMsgs" value='${QWAS.Util.escapeAttr(JSON.stringify(msgs.map(m => ({ message: m.message, attachments: m.attachments })))}'>
+        <input type="hidden" id="forwardMsgs" value='${QWAS.Util.escapeAttr(JSON.stringify(msgs.map(m => ({ message: m.message, attachments: m.attachments }))))}'>
       `;
       QWAS.Modals.open({
         title: `Переслать (${msgs.length})`,
@@ -746,10 +746,9 @@
     }
   };
 
-  QWAS.UI = {
-    toggleMainMenu() { QWAS.Modals.toggleMainMenu(); },
-    openNewChat() { QWAS.Modals.openNewChat(); }
-  };
+  QWAS.UI = QWAS.UI || {};
+  QWAS.UI.toggleMainMenu = function() { QWAS.Modals.toggleMainMenu(); };
+  QWAS.UI.openNewChat = function() { QWAS.Modals.openNewChat(); };
 
   QWAS.Modals = Modals;
 })();
