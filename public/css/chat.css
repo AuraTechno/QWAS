@@ -386,6 +386,8 @@
 
 .record-btn:hover { color: var(--red); }
 
+.round-btn:hover { color: var(--accent); }
+
 .attach-menu {
   position: absolute;
   bottom: 100%;

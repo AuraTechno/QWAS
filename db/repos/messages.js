@@ -67,8 +67,8 @@ async function findById(id) {
 }
 
 /**
- * История чата (cursor pagination).
- * До 30 самых новых сообщений до указанного времени/ID.
+ * История чата (cursor pagination) + реакции одним запросом (LATERAL JOIN).
+ * До 30 самых новых сообщений до указанного ID.
  */
 async function getHistory(chatId, { beforeId = null, limit = 30 } = {}) {
   let where = `m.chat_id = $1 AND NOT m.is_deleted`;
@@ -79,7 +79,18 @@ async function getHistory(chatId, { beforeId = null, limit = 30 } = {}) {
   }
   params.push(limit);
   const res = await db.query(
-    `${BASE_SELECT} WHERE ${where} ORDER BY m.id DESC LIMIT $${params.length}`,
+    `${BASE_SELECT}
+     LEFT JOIN LATERAL (
+       SELECT jsonb_object_agg(r.emoji, r.users) AS reactions
+       FROM (
+         SELECT emoji, jsonb_agg(user_id ORDER BY created_at) AS users
+         FROM reactions
+         WHERE message_id = m.id
+         GROUP BY emoji
+       ) r
+     ) rr ON TRUE
+     WHERE ${where}
+     ORDER BY m.id DESC LIMIT $${params.length}`,
     params
   );
   return res.rows.map(rowToMessage).reverse();

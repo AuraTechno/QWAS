@@ -65,20 +65,70 @@
       }
       if (empty) empty.style.display = 'none';
       container.innerHTML = filtered.map(c => this.renderItem(c)).join('');
+      this._bindItemEvents(container);
+    },
 
-      // Делегирование клика
+    _bindItemEvents(container) {
       container.querySelectorAll('.chat-item').forEach(el => {
+        if (el.dataset.bound) return;
+        el.dataset.bound = '1';
         el.addEventListener('click', () => {
           const id = parseInt(el.dataset.chatId);
           if (id) QWAS.Chat && QWAS.Chat.open(id);
         });
-        // Контекстное меню
         el.addEventListener('contextmenu', (e) => {
           e.preventDefault();
           const id = parseInt(el.dataset.chatId);
           if (id && QWAS.ContextMenu) QWAS.ContextMenu.showChatMenu(e, id);
         });
       });
+    },
+
+    // Инкрементальный апдейт: меняем только затронутый элемент, не перерисовывая весь список
+    updateItem(chatId, patch) {
+      const idx = this.list.findIndex(c => c.chatId === chatId);
+      if (idx < 0) return false;
+      this.list[idx] = { ...this.list[idx], ...patch };
+      // Если этот чат в текущем табе — обновим DOM-узел
+      const filtered = this.filterForTab(this.list);
+      const visible = filtered.findIndex(c => c.chatId === chatId);
+      const container = document.getElementById('chatsList');
+      if (!container) return false;
+      if (visible < 0) {
+        // Чат больше не в текущем табе — удалим
+        const node = container.querySelector(`[data-chat-id="${chatId}"]`);
+        if (node) node.remove();
+        if (!container.children.length) {
+          const empty = document.getElementById('chatsEmpty');
+          if (empty) empty.style.display = 'flex';
+        }
+        return true;
+      }
+      const node = container.querySelector(`[data-chat-id="${chatId}"]`);
+      if (node) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = this.renderItem(this.list[idx]);
+        const newNode = tmp.firstElementChild;
+        if (newNode) {
+          newNode.dataset.bound = '1';
+          newNode.addEventListener('click', () => QWAS.Chat && QWAS.Chat.open(chatId));
+          newNode.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (QWAS.ContextMenu) QWAS.ContextMenu.showChatMenu(e, chatId);
+          });
+          node.replaceWith(newNode);
+        }
+      }
+      return true;
+    },
+
+    // Вставить новый чат наверх или переместить существующий
+    promoteChat(chatId) {
+      const idx = this.list.findIndex(c => c.chatId === chatId);
+      if (idx < 0) return;
+      const item = this.list[idx];
+      this.list.splice(idx, 1);
+      this.list.unshift(item);
     },
 
     filterForTab(list) {
@@ -160,9 +210,14 @@
     upsert(userChat) {
       if (!userChat) return;
       const idx = this.list.findIndex(c => c.chatId === userChat.chatId);
-      if (idx >= 0) this.list[idx] = { ...this.list[idx], ...userChat };
-      else this.list.unshift(userChat);
-      this.render();
+      if (idx >= 0) {
+        this.list[idx] = { ...this.list[idx], ...userChat };
+        this.promoteChat(userChat.chatId);
+      } else {
+        this.list.unshift(userChat);
+      }
+      // Инкрементальный апдейт вместо полного re-render
+      this.updateItem(userChat.chatId, userChat);
     },
 
     async setPinned(chatId, pinned) {
@@ -188,14 +243,16 @@
       if (r && r.ok) {
         const c = this.list.find(x => x.chatId === chatId);
         if (c) c.isMuted = !!muted;
-        this.render();
+        this.updateItem(chatId, { isMuted: !!muted });
       }
     },
 
     async markRead(chatId) {
       const c = this.list.find(x => x.chatId === chatId);
-      if (c) c.unreadCount = 0;
-      this.render();
+      if (c) {
+        c.unreadCount = 0;
+        this.updateItem(chatId, { unreadCount: 0 });
+      }
       if (QWAS.State.socket) {
         QWAS.State.socket.emit('mark_as_read', { chatId });
       } else {

@@ -184,11 +184,11 @@ async function getMemberUsernames(chatId) {
 
 /**
  * Получить список чатов пользователя с last_message и пользователями.
- * Single query через JOIN.
+ * Оптимизировано: 1 CTE для me + LATERAL JOIN вместо коррелированных подзапросов.
  */
 async function getUserChats(username, { tab = "all", limit = 100 } = {}) {
   const params = [username];
-  let where = `uc.user_id = (SELECT id FROM users WHERE username = $1)`;
+  let where = `uc.user_id = me.id`;
   if (tab === "unread") {
     where += ` AND uc.unread_count > 0 AND NOT uc.is_archived`;
   } else if (tab === "groups") {
@@ -201,25 +201,33 @@ async function getUserChats(username, { tab = "all", limit = 100 } = {}) {
   params.push(limit);
 
   const res = await db.query(
-    `SELECT
+    `WITH me AS (SELECT id FROM users WHERE username = $1)
+     SELECT
        uc.*,
        c.type, c.title, c.username AS chat_username, c.description, c.avatar_url,
        c.is_public, c.members_can_post, c.owner_id,
-       -- Другой пользователь для DM
-       (SELECT json_build_object(
-          'id', u2.id, 'username', u2.username,
-          'firstName', u2.first_name, 'lastName', u2.last_name,
-          'avatarUrl', u2.avatar_url, 'presence', u2.presence, 'lastSeen', u2.last_seen)
-        FROM chat_members cm2
-        JOIN users u2 ON u2.id = cm2.user_id
-        WHERE cm2.chat_id = c.id AND cm2.user_id != (SELECT id FROM users WHERE username = $1)
-        LIMIT 1) AS other_user,
-       -- Автор последнего сообщения
-       (SELECT json_build_object(
-          'id', u3.id, 'username', u3.username, 'firstName', u3.first_name, 'lastName', u3.last_name)
-        FROM users u3 WHERE u3.id = uc.last_message_from_id) AS last_message_from
+       ou.user_data AS other_user,
+       lmf.user_data AS last_message_from
      FROM user_chats uc
+     CROSS JOIN me
      JOIN chats c ON c.id = uc.chat_id
+     LEFT JOIN LATERAL (
+       SELECT json_build_object(
+         'id', u.id, 'username', u.username,
+         'firstName', u.first_name, 'lastName', u.last_name,
+         'avatarUrl', u.avatar_url, 'presence', u.presence, 'lastSeen', u.last_seen
+       ) AS user_data
+       FROM chat_members cm
+       JOIN users u ON u.id = cm.user_id
+       WHERE cm.chat_id = c.id AND cm.user_id != me.id
+       LIMIT 1
+     ) ou ON TRUE
+     LEFT JOIN LATERAL (
+       SELECT json_build_object(
+         'id', u.id, 'username', u.username, 'firstName', u.first_name, 'lastName', u.last_name
+       ) AS user_data
+       FROM users u WHERE u.id = uc.last_message_from_id
+     ) lmf ON TRUE
      WHERE ${where}
      ORDER BY uc.is_pinned DESC, uc.last_message_at DESC NULLS LAST, uc.chat_id DESC
      LIMIT $${params.length}`,
@@ -243,21 +251,27 @@ async function getUserChats(username, { tab = "all", limit = 100 } = {}) {
 
 async function getUserChat(username, chatId) {
   const res = await db.query(
-    `SELECT
+    `WITH me AS (SELECT id FROM users WHERE username = $1)
+     SELECT
        uc.*,
        c.type, c.title, c.username AS chat_username, c.description, c.avatar_url,
        c.is_public, c.members_can_post, c.owner_id,
-       (SELECT json_build_object(
-          'id', u2.id, 'username', u2.username,
-          'firstName', u2.first_name, 'lastName', u2.last_name,
-          'avatarUrl', u2.avatar_url, 'presence', u2.presence, 'lastSeen', u2.last_seen)
-        FROM chat_members cm2
-        JOIN users u2 ON u2.id = cm2.user_id
-        WHERE cm2.chat_id = c.id AND cm2.user_id != (SELECT id FROM users WHERE username = $1)
-        LIMIT 1) AS other_user
+       ou.user_data AS other_user
      FROM user_chats uc
+     CROSS JOIN me
      JOIN chats c ON c.id = uc.chat_id
-     WHERE uc.user_id = (SELECT id FROM users WHERE username = $1)
+     LEFT JOIN LATERAL (
+       SELECT json_build_object(
+         'id', u.id, 'username', u.username,
+         'firstName', u.first_name, 'lastName', u.last_name,
+         'avatarUrl', u.avatar_url, 'presence', u.presence, 'lastSeen', u.last_seen
+       ) AS user_data
+       FROM chat_members cm
+       JOIN users u ON u.id = cm.user_id
+       WHERE cm.chat_id = c.id AND cm.user_id != me.id
+       LIMIT 1
+     ) ou ON TRUE
+     WHERE uc.user_id = me.id
        AND uc.chat_id = $2`,
     [username, chatId]
   );

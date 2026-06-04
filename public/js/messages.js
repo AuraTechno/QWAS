@@ -44,7 +44,7 @@
           return;
         }
         // Клик по картинке — lightbox
-        const img = e.target.closest('img.msg-image');
+        const img = e.target.closest('.att-image img, img[data-lightbox-img]');
         if (img) {
           if (QWAS.Lightbox) QWAS.Lightbox.open(img.src, img.alt);
           return;
@@ -141,6 +141,46 @@
       list.innerHTML = this.renderGrouped(arr, chatId);
     },
 
+    // Инкрементальный апдейт: заменяет один message-group в DOM по id
+    updateOne(msg) {
+      const list = document.getElementById('messages');
+      if (!list) return;
+      const arr = QWAS.State.messagesByChat.get(msg.chatId) || [];
+      const idx = arr.findIndex(m => m.id === msg.id);
+      if (idx < 0) return;
+      const prev = arr[idx - 1];
+      const next = arr[idx + 1];
+      const html = this.renderOne(msg, prev, next);
+      const node = list.querySelector(`[data-msg-id="${msg.id}"]`);
+      if (node) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        const newNode = tmp.firstElementChild;
+        if (newNode) node.replaceWith(newNode);
+      }
+    },
+
+    // Добавить одно сообщение в конец списка (без полного re-render)
+    appendOne(msg) {
+      const list = document.getElementById('messages');
+      if (!list) return;
+      const arr = QWAS.State.messagesByChat.get(msg.chatId) || [];
+      const idx = arr.findIndex(m => m.id === msg.id);
+      if (idx < 0) return;
+      const prev = arr[idx - 1];
+      const html = this.renderOne(msg, prev, null);
+      // Проверим, нужен ли date-sep
+      const prevDate = prev ? this.formatDateLabel(prev.createdAt) : '';
+      const curDate = this.formatDateLabel(msg.createdAt);
+      const dateSep = (curDate !== prevDate) ? `<div class="messages-date-sep"><span>${QWAS.Util.escapeHtml(curDate)}</span></div>` : '';
+      const tmp = document.createElement('div');
+      tmp.innerHTML = dateSep + html;
+      // Удалим "Нет сообщений"
+      const empty = list.querySelector('.messages-empty');
+      if (empty) empty.remove();
+      while (tmp.firstChild) list.appendChild(tmp.firstChild);
+    },
+
     renderGrouped(messages, chatId) {
       if (!messages.length) {
         return '<div class="messages-empty">Нет сообщений — начните беседу</div>';
@@ -213,8 +253,12 @@
       const bubbleCls = [
         'bubble',
         firstInGroup ? 'first-in-group' : '',
-        lastInGroup ? 'last-in-group' : ''
+        lastInGroup ? 'last-in-group' : '',
+        (m.type === 'round' && !m.text) ? 'bubble-round' : '',
+        (m.type === 'voice' && !m.text) ? 'bubble-voice' : ''
       ].filter(Boolean).join(' ');
+
+      const isMediaOnly = (m.type === 'round' || m.type === 'voice') && !m.text;
 
       return `<div class="message-group ${isMine ? 'out' : 'in'}" data-msg-id="${m.id}">
         ${avatarSlot}
@@ -224,14 +268,19 @@
             ${fwd}
             ${reply}
             ${attachmentsHtml}
-            ${body}
-            <div class="bubble-meta">
+            ${isMediaOnly ? '' : body}
+            ${isMediaOnly ? '' : `<div class="bubble-meta">
               <span class="time">${time}</span>
               ${editedMark}
               ${status}
-            </div>
+            </div>`}
             ${contextActions}
           </div>
+          ${isMediaOnly ? `<div class="bubble-meta bubble-meta-below">
+              <span class="time">${time}</span>
+              ${editedMark}
+              ${status}
+            </div>` : ''}
           ${reactionsHtml}
         </div>
       </div>`;
@@ -289,28 +338,29 @@
             <img src="${QWAS.Util.escapeAttr(a.url)}" alt="${QWAS.Util.escapeAttr(a.name || '')}" loading="lazy">
           </div>`);
         } else if (m.type === 'round' || a.type === 'round') {
-          out.push(`<div class="att-round" data-play-voice>
-            <video src="${QWAS.Util.escapeAttr(a.url)}" playsinline></video>
+          const dur = a.duration ? QWAS.Util.formatDuration(a.duration) : '';
+          out.push(`<div class="att-round" data-play-voice data-round-url="${QWAS.Util.escapeAttr(a.url)}" data-round-dur="${dur}">
+            <video src="${QWAS.Util.escapeAttr(a.url)}" loop playsinline preload="metadata"></video>
             <div class="att-round-overlay">
-              <button class="att-round-play">▶</button>
+              <button class="att-round-play" type="button" aria-label="Воспроизвести">
+                <svg viewBox="0 0 24 24" width="32" height="32"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+              </button>
             </div>
-            <span class="att-round-duration">⭕ Видеосообщение</span>
+            <div class="att-round-time">${dur}</div>
           </div>`);
         } else if (m.type === 'voice' || a.type === 'voice') {
           const dur = a.duration ? QWAS.Util.formatDuration(a.duration) : '';
-          out.push(`<div class="att-voice" data-play-voice>
-            <button class="att-voice-btn">
-              <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+          out.push(`<div class="att-voice" data-play-voice data-voice-url="${QWAS.Util.escapeAttr(a.url)}" data-dur="${dur}">
+            <button class="att-voice-btn" type="button" aria-label="Воспроизвести">
+              <svg class="att-voice-icon-play" viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+              <svg class="att-voice-icon-pause" viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>
             </button>
-            <div class="att-voice-wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            <div class="att-voice-wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
             <div class="att-voice-duration">${dur}</div>
           </div>`);
         } else if (m.type === 'video' || a.type === 'video') {
-          out.push(`<div class="att-video">
-            <video src="${QWAS.Util.escapeAttr(a.url)}" controls playsinline></video>
-            <div class="att-video-play">
-              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
-            </div>
+          out.push(`<div class="att-video" data-play-video>
+            <video src="${QWAS.Util.escapeAttr(a.url)}" controls playsinline preload="metadata"></video>
           </div>`);
         } else if (m.type === 'location' || a.type === 'location') {
           const lat = (a.lat || m.locationData?.lat);
@@ -404,17 +454,16 @@
         if (tmpIdx >= 0) {
           list[tmpIdx] = msg;
           QWAS.State.messagesByChat.set(chatId, list);
-          if (QWAS.State.current === chatId) this.renderAll(chatId);
+          if (QWAS.State.current === chatId) this.updateOne(msg);
           return;
         }
       }
       list.push(msg);
       QWAS.State.messagesByChat.set(chatId, list);
 
-      // Если чат открыт — рендерим и скроллим
+      // Если чат открыт — добавляем только новое сообщение
       if (QWAS.State.current === chatId) {
-        // Удалим заглушку "Нет сообщений"
-        this.renderAll(chatId);
+        this.appendOne(msg);
         // Скроллим только если юзер был внизу или сообщение от собеседника
         if (!isMine) this.scrollToBottom(true);
         else {
@@ -437,7 +486,7 @@
       if (idx >= 0) {
         list[idx] = { ...list[idx], ...msg };
         QWAS.State.messagesByChat.set(msg.chatId, list);
-        if (QWAS.State.current === msg.chatId) this.renderAll(msg.chatId);
+        if (QWAS.State.current === msg.chatId) this.updateOne(list[idx]);
       }
     },
 
@@ -448,21 +497,29 @@
       if (idx >= 0) {
         list[idx] = { ...list[idx], isDeleted: true, text: null, attachments: [] };
         QWAS.State.messagesByChat.set(data.chatId, list);
-        if (QWAS.State.current === data.chatId) this.renderAll(data.chatId);
+        if (QWAS.State.current === data.chatId) this.updateOne(list[idx]);
       }
     },
 
     onReadReceipt(data) {
       if (!data) return;
       const list = QWAS.State.messagesByChat.get(data.chatId) || [];
-      let changed = false;
+      let changedIds = [];
       for (const m of list) {
         if (m.fromUsername === QWAS.State.me?.username && m.id <= data.messageId) {
-          m._status = 'read';
-          changed = true;
+          if (m._status !== 'read') {
+            m._status = 'read';
+            changedIds.push(m.id);
+          }
         }
       }
-      if (changed && QWAS.State.current === data.chatId) this.renderAll(data.chatId);
+      if (changedIds.length && QWAS.State.current === data.chatId) {
+        // Обновляем только затронутые сообщения
+        for (const id of changedIds) {
+          const m = list.find(x => x.id === id);
+          if (m) this.updateOne(m);
+        }
+      }
     },
 
     onReaction(data) {
@@ -471,7 +528,7 @@
       const m = list.find(x => x.id === data.messageId);
       if (m) {
         m.reactions = data.reactions || {};
-        if (QWAS.State.current === data.chatId) this.renderAll(data.chatId);
+        if (QWAS.State.current === data.chatId) this.updateOne(m);
       }
     },
 
@@ -709,17 +766,111 @@
     },
 
     playVoice(btn) {
-      const wrap = btn.closest('.msg-voice, .msg-round');
+      const wrap = btn.closest('.att-voice, .att-round, .msg-voice, .msg-round');
       if (!wrap) return;
-      const video = wrap.querySelector('video');
-      const audio = video || wrap.querySelector('audio') || new Audio();
-      if (video && video.src) {
-        if (video.paused) { video.play().catch(() => {}); btn.classList.add('playing'); }
-        else { video.pause(); video.currentTime = 0; btn.classList.remove('playing'); }
+      const isRound = !!wrap.closest('.att-round') || !!wrap.classList.contains('att-round');
+
+      // Остановим все прочие плееры
+      QWAS.Messages._stopAllPlayers(wrap);
+
+      if (isRound) {
+        const video = wrap.querySelector('video');
+        if (!video) return;
+        // Развернём/свернём
+        wrap.classList.toggle('expanded');
+        if (wrap.classList.contains('expanded')) {
+          video.currentTime = 0;
+          video.play().catch(() => {});
+          const play = wrap.querySelector('.att-round-play');
+          if (play) play.style.opacity = '0';
+        } else {
+          video.pause();
+          video.currentTime = 0;
+          const play = wrap.querySelector('.att-round-play');
+          if (play) play.style.opacity = '1';
+        }
         return;
       }
-      const src = wrap.dataset.src;
-      if (!audio.src && src) audio.src = src;
+
+      // Голосовое — кастомный плеер
+      const url = wrap.dataset.voiceUrl;
+      if (!url) return;
+      let player = QWAS.State._voicePlayer;
+      if (!player) {
+        player = new Audio();
+        player.preload = 'metadata';
+        QWAS.State._voicePlayer = player;
+        player.addEventListener('timeupdate', () => {
+          if (!player._wrap) return;
+          const wave = player._wrap.querySelector('.att-voice-wave');
+          const dur = player._wrap.querySelector('.att-voice-duration');
+          if (dur) dur.textContent = QWAS.Util.formatDuration(player.currentTime) + ' / ' + (player._wrap.dataset.dur || QWAS.Util.formatDuration(player.duration || 0));
+          if (wave && player.duration) {
+            const pct = player.currentTime / player.duration;
+            const spans = wave.querySelectorAll('span');
+            spans.forEach((sp, i) => {
+              const pos = i / spans.length;
+              if (pos < pct) sp.classList.add('played');
+              else sp.classList.remove('played');
+            });
+          }
+        });
+        player.addEventListener('ended', () => {
+          if (player._wrap) {
+            player._wrap.classList.remove('playing');
+            const wave = player._wrap.querySelector('.att-voice-wave');
+            const dur = player._wrap.querySelector('.att-voice-duration');
+            const d = player._wrap.dataset.dur;
+            if (dur && d) dur.textContent = d;
+            if (wave) wave.querySelectorAll('span').forEach(s => s.classList.remove('played'));
+          }
+        });
+        player.addEventListener('pause', () => {
+          if (player._wrap) player._wrap.classList.remove('playing');
+        });
+        player.addEventListener('play', () => {
+          if (player._wrap) player._wrap.classList.add('playing');
+        });
+      }
+      // Если уже играет этот же wrap — пауза
+      if (player._wrap === wrap) {
+        player.pause();
+        player._wrap = null;
+        return;
+      }
+      // Новый источник
+      if (player.src !== url) player.src = url;
+      player._wrap = wrap;
+      player.play().catch(() => {});
+    },
+
+    _stopAllPlayers(exceptWrap) {
+      // Voice
+      const vp = QWAS.State._voicePlayer;
+      if (vp && vp._wrap && vp._wrap !== exceptWrap) {
+        try { vp.pause(); } catch {}
+        vp._wrap.classList.remove('playing');
+        const wave = vp._wrap.querySelector('.att-voice-wave');
+        const dur = vp._wrap.querySelector('.att-voice-duration');
+        const d = vp._wrap.dataset.dur;
+        if (dur && d) dur.textContent = d;
+        if (wave) wave.querySelectorAll('span').forEach(s => s.classList.remove('played'));
+        vp._wrap = null;
+      }
+      // Round
+      document.querySelectorAll('.att-round.expanded').forEach(el => {
+        if (el === exceptWrap) return;
+        el.classList.remove('expanded');
+        const v = el.querySelector('video');
+        if (v) { try { v.pause(); v.currentTime = 0; } catch {} }
+        const play = el.querySelector('.att-round-play');
+        if (play) play.style.opacity = '1';
+      });
+      // Скрытые глобальные плееры (если используются)
+      const hv = document.getElementById('hiddenVideo');
+      if (hv) { try { hv.pause(); } catch {} }
+      const ha = document.getElementById('hiddenAudio');
+      if (ha) { try { ha.pause(); } catch {} }
     },
 
     downloadAttachment(url, name) {

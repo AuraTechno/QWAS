@@ -13,10 +13,9 @@
       this.bindAttachButton();
       this.bindEmojiButton();
       this.bindRecordButton();
-      this.bindModeButton();
+      this.bindRoundButton();
       this.bindGlobalClick();
       this.bindReplyCancel();
-      this.loadMode();
     },
 
     bindTextarea() {
@@ -69,13 +68,20 @@
       });
     },
 
-    bindModeButton() {
-      const btn = document.getElementById('recordModeBtn');
+    bindRoundButton() {
+      const btn = document.getElementById('roundBtn');
       if (!btn) return;
       btn.addEventListener('click', (e) => {
         e.preventDefault();
-        const next = this.mode === 'voice' ? 'video' : 'voice';
-        this.setMode(next);
+        if (QWAS.State.recording) {
+          QWAS.Toast.warn('Сначала остановите запись');
+          return;
+        }
+        if (!QWAS.State.current) {
+          QWAS.Toast.warn('Откройте чат');
+          return;
+        }
+        if (QWAS.VideoRecorder) QWAS.VideoRecorder.open();
       });
     },
 
@@ -93,26 +99,6 @@
     bindReplyCancel() {
       const btn = document.getElementById('replyCancel');
       if (btn) btn.addEventListener('click', () => this.hideReplyPreview());
-    },
-
-    loadMode() {
-      try {
-        const m = localStorage.getItem('qwas_record_mode');
-        if (m === 'video') this.setMode('video');
-        else this.setMode('voice');
-      } catch { this.setMode('voice'); }
-    },
-
-    setMode(mode) {
-      this.mode = mode;
-      const btn = document.getElementById('recordModeBtn');
-      if (btn) {
-        btn.classList.toggle('video-mode', mode === 'video');
-        btn.title = mode === 'video' ? 'Режим: видео (нажмите для голоса)' : 'Режим: голос (нажмите для видео)';
-      }
-      const rec = document.getElementById('recordBtn');
-      if (rec) rec.dataset.mode = mode;
-      try { localStorage.setItem('qwas_record_mode', mode); } catch {}
     },
 
     autoresize() {

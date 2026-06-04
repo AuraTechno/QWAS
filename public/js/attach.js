@@ -90,14 +90,12 @@
         'attach-audio': 'audio',
         'attach-location': 'location',
         'attach-contact': 'contact',
-        'attach-poll': 'poll',
-        'attach-round': 'round'
+        'attach-poll': 'poll'
       };
       Object.keys(map).forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
         el.addEventListener('click', () => {
-          if (map[id] === 'round') return this.startRound();
           if (map[id] === 'location') return this.pickLocation();
           if (map[id] === 'contact') return this.pickContact();
           if (map[id] === 'poll') return this.pickPoll();

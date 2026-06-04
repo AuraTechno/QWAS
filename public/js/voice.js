@@ -24,13 +24,17 @@
       ld:  { width: 240,  height: 240,  bitrate: 400000  },
       sd:  { width: 480,  height: 480,  bitrate: 1200000 },
       hd:  { width: 720,  height: 720,  bitrate: 2500000 },
-      fhd: { width: 1080, height: 1080, bitrate: 5000000 }
+      fhd: { width: 1080, height: 1080, bitrate: 5000000, maxFps: 30 },
+      // FHD при 60fps даёт ~50MB за минуту — принудительно ограничиваем 30fps
     },
 
     applySettings() {
       const s = QWAS.State.settings || {};
       if (s.videoQuality && this.qualities[s.videoQuality]) this.quality = s.videoQuality;
       if ([30, 60].includes(s.videoFps)) this.fps = s.videoFps;
+      // Cap: FHD только 30fps
+      const q = this.qualities[this.quality];
+      if (q && q.maxFps && this.fps > q.maxFps) this.fps = q.maxFps;
     },
 
     open() {
@@ -101,8 +105,8 @@
         this.stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: facing,
-            width: { ideal: q.width },
-            height: { ideal: q.height },
+            width: { ideal: q.width, max: q.width },
+            height: { ideal: q.height, max: q.height },
             frameRate: { ideal: fps, max: fps }
           },
           audio: true
@@ -141,6 +145,11 @@
 
     async flip() {
       if (!this.stream) return;
+      // Безопасный flip во время записи: сначала стоп рекордера, потом перезапуск стрима
+      if (this.recording) {
+        QWAS.Toast.warn('Остановите запись, чтобы переключить камеру');
+        return;
+      }
       this.facing = this.facing === 'user' ? 'environment' : 'user';
       this.stream.getTracks().forEach(t => t.stop());
       this.stream = null;
@@ -282,7 +291,6 @@
 
   // === Voice (click-to-record для голосовых) ===
   const Voice = {
-    mode: 'voice',
     _stream: null,
     _recorder: null,
     _chunks: [],
@@ -293,11 +301,6 @@
     _amplitudes: [],
     _maxDuration: 300,
 
-    setMode(m) {
-      this.mode = m === 'video' ? 'video' : 'voice';
-      try { localStorage.setItem('qwas_record_mode', this.mode); } catch {}
-    },
-
     async start(e) {
       if (QWAS.State.recording) return;
       if (!QWAS.State.current) {
@@ -305,11 +308,6 @@
         return;
       }
       if (e) e.preventDefault();
-      // Если режим видео — открываем VideoRecorder
-      if (this.mode === 'video') {
-        if (QWAS.VideoRecorder) QWAS.VideoRecorder.open();
-        return;
-      }
 
       try {
         this._stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -437,6 +435,10 @@
     },
 
     move(e) {
+      // Не используется (click-to-record), оставлено для совместимости
+    },
+
+    up(e) {
       // Не используется (click-to-record), оставлено для совместимости
     },
 

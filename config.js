@@ -24,8 +24,8 @@ module.exports = {
   // Upload
   UPLOAD_DIR: process.env.UPLOAD_DIR || "uploads",
   CHUNK_DIR: process.env.CHUNK_DIR || "uploads/chunks",
-  MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE) || 50 * 1024 * 1024,
-  MAX_CHUNK_SIZE: parseInt(process.env.MAX_CHUNK_SIZE) || 5 * 1024 * 1024,
+  MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE) || 200 * 1024 * 1024,
+  MAX_CHUNK_SIZE: parseInt(process.env.MAX_CHUNK_SIZE) || 10 * 1024 * 1024,
 
   // Cache / pub-sub (optional)
   REDIS_URL: process.env.REDIS_URL || null,
