@@ -1,240 +1,171 @@
 (function() {
   'use strict';
+  window.QWAS = window.QWAS || {};
 
-  QWAS.Groups = {
-    myGroups: [],
-
-    openCreateModal: function() {
-      const modal = document.getElementById('createGroupModal');
-      if (!modal) return;
-      modal.classList.add('show');
-
-      document.getElementById('groupNameInput').value = '';
-      document.getElementById('groupDescInput').value = '';
-      document.getElementById('groupTypeSelect').value = 'group';
-
-      const list = document.getElementById('groupMemberSelect');
-      if (!list) return;
-      list.innerHTML = (QWAS.State.allUsers || []).map(u => `
-        <label class="member-checkbox">
-          <input type="checkbox" value="${u.username}">
-          <div class="user-avatar small" id="gm-avatar-${u.username}" style="background:${u.avatarColor || '#6366f1'}">${QWAS.Utils.getAvatarLetter(u.username)}</div>
-          <span>@${u.username}</span>
-        </label>
-      `).join('');
+  const Groups = {
+    openCreate() {
+      this.showCreateModal();
     },
 
-    closeCreateModal: function() {
-      const modal = document.getElementById('createGroupModal');
-      if (modal) modal.classList.remove('show');
+    showCreateModal() {
+      const users = QWAS.State.allUsers || [];
+      const content = `
+        <div class="field">
+          <label>Название</label>
+          <input type="text" id="createGroupName" placeholder="Название группы" maxlength="100">
+        </div>
+        <div class="field">
+          <label>Тип</label>
+          <select id="createGroupType" onchange="QWAS.Groups.toggleType()">
+            <option value="group">Группа</option>
+            <option value="channel">Канал</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Описание (необязательно)</label>
+          <textarea id="createGroupDesc" placeholder="Описание" maxlength="500"></textarea>
+        </div>
+        <div class="field" id="membersField">
+          <label>Участники</label>
+          <div id="createGroupMembers" style="max-height:300px;overflow-y:auto;border:1px solid var(--border-light);border-radius:8px;padding:4px;">
+            ${users.map(u => `
+              <label class="checkbox-row">
+                <div class="checkbox-box" onclick="QWAS.Groups.toggleCheckbox(this, '${QWAS.Util.escapeAttr(u.username)}')"></div>
+                <div class="avatar checkbox-avatar ${QWAS.Util.gradientFor(u.username)}">${QWAS.Util.escapeHtml(QWAS.Util.getInitials(u.firstName || u.username))}</div>
+                <div class="checkbox-info">
+                  <div class="checkbox-name">${QWAS.Util.escapeHtml(QWAS.Util.getUserDisplayName(u) || u.username)}</div>
+                  <div class="checkbox-username">@${QWAS.Util.escapeHtml(u.username)}</div>
+                </div>
+              </label>
+            `).join('')}
+          </div>
+        </div>
+      `;
+
+      QWAS.Modals.open({
+        title: 'Создать группу',
+        content,
+        actions: [
+          { label: 'Отмена', type: 'secondary', onclick: 'QWAS.Modals.close()' },
+          { label: 'Создать', type: 'primary', onclick: 'QWAS.Groups.create()' }
+        ]
+      });
     },
 
-    handleCreate: async function() {
-      const name = document.getElementById('groupNameInput').value.trim();
+    toggleType() {
+      const t = document.getElementById('createGroupType').value;
+      const f = document.getElementById('membersField');
+      if (f) f.style.display = t === 'channel' ? 'none' : 'block';
+    },
+
+    toggleCheckbox(box, username) {
+      box.classList.toggle('checked');
+    },
+
+    async create() {
+      const name = document.getElementById('createGroupName').value.trim();
+      const type = document.getElementById('createGroupType').value;
+      const description = document.getElementById('createGroupDesc').value.trim();
+
       if (!name) {
-        QWAS.Notifications.warning('Введите название группы');
+        QWAS.Toast.warning('Введите название');
         return;
       }
 
-      const checkboxes = document.querySelectorAll('#groupMemberSelect input[type="checkbox"]:checked');
-      const members = Array.from(checkboxes).map(cb => cb.value);
-
-      if (members.length === 0) {
-        QWAS.Notifications.warning('Добавьте участников');
-        return;
-      }
-
-      const type = document.getElementById('groupTypeSelect').value;
-      const description = document.getElementById('groupDescInput').value.trim();
-
-      try {
-        const res = await fetch('/groups/create', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${QWAS.State.userToken}`
-          },
-          body: JSON.stringify({ name, members, type, description })
-        });
-        const data = await res.json();
-
-        if (data.ok) {
-          QWAS.Notifications.success(type === 'channel' ? 'Канал создан!' : 'Группа создана!');
-          this.closeCreateModal();
-          if (QWAS.State.socket) {
-            QWAS.State.socket.emit('profile_updated');
-          }
-        } else {
-          QWAS.Notifications.error(data.error || 'Ошибка создания');
+      let members = [];
+      if (type !== 'channel') {
+        const boxes = document.querySelectorAll('#createGroupMembers .checkbox-box.checked');
+        members = Array.from(boxes).map((b, i) => {
+          return QWAS.State.allUsers[i]?.username;
+        }).filter(Boolean);
+        if (members.length === 0) {
+          QWAS.Toast.warning('Выберите участников');
+          return;
         }
-      } catch (err) {
-        console.error('Create group error:', err);
-        QWAS.Notifications.error('Ошибка соединения');
+      }
+
+      const r = await QWAS.API.post('/groups/create', { name, type, description, members });
+      if (r.ok) {
+        QWAS.Toast.success(type === 'channel' ? 'Канал создан' : 'Группа создана');
+        QWAS.Modals.close();
+        QWAS.App.loadGroups();
+        if (QWAS.State.socket) QWAS.State.socket.emit('profile_updated');
+      } else {
+        QWAS.Toast.error(r.error || 'Ошибка создания');
       }
     },
 
-    renderGroups: function() {
-      const container = document.getElementById('groupsList');
-      if (!container) return;
+    showInfo(groupId) {
+      QWAS.API.get('/groups/' + groupId).then(r => {
+        if (!r.ok) return;
+        const g = r.group;
+        QWAS.Messages.groupMembers = g.members;
 
-      if (!QWAS.Groups.myGroups || QWAS.Groups.myGroups.length === 0) {
-        container.innerHTML = '';
-        container.style.display = 'none';
-        const title = document.getElementById('groupsSectionTitle');
-        if (title) title.style.display = 'none';
-        return;
-      }
+        const content = `
+          <div style="text-align:center;padding:20px 0;">
+            <div class="avatar size-96 ${QWAS.Util.gradientFor(g.name)}" style="margin:0 auto 12px;">${g.type === 'channel' ? '📢' : '👥'}</div>
+            <h2 style="margin:0 0 4px;">${QWAS.Util.escapeHtml(g.name)}</h2>
+            <p style="color:var(--text-secondary);margin:0;">${g.members.length} ${QWAS.Util.pluralize(g.members.length, ['участник', 'участника', 'участников'])}</p>
+            ${g.description ? `<p style="margin:12px 0;color:var(--text-secondary);">${QWAS.Util.escapeHtml(g.description)}</p>` : ''}
+          </div>
 
-      container.style.display = 'block';
-      const title = document.getElementById('groupsSectionTitle');
-      if (title) title.style.display = 'block';
-
-      container.innerHTML = QWAS.Groups.myGroups.map(g => {
-        const selected = QWAS.State.current === `group:${g._id}` ? 'selected' : '';
-        const typeIcon = g.type === 'channel' ? '📢' : '👥';
-        const unreadBadge = g.unreadCount > 0 ? `<span class="unread-badge">${g.unreadCount}</span>` : '';
-        return `
-          <div class="user ${selected}" onclick="QWAS.Groups.select('${g._id}')">
-            <div class="user-avatar small" id="group-avatar-${g._id}" style="background:${g.avatarColor}; font-size:14px;">${typeIcon}</div>
-            <div style="flex:1; min-width:0;">
-              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight:500;">${QWAS.Utils.escapeHtml(g.name)}</span>
-                ${unreadBadge}
+          <div class="profile-section">
+            <div class="profile-section-title">Участники (${g.members.length})</div>
+            ${g.members.map(m => `
+              <div class="member-item" onclick="QWAS.Modals.openUserProfile('${QWAS.Util.escapeAttr(m.username)}')">
+                <div class="avatar size-40 ${QWAS.Util.gradientFor(m.username)}">${QWAS.Util.escapeHtml(QWAS.Util.getInitials(m.firstName || m.username))}</div>
+                <div class="member-info">
+                  <div class="member-name">${QWAS.Util.escapeHtml(QWAS.Util.getUserDisplayName(m) || m.username)}</div>
+                  <div class="member-status">${m.online ? 'в сети' : (m.lastSeen ? QWAS.Util.lastSeenText(m.lastSeen, false) : '')}</div>
+                </div>
+                ${m.role !== 'member' ? `<span class="member-role ${m.role}">${m.role === 'creator' ? '👑 Создатель' : '⭐ Админ'}</span>` : ''}
               </div>
-              <div style="font-size:12px; color:var(--text-tertiary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                ${QWAS.Utils.escapeHtml(g.lastMessage || '')}
-              </div>
-            </div>
-            <span style="font-size:11px; color:var(--text-tertiary); margin-left:4px;">${g.memberCount}</span>
+            `).join('')}
+          </div>
+
+          <div style="margin-top:16px;display:flex;gap:8px;">
+            <button class="btn-secondary" style="flex:1;" onclick="QWAS.Groups.addMember('${g._id}')">＋ Добавить</button>
+            <button class="btn-danger" style="flex:1;" onclick="QWAS.Groups.leave('${g._id}')">Покинуть</button>
           </div>
         `;
-      }).join('');
-    },
 
-    select: function(groupId) {
-      const chatId = `group:${groupId}`;
-
-      if (QWAS.State.socket) {
-        QWAS.State.socket.emit('reset_pagination');
-      }
-
-      QWAS.State.current = chatId;
-      QWAS.State.hasMoreMessages = true;
-      QWAS.State.isLoadingMessages = false;
-      QWAS.State.currentPage = 1;
-      QWAS.State.unreadCount = 0;
-
-      QWAS.Chat.renderList();
-      QWAS.Groups.renderGroups();
-      QWAS.Messages.updateScrollButton();
-
-      const group = (QWAS.Groups.myGroups || []).find(g => g._id === groupId) || {};
-
-      const chatHeader = document.getElementById('chatHeader');
-      if (chatHeader) chatHeader.style.display = 'flex';
-
-      const avatarEl = document.getElementById('chatAvatar');
-      if (avatarEl) {
-        avatarEl.textContent = group.type === 'channel' ? '📢' : '👥';
-        avatarEl.style.background = group.avatarColor || '#6366f1';
-      }
-
-      const chatUsername = document.getElementById('chatUsername');
-      if (chatUsername) chatUsername.textContent = group.name || 'Группа';
-
-      const chatStatus = document.getElementById('chatStatus');
-      if (chatStatus) chatStatus.textContent = `${group.memberCount || 0} участников`;
-
-      const msgInput = document.getElementById('msg');
-      const sendBtn = document.getElementById('sendBtn');
-      if (msgInput) msgInput.disabled = false;
-      if (sendBtn) sendBtn.disabled = false;
-
-      const messagesContainer = document.getElementById('messages');
-      if (messagesContainer) messagesContainer.innerHTML = '';
-
-      const typingIndicator = document.getElementById('typingIndicator');
-      if (typingIndicator) typingIndicator.textContent = '';
-
-      QWAS.Messages.hideScrollButton();
-
-      if (QWAS.State.isMobile) {
-        const sidebar = document.getElementById('sidebar');
-        if (sidebar) sidebar.classList.add('hidden');
-      }
-
-      if (QWAS.State.socket) {
-        QWAS.State.socket.emit('get_history', chatId, 1);
-      }
-    },
-
-    showMembers: function() {
-      const groupId = QWAS.State.current.replace('group:', '');
-      const group = (QWAS.Groups.myGroups || []).find(g => g._id === groupId);
-      if (!group) return;
-
-      const list = document.getElementById('groupMembersList');
-      if (!list) return;
-
-      fetch(`/groups/${groupId}`, {
-        headers: { 'Authorization': `Bearer ${QWAS.State.userToken}` }
-      })
-      .then(r => r.json())
-      .then(data => {
-        if (!data.ok) return;
-        const g = data.group;
-        list.innerHTML = (g.members || []).map(m => {
-          const roleLabel = m.role === 'creator' ? ' 👑' : m.role === 'admin' ? ' ⭐' : '';
-          return `<div class="member-item">@${m.username}${roleLabel}</div>`;
-        }).join('');
-        document.getElementById('groupMembersModal').classList.add('show');
-      })
-      .catch(() => {});
-    },
-
-    closeMembersModal: function() {
-      document.getElementById('groupMembersModal').classList.remove('show');
-    },
-
-    leaveGroup: async function() {
-      if (!confirm('Выйти из группы?')) return;
-      const groupId = QWAS.State.current.replace('group:', '');
-
-      try {
-        const res = await fetch('/groups/leave', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${QWAS.State.userToken}`
-          },
-          body: JSON.stringify({ groupId })
+        QWAS.Modals.open({
+          title: 'Информация о группе',
+          content,
+          actions: [
+            { label: 'Закрыть', type: 'secondary', onclick: 'QWAS.Modals.close()' }
+          ]
         });
-        const data = await res.json();
-        if (data.ok) {
-          QWAS.Notifications.success('Вы вышли из группы');
-          QWAS.State.current = '';
-          if (QWAS.State.socket) {
-            QWAS.State.socket.emit('profile_updated');
-          }
-          const chatHeader = document.getElementById('chatHeader');
-          if (chatHeader) chatHeader.style.display = 'none';
-          const messagesContainer = document.getElementById('messages');
-          if (messagesContainer) {
-            messagesContainer.innerHTML = '<div class="empty-state"><div class="empty-state-icon">💬</div><h3>QWAS Messenger</h3><p>Выберите чат</p></div>';
-          }
-        } else {
-          QWAS.Notifications.error(data.error || 'Ошибка');
-        }
-      } catch (err) {
-        console.error('Leave group error:', err);
+      });
+    },
+
+    async addMember(groupId) {
+      const username = prompt('Имя пользователя:');
+      if (!username) return;
+      const r = await QWAS.API.post('/groups/add', { groupId, username: QWAS.Util.cleanUsername(username) });
+      if (r.ok) {
+        QWAS.Toast.success('Участник добавлен');
+        QWAS.Modals.close();
+        this.showInfo(groupId);
+      } else {
+        QWAS.Toast.error(r.error || 'Ошибка');
+      }
+    },
+
+    async leave(groupId) {
+      if (!confirm('Покинуть группу?')) return;
+      const r = await QWAS.API.post('/groups/leave', { groupId });
+      if (r.ok) {
+        QWAS.Toast.success('Вы покинули группу');
+        QWAS.Modals.close();
+        QWAS.Chats.removeChat('group:' + groupId);
+        if (QWAS.State.current === 'group:' + groupId) QWAS.Chat.close();
+        if (QWAS.State.socket) QWAS.State.socket.emit('profile_updated');
+      } else {
+        QWAS.Toast.error(r.error || 'Ошибка');
       }
     }
   };
 
-  window.openGroupCreate = () => QWAS.Groups.openCreateModal();
-  window.closeGroupCreate = () => QWAS.Groups.closeCreateModal();
-  window.createGroup = () => QWAS.Groups.handleCreate();
-  window.showGroupMembers = () => QWAS.Groups.showMembers();
-  window.closeGroupMembers = () => QWAS.Groups.closeMembersModal();
-  window.leaveGroup = () => QWAS.Groups.leaveGroup();
+  QWAS.Groups = Groups;
 })();

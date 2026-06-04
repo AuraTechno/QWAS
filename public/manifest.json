@@ -1,9 +1,9 @@
 {
   "name": "QWAS Messenger",
   "short_name": "QWAS",
-  "description": "Современный мессенджер",
-  "theme_color": "#0f172a",
-  "background_color": "#0f172a",
+  "description": "Современный мессенджер в стиле Telegram",
+  "theme_color": "#17212b",
+  "background_color": "#17212b",
   "display": "standalone",
   "orientation": "portrait",
   "scope": "/",

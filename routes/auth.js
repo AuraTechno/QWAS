@@ -24,12 +24,12 @@ function generateSessionToken() {
 
 router.post("/register", async (req, res) => {
   try {
-    let { username, password } = req.body;
+    let { username, password, firstName, lastName } = req.body;
     if (!username || !password) return res.json({ ok: false, error: "Введите логин и пароль" });
 
     username = username.replace(/^@/, "");
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      return res.json({ ok: false, error: "Логин может содержать только буквы, цифры и _" });
+    if (!/^[a-zA-Z0-9_]{3,32}$/.test(username)) {
+      return res.json({ ok: false, error: "Логин: 3-32 символа, только буквы, цифры и _" });
     }
 
     const { User } = getModels();
@@ -39,10 +39,17 @@ router.post("/register", async (req, res) => {
     if (exists) return res.json({ ok: false, error: "Пользователь уже существует" });
 
     const hash = await bcrypt.hash(password, 10);
-    const colors = ["#6366f1", "#8b5cf6", "#ec4899", "#f43f5e", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6"];
+    const colors = ["#5e8ee7", "#8e44ad", "#e91e63", "#e74c3c", "#ff9800", "#f1c40f", "#27ae60", "#16a085", "#3498db"];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
 
-    await User.create({ username, password: hash, avatar: "", avatarColor: randomColor });
+    await User.create({
+      username,
+      password: hash,
+      firstName: firstName || "",
+      lastName: lastName || "",
+      avatar: "",
+      avatarColor: randomColor
+    });
     res.json({ ok: true, message: "Регистрация успешна!" });
   } catch (err) {
     console.error("Ошибка регистрации:", err);
@@ -71,7 +78,7 @@ router.post("/login", async (req, res) => {
     res.json({
       ok: true,
       token,
-      user: { username: user.username, avatar: user.avatar || "", avatarColor: user.avatarColor || "#6366f1" },
+      user: publicUser(user),
       message: "Вход выполнен успешно!"
     });
   } catch (err) {
@@ -88,15 +95,11 @@ router.post("/auto-login", async (req, res) => {
     const { User } = getModels();
     if (!User) return res.json({ ok: false });
 
-    const jwt = require("jsonwebtoken");
     const data = jwt.verify(token, getJWTSecret());
     const user = await User.findOne({ username: data.username, sessionToken: data.sessionToken });
     if (!user) return res.json({ ok: false });
 
-    res.json({
-      ok: true,
-      user: { username: user.username, avatar: user.avatar || "", avatarColor: user.avatarColor || "#6366f1" }
-    });
+    res.json({ ok: true, user: publicUser(user) });
   } catch (err) {
     res.json({ ok: false });
   }
@@ -104,15 +107,13 @@ router.post("/auto-login", async (req, res) => {
 
 router.post("/logout", async (req, res) => {
   try {
-    const { authMiddleware } = require("../middleware/auth");
     const header = req.headers.authorization;
     if (header) {
       const token = header.split(" ")[1];
       try {
-        const jwt = require("jsonwebtoken");
         const data = jwt.verify(token, getJWTSecret());
         const { User } = getModels();
-        if (User) await User.updateOne({ username: data.username }, { $set: { sessionToken: null } });
+        if (User) await User.updateOne({ username: data.username }, { $set: { sessionToken: null, presence: "offline" } });
       } catch {}
     }
     res.json({ ok: true });
@@ -121,4 +122,19 @@ router.post("/logout", async (req, res) => {
   }
 });
 
+function publicUser(u) {
+  return {
+    username: u.username,
+    firstName: u.firstName || "",
+    lastName: u.lastName || "",
+    bio: u.bio || "",
+    avatar: u.avatar || "",
+    avatarColor: u.avatarColor || "#5e8ee7",
+    presence: u.presence || "offline",
+    lastSeen: u.lastSeen,
+    settings: u.settings || {}
+  };
+}
+
 module.exports = router;
+module.exports.publicUser = publicUser;

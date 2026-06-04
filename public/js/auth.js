@@ -1,287 +1,173 @@
 (function() {
   'use strict';
-  
-  QWAS.Auth = {
-    openRegisterModal: function() {
-      const modal = document.getElementById('registerModal');
-      if (modal) modal.classList.add('show');
-    },
-    
-    closeRegisterModal: function() {
-      const modal = document.getElementById('registerModal');
-      if (modal) modal.classList.remove('show');
-      const regUsername = document.getElementById('regUsername');
-      const regPassword = document.getElementById('regPassword');
-      const regConfirm = document.getElementById('regConfirmPassword');
-      if (regUsername) regUsername.value = '';
-      if (regPassword) regPassword.value = '';
-      if (regConfirm) regConfirm.value = '';
-    },
-    
-    handleRegister: async function() {
-      const usernameInput = document.getElementById('regUsername');
-      const passwordInput = document.getElementById('regPassword');
-      const confirmInput = document.getElementById('regConfirmPassword');
-      
-      if (!usernameInput || !passwordInput || !confirmInput) return;
-      
-      const username = usernameInput.value.trim();
-      const password = passwordInput.value;
-      const confirm = confirmInput.value;
-      
-      if (!username || !password) {
-        QWAS.Notifications.warning('Введите логин и пароль');
-        return;
-      }
-      
-      if (!QWAS.Utils.validateUsername(username)) {
-        QWAS.Notifications.error('Только буквы, цифры и _');
-        return;
-      }
-      
-      if (password.length < 6) {
-        QWAS.Notifications.warning('Пароль от 6 символов');
-        return;
-      }
-      
-      if (password !== confirm) {
-        QWAS.Notifications.error('Пароли не совпадают');
-        return;
-      }
-      
-      try {
-        const res = await fetch(QWAS.Config.API.REGISTER, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password })
-        });
-        
-        const data = await res.json();
-        
-        if (data.ok) {
-          QWAS.Notifications.success('Аккаунт создан!');
-          this.closeRegisterModal();
-          const loginUsername = document.getElementById('loginUsername');
-          if (loginUsername) loginUsername.value = username;
-        } else {
-          QWAS.Notifications.error(data.error || 'Ошибка регистрации');
-        }
-      } catch (err) {
-        console.error('Register error:', err);
-        QWAS.Notifications.error('Ошибка соединения');
-      }
-    },
-    
-    handleLogin: function() {
-      const usernameInput = document.getElementById('loginUsername');
-      const passwordInput = document.getElementById('loginPassword');
-      
-      if (!usernameInput || !passwordInput) return;
-      
-      const username = usernameInput.value.trim();
-      const password = passwordInput.value;
-      
-      if (!username || !password) {
-        QWAS.Notifications.warning('Введите логин и пароль');
-        return;
-      }
-      
-      this.login(username, password);
-    },
-    
-    login: async function(username, password) {
-      const cleanUsername = QWAS.Utils.cleanUsername(username);
-      
-      try {
-        const res = await fetch(QWAS.Config.API.LOGIN, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: cleanUsername, password })
-        });
-        
-        const data = await res.json();
-        
-        if (!data.ok) {
-          QWAS.Notifications.error(data.error || 'Ошибка входа');
-          return;
-        }
-        
-        // Сохраняем данные
-        QWAS.State.me = data.user.username;
-        QWAS.State.userToken = data.token;
-        QWAS.State.currentUser = data.user;
-        
-        localStorage.setItem(QWAS.Config.STORAGE.TOKEN, data.token);
-        localStorage.setItem(QWAS.Config.STORAGE.USER, JSON.stringify(data.user));
-        
-        QWAS.Notifications.success(`Добро пожаловать, @${data.user.username}!`);
-        
-        // Скрываем авторизацию, показываем чат
-        const authEl = document.getElementById('auth');
-        const chatEl = document.getElementById('chat');
-        if (authEl) authEl.style.display = 'none';
-        if (chatEl) chatEl.style.display = QWAS.State.isMobile ? 'block' : 'flex';
-        
-        const myUsername = document.getElementById('myUsername');
-        if (myUsername) myUsername.textContent = '@' + data.user.username;
-        
-        // Обновляем аватар
-        if (QWAS.Profile && QWAS.Profile.updateMyAvatar) {
-          QWAS.Profile.updateMyAvatar();
-        }
-        
-        // Загружаем данные
-        await this.loadInitialData();
-        
-        // Подключаем сокет
-        if (QWAS.Socket && QWAS.Socket.connect) {
-          QWAS.Socket.connect(data.token);
-        }
-        
-        await this.loadGroups();
-        
-      } catch (err) {
-        console.error('Login error:', err);
-        QWAS.Notifications.error('Ошибка соединения');
-      }
-    },
-    
-    loadInitialData: async function() {
-      try {
-        if (QWAS.Chat && QWAS.Chat.loadAllUsers) {
-          await QWAS.Chat.loadAllUsers();
-        }
-        if (QWAS.Chat && QWAS.Chat.loadChatList) {
-          await QWAS.Chat.loadChatList();
-        }
-      } catch (err) {
-        console.error('Load initial data error:', err);
-      }
+  window.QWAS = window.QWAS || {};
+
+  const Auth = {
+    showLogin() {
+      const s = document.getElementById('authScreen');
+      if (s) s.style.display = 'flex';
+      const m = document.getElementById('mainScreen');
+      if (m) m.style.display = 'none';
     },
 
-    loadGroups: async function() {
-      try {
-        const res = await fetch('/groups/my', {
-          headers: { 'Authorization': `Bearer ${QWAS.State.userToken}` }
-        });
-        const data = await res.json();
-        QWAS.Groups.myGroups = data.groups || [];
-        QWAS.Groups.renderGroups();
-      } catch (err) {
-        console.error('Load groups error:', err);
-      }
+    showApp() {
+      const s = document.getElementById('authScreen');
+      if (s) s.style.display = 'none';
+      const m = document.getElementById('mainScreen');
+      if (m) m.style.display = 'flex';
     },
-    
-    checkAutoLogin: async function() {
-      const token = localStorage.getItem(QWAS.Config.STORAGE.TOKEN);
-      const savedUser = localStorage.getItem(QWAS.Config.STORAGE.USER);
-      
-      if (!token || !savedUser) return;
-      
-      try {
-        const res = await fetch(QWAS.Config.API.AUTO_LOGIN, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token })
-        });
-        
-        const data = await res.json();
-        
-        if (data.ok) {
-          // Восстанавливаем сессию
-          QWAS.State.me = data.user.username;
-          QWAS.State.userToken = token;
-          QWAS.State.currentUser = data.user;
-          
-          // Скрываем авторизацию
-          const authEl = document.getElementById('auth');
-          const chatEl = document.getElementById('chat');
-          if (authEl) authEl.style.display = 'none';
-          if (chatEl) chatEl.style.display = QWAS.State.isMobile ? 'block' : 'flex';
-          
-          const myUsername = document.getElementById('myUsername');
-          if (myUsername) myUsername.textContent = '@' + data.user.username;
-          
-          // Обновляем аватар
-          if (QWAS.Profile && QWAS.Profile.updateMyAvatar) {
-            QWAS.Profile.updateMyAvatar();
-          }
-          
-          // Загружаем данные
-          await this.loadInitialData();
-          
-          // Подключаем сокет
-          if (QWAS.Socket && QWAS.Socket.connect) {
-            QWAS.Socket.connect(token);
-          }
-          
-          await this.loadGroups();
-          
-          console.log('✅ Авто-вход выполнен');
-        } else {
-          // Токен недействителен
-          localStorage.removeItem(QWAS.Config.STORAGE.TOKEN);
-          localStorage.removeItem(QWAS.Config.STORAGE.USER);
-          console.log('❌ Токен недействителен');
-        }
-      } catch (err) {
-        console.error('Auto-login error:', err);
-      }
+
+    showRegister() {
+      document.getElementById('authLogin').style.display = 'none';
+      document.getElementById('authRegister').style.display = 'flex';
+      setTimeout(() => document.getElementById('regUsername')?.focus(), 100);
     },
-    
-    logout: async function() {
-      // Закрываем профиль если открыт
-      if (QWAS.Profile && QWAS.Profile.close) {
-        QWAS.Profile.close();
+
+    showLoginForm() {
+      document.getElementById('authRegister').style.display = 'none';
+      document.getElementById('authLogin').style.display = 'flex';
+      setTimeout(() => document.getElementById('loginUsername')?.focus(), 100);
+    },
+
+    openRegister() { this.showRegister(); },
+    closeRegister() { this.showLoginForm(); },
+
+    togglePassword(input) {
+      if (input.type === 'password') input.type = 'text';
+      else input.type = 'password';
+    },
+
+    async handleLogin() {
+      const username = document.getElementById('loginUsername').value.trim();
+      const password = document.getElementById('loginPassword').value;
+
+      if (!username || !password) {
+        QWAS.Toast.warning('Введите логин и пароль');
+        return;
       }
-      
-      // Отправляем запрос на выход
+
+      const clean = QWAS.Util.cleanUsername(username);
+      if (!QWAS.Util.validateUsername(clean)) {
+        QWAS.Toast.error('Логин: 3-32 символа, буквы/цифры/_');
+        return;
+      }
+
+      this.setLoading(true);
+      const r = await QWAS.API.post('/login', { username: clean, password });
+      this.setLoading(false);
+
+      if (!r.ok) {
+        QWAS.Toast.error(r.error || 'Ошибка входа');
+        return;
+      }
+
+      this.onAuth(r.user, r.token);
+    },
+
+    async handleRegister() {
+      const username = document.getElementById('regUsername').value.trim();
+      const firstName = document.getElementById('regFirstName').value.trim();
+      const lastName = document.getElementById('regLastName').value.trim();
+      const password = document.getElementById('regPassword').value;
+      const confirm = document.getElementById('regConfirmPassword').value;
+
+      const clean = QWAS.Util.cleanUsername(username);
+
+      if (!clean || !password) {
+        QWAS.Toast.warning('Заполните все поля');
+        return;
+      }
+      if (!QWAS.Util.validateUsername(clean)) {
+        QWAS.Toast.error('Логин: 3-32 символа, буквы/цифры/_');
+        return;
+      }
+      if (password.length < 6) {
+        QWAS.Toast.warning('Пароль минимум 6 символов');
+        return;
+      }
+      if (password !== confirm) {
+        QWAS.Toast.error('Пароли не совпадают');
+        return;
+      }
+
+      this.setLoading(true);
+      const r = await QWAS.API.post('/register', { username: clean, password, firstName, lastName });
+      this.setLoading(false);
+
+      if (!r.ok) {
+        QWAS.Toast.error(r.error || 'Ошибка регистрации');
+        return;
+      }
+
+      QWAS.Toast.success('Аккаунт создан! Войдите.');
+      this.showLoginForm();
+      document.getElementById('loginUsername').value = clean;
+      document.getElementById('loginPassword').focus();
+    },
+
+    setLoading(loading) {
+      const screen = document.getElementById('authScreen');
+      if (screen) screen.dataset.loading = loading ? 'true' : 'false';
+    },
+
+    onAuth(user, token) {
+      QWAS.State.me = user.username;
+      QWAS.State.userToken = token;
+      QWAS.State.currentUser = user;
+      if (user.settings) Object.assign(QWAS.State.settings, user.settings);
+      QWAS.Prefs.applyTheme();
+      localStorage.setItem(QWAS.STORAGE.TOKEN, token);
+      localStorage.setItem(QWAS.STORAGE.USER, JSON.stringify(user));
+      this.showApp();
+      QWAS.App && QWAS.App.start();
+      QWAS.Toast.success(`Добро пожаловать, ${QWAS.Util.getUserDisplayName(user) || user.username}!`);
+    },
+
+    async logout() {
       if (QWAS.State.userToken) {
-        try {
-          await fetch(QWAS.Config.API.LOGOUT, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${QWAS.State.userToken}` }
-          });
-        } catch (err) {
-          console.error('Logout error:', err);
-        }
+        await QWAS.API.post('/logout').catch(() => {});
       }
-      
-      // Отключаем сокет
       if (QWAS.State.socket) {
         QWAS.State.socket.disconnect();
         QWAS.State.socket = null;
       }
-      
-      // Очищаем localStorage
-      localStorage.removeItem(QWAS.Config.STORAGE.TOKEN);
-      localStorage.removeItem(QWAS.Config.STORAGE.USER);
-      
-      // Сбрасываем состояние
+      localStorage.removeItem(QWAS.STORAGE.TOKEN);
+      localStorage.removeItem(QWAS.STORAGE.USER);
       QWAS.State.me = '';
-      QWAS.State.current = '';
+      QWAS.State.currentUser = null;
       QWAS.State.userToken = '';
-      QWAS.State.currentUser = { avatar: '', username: '', avatarColor: '#6366f1' };
-      QWAS.State.chatList = [];
-      QWAS.State.allUsers = [];
-      
-      // Показываем страницу входа
-      const authEl = document.getElementById('auth');
-      const chatEl = document.getElementById('chat');
-      if (authEl) authEl.style.display = 'flex';
-      if (chatEl) chatEl.style.display = 'none';
-      
-      // Очищаем поля
-      const loginUsername = document.getElementById('loginUsername');
-      const loginPassword = document.getElementById('loginPassword');
-      if (loginUsername) loginUsername.value = '';
-      if (loginPassword) loginPassword.value = '';
-      
-      // Показываем сайдбар если скрыт
-      const sidebar = document.getElementById('sidebar');
-      if (sidebar) sidebar.classList.remove('hidden');
-      
-      QWAS.Notifications.info('Вы вышли из аккаунта');
+      QWAS.State.chats = [];
+      QWAS.State.contacts = [];
+      QWAS.State.folders = [];
+      QWAS.State.messagesByChat = new Map();
+      QWAS.State.current = '';
+      this.showLogin();
+      QWAS.Toast.info('Вы вышли');
+    },
+
+    async checkAutoLogin() {
+      const token = localStorage.getItem(QWAS.STORAGE.TOKEN);
+      const saved = localStorage.getItem(QWAS.STORAGE.USER);
+      if (!token || !saved) {
+        this.showLogin();
+        return;
+      }
+      try {
+        const r = await QWAS.API.post('/auto-login', { token });
+        if (r.ok) {
+          let user;
+          try { user = JSON.parse(saved); } catch { user = r.user; }
+          this.onAuth(r.user || user, token);
+        } else {
+          localStorage.removeItem(QWAS.STORAGE.TOKEN);
+          localStorage.removeItem(QWAS.STORAGE.USER);
+          this.showLogin();
+        }
+      } catch {
+        this.showLogin();
+      }
     }
   };
+
+  QWAS.Auth = Auth;
 })();

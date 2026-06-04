@@ -1,537 +1,505 @@
 (function() {
   'use strict';
+  window.QWAS = window.QWAS || {};
 
-  QWAS.Messages = {
+  const Messages = {
+    selectionMode: false,
     firstMessageBeforeLoad: null,
-    uploading: false,
 
-    ensureSpacer: function() {
-      const container = document.getElementById('messages');
-      if (!container) return;
-      let spacer = container.querySelector('.messages-spacer');
-      if (!spacer) {
-        spacer = document.createElement('div');
-        spacer.className = 'messages-spacer';
-        container.appendChild(spacer);
-      }
-      return spacer;
+    ensureContainer() {
+      return document.getElementById('messages');
     },
 
-    add: function(msg, skipScroll = false) {
-      const container = document.getElementById('messages');
+    renderAll(messages) {
+      const container = this.ensureContainer();
       if (!container) return;
-
-      if (container.children.length === 1 &&
-          container.children[0].classList.contains('empty-state')) {
-        container.innerHTML = '';
+      container.innerHTML = '';
+      if (!messages || messages.length === 0) {
+        container.innerHTML = '<div class="system-message"><span>Нет сообщений</span></div>';
+        this.scrollToBottom(true);
+        return;
       }
-
-      if (document.getElementById(`msg-${msg._id}`)) return;
-
-      const spacer = container.querySelector('.messages-spacer');
-      if (spacer) spacer.remove();
-
-      const messageElement = this.createMessageElement(msg);
-      container.appendChild(messageElement);
-
-      this.ensureSpacer();
-
-      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-
-      if (!skipScroll && isNearBottom) {
-        setTimeout(() => container.scrollTop = container.scrollHeight, 10);
-      } else if (!isNearBottom) {
-        this.showScrollButton(msg.from !== QWAS.State.me ? 1 : 0);
-      }
+      this.appendMany(messages);
+      this.scrollToBottom(true);
     },
 
-    prepend: function(msg) {
-      const container = document.getElementById('messages');
+    appendMany(messages) {
+      const container = this.ensureContainer();
       if (!container) return;
+      const html = this.renderGroups(messages);
+      container.insertAdjacentHTML('beforeend', html);
+    },
 
-      if (container.children.length === 1 &&
-          container.children[0].classList.contains('empty-state')) {
-        container.innerHTML = '';
+    renderGroups(messages) {
+      if (!messages.length) return '';
+      const out = [];
+      let group = null;
+      let lastTime = 0;
+
+      for (let i = 0; i < messages.length; i++) {
+        const m = messages[i];
+        const mTime = new Date(m.createdAt).getTime();
+        if (i === 0 || !QWAS.Util.isSameDay(lastTime, mTime)) {
+          out.push(this.renderDateDivider(m.createdAt));
+        }
+
+        const isMine = m.from === QWAS.State.me;
+        const sameAuthor = group && group.from === m.from;
+        const closeInTime = group && (mTime - new Date(group.lastTime).getTime() < 60000);
+        const startNew = !sameAuthor || !closeInTime;
+
+        if (startNew) {
+          if (group) out.push(this.renderGroupEnd());
+          group = { from: m.from, isMine, firstTime: m.createdAt, lastTime: m.createdAt, items: [m] };
+          out.push(this.renderGroupStart(group));
+        } else {
+          group.lastTime = m.createdAt;
+          group.items.push(m);
+        }
+
+        out.push(this.renderMessage(m, group, group.items.length - 1, group.items.length));
+
+        lastTime = m.createdAt;
       }
 
-      if (document.getElementById(`msg-${msg._id}`)) return;
+      if (group) out.push(this.renderGroupEnd());
+      return out.join('');
+    },
 
-      const messageElement = this.createMessageElement(msg);
-      const firstMessage = Array.from(container.children).find(
-        child => !child.classList.contains('messages-spacer')
-      );
+    renderDateDivider(date) {
+      return `<div class="date-divider"><span>${QWAS.Util.escapeHtml(QWAS.Util.fullDate(date))}</span></div>`;
+    },
 
-      if (firstMessage) {
-        container.insertBefore(messageElement, firstMessage);
+    renderGroupStart(group) {
+      const username = group.isMine ? QWAS.State.me : group.from;
+      const cls = group.isMine ? 'out' : 'in';
+      let user = {};
+      if (group.isMine) {
+        user = QWAS.State.currentUser || {};
       } else {
-        container.appendChild(messageElement);
-      }
-
-      this.ensureSpacer();
-    },
-
-    saveScrollPosition: function() {
-      const container = document.getElementById('messages');
-      if (!container) return;
-
-      const messages = Array.from(container.children).filter(
-        child => child.classList.contains('message')
-      );
-
-      const containerRect = container.getBoundingClientRect();
-
-      for (const msg of messages) {
-        const rect = msg.getBoundingClientRect();
-        if (rect.bottom > containerRect.top && rect.top < containerRect.bottom) {
-          this.firstMessageBeforeLoad = {
-            id: msg.id,
-            offset: rect.top - containerRect.top
-          };
-          break;
+        const chat = (QWAS.State.chats || []).find(c => c.username === QWAS.State.current);
+        user = chat || { username: group.from };
+        if (chat?.type === 'group') {
+          const member = (this.groupMembers || []).find(m => m.username === group.from);
+          if (member) user = member;
         }
       }
-
-      if (!this.firstMessageBeforeLoad && messages.length > 0) {
-        const firstMsg = messages[0];
-        const rect = firstMsg.getBoundingClientRect();
-        this.firstMessageBeforeLoad = {
-          id: firstMsg.id,
-          offset: rect.top - containerRect.top
-        };
-      }
+      const showAvatar = !group.isMine;
+      const avatarHtml = showAvatar ? this.renderAvatar(user, 32) : '<div class="message-avatar-slot empty"></div>';
+      return `<div class="message-group ${cls}" data-group="${QWAS.Util.escapeAttr(group.from)}" data-time="${group.firstTime}">
+        ${avatarHtml}
+        <div class="bubble-wrap">`;
     },
 
-    restoreScrollPosition: function() {
-      const container = document.getElementById('messages');
-      if (!container || !this.firstMessageBeforeLoad) return;
-
-      const targetMsg = document.getElementById(this.firstMessageBeforeLoad.id);
-      if (targetMsg) {
-        const rect = targetMsg.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
-        const currentOffset = rect.top - containerRect.top;
-        const delta = currentOffset - this.firstMessageBeforeLoad.offset;
-        container.scrollTop = container.scrollTop + delta;
-      }
-
-      this.firstMessageBeforeLoad = null;
+    renderGroupEnd() {
+      return `</div></div>`;
     },
 
-    createMessageElement: function(msg) {
-      const isMe = msg.from === QWAS.State.me;
-      const div = document.createElement('div');
-      div.className = `message ${isMe ? 'me' : 'other'} ${msg.edited ? 'edited' : ''}`;
-      div.id = `msg-${msg._id}`;
+    renderMessage(m, group, idx, total) {
+      const isMine = m.from === QWAS.State.me;
+      const isLast = idx === total - 1;
+      const showAuthor = !isMine && group.type === 'group' && idx === 0;
+      const showMeta = isLast || (m.reactions && m.reactions.length > 0);
 
-      div.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        this.showMenu(msg, e);
-      });
-
-      let timer;
-      div.addEventListener('touchstart', (e) => {
-        timer = setTimeout(() => this.showMenu(msg, e), 500);
-      });
-      div.addEventListener('touchend', () => clearTimeout(timer));
-      div.addEventListener('touchmove', () => clearTimeout(timer));
-
-      const avatarColor = isMe ? QWAS.State.currentUser.avatarColor : '#6366f1';
-      const avatarContent = isMe && QWAS.State.currentUser.avatar
-        ? `<img src="${QWAS.State.currentUser.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`
-        : QWAS.Utils.getAvatarLetter(msg.from);
-
-      let attachmentsHtml = '';
-      if (msg.attachments && msg.attachments.length > 0) {
-        attachmentsHtml = msg.attachments.map(a => this.renderAttachment(a)).join('');
+      let authorName = '';
+      if (showAuthor) {
+        let member = (this.groupMembers || []).find(x => x.username === m.from);
+        if (!member) member = { username: m.from, firstName: m.from };
+        authorName = `<div class="bubble-meta"><span class="author">${QWAS.Util.escapeHtml(QWAS.Util.getUserDisplayName(member) || m.from)}</span></div>`;
       }
 
-      div.innerHTML = `
-        <div class="message-avatar" style="background: ${(isMe && QWAS.State.currentUser.avatar) ? 'transparent' : avatarColor};">
-          ${avatarContent}
-        </div>
-        <div style="flex:1;">
-          ${msg.isForwarded && msg.forwardedFrom ?
-            `<div class="message-forwarded">↪ Переслано от @${msg.forwardedFrom}</div>` : ''}
-          ${attachmentsHtml}
-          ${msg.message ? `<div class="message-bubble">${QWAS.Utils.escapeHtml(msg.message)}</div>` : ''}
-          <div class="message-meta">
-            <span>${QWAS.Utils.formatTime(msg.createdAt)}</span>
-            ${isMe ? `<span class="message-status ${msg.status === 'read' ? 'read' : ''}">${msg.status === 'read' ? '✓✓' : '✓'}</span>` : ''}
-          </div>
-        </div>
-      `;
+      const replyHtml = m.replyTo ? this.renderReply(m.replyTo) : '';
+      const forwardedHtml = m.isForwarded ? `<div class="forwarded-label">↪ Переслано от @${QWAS.Util.escapeHtml(m.forwardedFrom || '')}</div>` : '';
+      const attachmentsHtml = this.renderAttachments(m.attachments || []);
+      const textHtml = m.message ? `<div class="bubble-text">${this.formatText(m.message, m.mentions)}</div>` : '';
+      const reactionsHtml = this.renderReactions(m);
+      const metaHtml = showMeta ? this.renderMeta(m, isMine) : '';
 
-      // Click handler for images
-      if (msg.attachments) {
-        msg.attachments.forEach(a => {
-          if (a.type === 'image') {
-            setTimeout(() => {
-              const img = div.querySelector(`img[src="${QWAS.Utils.escapeHtml(a.url)}"]`);
-              if (img) img.addEventListener('click', () => QWAS.Messages.openLightbox(a.url));
-            }, 0);
-          }
-        });
-      }
+      const firstClass = idx === 0 ? 'first-in-group' : '';
+      const lastClass = isLast ? 'last-in-group' : '';
+      const pinnedClass = m.isPinned ? 'pinned' : '';
 
-      return div;
-    },
-
-    renderAttachment: function(att) {
-      if (att.type === 'image') {
-        return `<div class="message-attachment-image" onclick="QWAS.Messages.openLightbox('${att.url}')">
-          <img src="${att.url}" alt="${QWAS.Utils.escapeHtml(att.name)}" loading="lazy">
-        </div>`;
-      }
-      if (att.type === 'audio') {
-        return `<div class="message-attachment-audio">
-          <audio src="${att.url}" controls preload="metadata"></audio>
-        </div>`;
-      }
-      return `<div class="message-attachment-file">
-        <a href="${att.url}" download="${QWAS.Utils.escapeHtml(att.name)}" target="_blank">
-          <span class="file-icon">📎</span>
-          <span class="file-name">${QWAS.Utils.escapeHtml(att.name)}</span>
-          <span class="file-size">${QWAS.Utils.formatSize(att.size)}</span>
-        </a>
+      return `${authorName}<div class="bubble ${firstClass} ${lastClass} ${pinnedClass}"
+        data-id="${QWAS.Util.escapeAttr(m._id)}"
+        oncontextmenu="QWAS.ContextMenu.showMessage(event, '${QWAS.Util.escapeAttr(m._id)}')"
+        ondblclick="QWAS.Reactions.showQuick(event, '${QWAS.Util.escapeAttr(m._id)}')"
+        ontouchstart="QWAS.Messages.touchStart(event, '${QWAS.Util.escapeAttr(m._id)}')"
+        ontouchend="QWAS.Messages.touchEnd()"
+        ontouchmove="QWAS.Messages.touchEnd()">
+        ${forwardedHtml}
+        ${replyHtml}
+        ${attachmentsHtml}
+        ${textHtml}
+        ${metaHtml}
+        ${reactionsHtml}
       </div>`;
     },
 
-    openLightbox: function(url) {
-      const modal = document.getElementById('lightboxModal');
-      const img = document.getElementById('lightboxImage');
-      if (!modal || !img) return;
-      img.src = url;
-      modal.classList.add('show');
-    },
-
-    closeLightbox: function() {
-      const modal = document.getElementById('lightboxModal');
-      if (modal) modal.classList.remove('show');
-    },
-
-    showMenu: function(msg, event) {
-      QWAS.State.selectedMessage = msg;
-      const menu = document.getElementById('messageMenu');
-      if (!menu) return;
-
-      const x = event.clientX || (event.touches ? event.touches[0].clientX : 0);
-      const y = event.clientY || (event.touches ? event.touches[0].clientY : 0);
-
-      menu.style.left = Math.min(x, window.innerWidth - 220) + 'px';
-      menu.style.top = Math.min(y, window.innerHeight - 160) + 'px';
-      menu.classList.add('show');
-
-      setTimeout(() => {
-        document.addEventListener('click', () => menu.classList.remove('show'), { once: true });
-      }, 100);
-    },
-
-    send: function() {
-      const input = document.getElementById('msg');
-      if (!input) return;
-
-      const text = input.value.trim();
-      if (!text && !QWAS.Messages.pendingFile) return;
-      if (!QWAS.State.current) return;
-
-      if (QWAS.State.editingMessageId) {
-        QWAS.State.socket.emit('edit_message', {
-          messageId: QWAS.State.editingMessageId,
-          newText: text
-        });
-        QWAS.State.editingMessageId = null;
-        input.value = '';
-        return;
+    renderAvatar(user, size) {
+      const sizeClass = `size-${size}`;
+      if (user.avatar) {
+        return `<div class="avatar ${sizeClass}" style="background-image:url(${QWAS.Util.escapeAttr(user.avatar)})"></div>`;
       }
-
-      const payload = { to: QWAS.State.current, message: text || '' };
-
-      if (QWAS.Messages.pendingFile) {
-        payload.attachments = [QWAS.Messages.pendingFile];
-        QWAS.Messages.pendingFile = null;
-        const preview = document.getElementById('filePreview');
-        if (preview) preview.style.display = 'none';
-      }
-
-      QWAS.State.socket.emit('send_message', payload);
-      input.value = '';
+      return `<div class="avatar ${sizeClass} ${QWAS.Util.gradientFor(user.username || user.firstName)}">${QWAS.Util.escapeHtml(QWAS.Util.getInitials(user.firstName || user.username || '?'))}</div>`;
     },
 
-    forward: function() {
-      if (!QWAS.State.selectedMessage) return;
-      document.getElementById('messageMenu').classList.remove('show');
-      this.openForwardModal();
+    renderReply(replyToId) {
+      const list = QWAS.State.messagesByChat.get(QWAS.State.current) || [];
+      const reply = list.find(m => m._id === replyToId);
+      if (!reply) {
+        return `<div class="reply-quote"><div class="reply-author">Удалённое сообщение</div></div>`;
+      }
+      const name = reply.from === QWAS.State.me ? 'Вы' : QWAS.Util.getUserDisplayName({ username: reply.from }) || reply.from;
+      const text = reply.message || (reply.attachments?.length ? '📎 Вложение' : '');
+      return `<div class="reply-quote" onclick="QWAS.Chat.scrollToMessage('${QWAS.Util.escapeAttr(replyToId)}')">
+        <div class="reply-author">${QWAS.Util.escapeHtml(name)}</div>
+        <div class="reply-text">${QWAS.Util.escapeHtml(QWAS.Util.truncate(text, 80))}</div>
+      </div>`;
     },
 
-    edit: function() {
-      const msg = QWAS.State.selectedMessage;
-      if (!msg || msg.from !== QWAS.State.me) {
-        QWAS.Notifications.error('Только свои сообщения');
-        document.getElementById('messageMenu').classList.remove('show');
-        return;
-      }
-
-      QWAS.State.editingMessageId = msg._id;
-      document.getElementById('msg').value = msg.message;
-      document.getElementById('msg').focus();
-      document.getElementById('messageMenu').classList.remove('show');
-    },
-
-    delete: function() {
-      const msg = QWAS.State.selectedMessage;
-      if (!msg || msg.from !== QWAS.State.me) {
-        QWAS.Notifications.error('Только свои сообщения');
-        document.getElementById('messageMenu').classList.remove('show');
-        return;
-      }
-
-      if (!confirm('Удалить сообщение?')) {
-        document.getElementById('messageMenu').classList.remove('show');
-        return;
-      }
-
-      QWAS.State.socket.emit('delete_message', { messageId: msg._id });
-      document.getElementById('messageMenu').classList.remove('show');
-    },
-
-    handleFileSelect: function(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      if (file.size > 20 * 1024 * 1024) {
-        QWAS.Notifications.error('Файл слишком большой (макс 20MB)');
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const uploadBtn = document.getElementById('fileUploadBtn');
-      if (uploadBtn) uploadBtn.textContent = '⏳';
-
-      fetch('/upload', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${QWAS.State.userToken}` },
-        body: formData
-      })
-      .then(r => r.json())
-      .then(data => {
-        if (uploadBtn) uploadBtn.textContent = '📎';
-        if (!data.ok) {
-          QWAS.Notifications.error(data.error || 'Ошибка загрузки');
-          return;
-        }
-
-        QWAS.Messages.pendingFile = data.file;
-        QWAS.Messages.showFilePreview(data.file);
-      })
-      .catch(err => {
-        if (uploadBtn) uploadBtn.textContent = '📎';
-        console.error('Upload error:', err);
-        QWAS.Notifications.error('Ошибка загрузки');
-      });
-
-      e.target.value = '';
-    },
-
-    showFilePreview: function(file) {
-      const preview = document.getElementById('filePreview');
-      if (!preview) return;
-
-      let html = '';
-      if (file.type === 'image') {
-        html = `<img src="${file.url}" class="file-preview-img">`;
-      } else if (file.type === 'audio') {
-        html = `<audio src="${file.url}" controls style="width:100%;"></audio>`;
-      } else {
-        html = `<div class="file-preview-info">📎 ${QWAS.Utils.escapeHtml(file.name)} (${QWAS.Utils.formatSize(file.size)})</div>`;
-      }
-
-      html += `<button class="file-preview-remove" onclick="QWAS.Messages.removeFile()">✕</button>`;
-      preview.innerHTML = html;
-      preview.style.display = 'block';
-
-      const msgInput = document.getElementById('msg');
-      if (msgInput) msgInput.focus();
-    },
-
-    removeFile: function() {
-      QWAS.Messages.pendingFile = null;
-      const preview = document.getElementById('filePreview');
-      if (preview) {
-        preview.innerHTML = '';
-        preview.style.display = 'none';
-      }
-    },
-
-    openForwardModal: function() {
-      const list = document.getElementById('forwardChatList');
-      if (!list) return;
-
-      const dmChats = (QWAS.State.chatList || [])
-        .filter(c => c.username !== QWAS.State.current && !c.username.startsWith('group:'));
-
-      const groupChats = (QWAS.Groups.myGroups || [])
-        .filter(g => `group:${g._id}` !== QWAS.State.current);
-
-      const available = [
-        { username: QWAS.Config.FAVORITE_CHAT_ID },
-        ...groupChats.map(g => ({ isGroup: true, _id: g._id, name: g.name, avatarColor: g.avatarColor })),
-        ...dmChats
-      ];
-
-      list.innerHTML = available.map(c => {
-        if (c.isGroup) {
-          return `
-            <div class="forward-chat-item" onclick="QWAS.Messages.sendForward('group:${c._id}')">
-              <div class="user-avatar small" style="background:${c.avatarColor}; font-size:14px;">👥</div>
-              <div>${QWAS.Utils.escapeHtml(c.name)}</div>
-            </div>
-          `;
-        }
-        const isFav = c.username === QWAS.Config.FAVORITE_CHAT_ID;
-        return `
-          <div class="forward-chat-item" onclick="QWAS.Messages.sendForward('${c.username}')">
-            <div class="user-avatar small" id="forward-avatar-${c.username}"></div>
-            <div>${isFav ? 'Избранное' : '@' + c.username}</div>
-          </div>
-        `;
-      }).join('');
-
-      available.forEach(c => {
-        if (c.isGroup) return;
-        const avatarEl = document.getElementById(`forward-avatar-${c.username}`);
-        if (avatarEl) {
-          QWAS.Utils.renderAvatar(avatarEl, {
-            username: c.username,
-            avatar: c.avatar,
-            avatarColor: c.avatarColor
-          });
-          if (c.username === QWAS.Config.FAVORITE_CHAT_ID) {
-            avatarEl.textContent = '⭐';
-            avatarEl.style.background = '#6366f1';
+    renderAttachments(att) {
+      if (!att || !att.length) return '';
+      const groups = this.groupAttachments(att);
+      let html = '<div class="attachments">';
+      for (const g of groups) {
+        if (g.type === 'image' && g.items.length > 1) {
+          html += `<div class="att-image att-image-multiple">${g.items.map(i => this.renderImage(i, false)).join('')}</div>`;
+        } else {
+          for (const item of g.items) {
+            html += this.renderSingleAttachment(item, g.type);
           }
         }
-      });
-
-      document.getElementById('forwardModal').classList.add('show');
+      }
+      html += '</div>';
+      return html;
     },
 
-    closeForwardModal: function() {
-      document.getElementById('forwardModal').classList.remove('show');
+    groupAttachments(att) {
+      const groups = [];
+      let cur = null;
+      for (const a of att) {
+        const t = a.type || 'file';
+        if (t !== 'image' && t !== 'video') {
+          groups.push({ type: t, items: [a] });
+          cur = null;
+        } else {
+          if (!cur || cur.type !== t) {
+            cur = { type: t, items: [a] };
+            groups.push(cur);
+          } else {
+            cur.items.push(a);
+          }
+        }
+      }
+      return groups;
     },
 
-    sendForward: function(to) {
-      if (!QWAS.State.selectedMessage) return;
+    renderSingleAttachment(a, type) {
+      switch (type) {
+        case 'image': return this.renderImage(a, true);
+        case 'video': return this.renderVideo(a);
+        case 'audio': return this.renderAudio(a);
+        case 'voice': return this.renderVoice(a);
+        case 'round': return this.renderRound(a);
+        default: return this.renderFile(a);
+      }
+    },
+
+    renderImage(a, wrap) {
+      const w = wrap ? `<div class="att-image" onclick="QWAS.Lightbox.open('${QWAS.Util.escapeAttr(a.url)}', '${QWAS.Util.escapeAttr(a.name || '')}')">` : `<div class="att-image">`;
+      return `${w}<img src="${QWAS.Util.escapeAttr(a.url)}" alt="${QWAS.Util.escapeAttr(a.name || '')}" loading="lazy"></div>`;
+    },
+
+    renderVideo(a) {
+      return `<div class="att-video" onclick="QWAS.Lightbox.openVideo('${QWAS.Util.escapeAttr(a.url)}')">
+        <video src="${QWAS.Util.escapeAttr(a.url)}" preload="metadata"></video>
+        <div class="att-video-play">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+        </div>
+        ${a.duration ? `<div class="att-video-duration">${QWAS.Util.formatDuration(a.duration)}</div>` : ''}
+      </div>`;
+    },
+
+    renderAudio(a) {
+      return `<div class="att-file" onclick="window.open('${QWAS.Util.escapeAttr(a.url)}', '_blank')">
+        <div class="att-file-icon">🎵</div>
+        <div class="att-file-info">
+          <div class="att-file-name">${QWAS.Util.escapeHtml(a.name || 'Аудио')}</div>
+          <div class="att-file-size">${QWAS.Util.formatSize(a.size)}</div>
+        </div>
+      </div>`;
+    },
+
+    renderVoice(a) {
+      const bars = this.makeWaveform(a.waveform?.length ? a.waveform : null);
+      return `<div class="att-voice" data-url="${QWAS.Util.escapeAttr(a.url)}" data-duration="${a.duration || 0}">
+        <button class="att-voice-btn" onclick="QWAS.Attach.playVoice(this)">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+        </button>
+        <div class="att-voice-wave">${bars}</div>
+        <div class="att-voice-duration">${QWAS.Util.formatDuration(a.duration)}</div>
+      </div>`;
+    },
+
+    renderRound(a) {
+      return `<div class="att-round" onclick="QWAS.Lightbox.openVideo('${QWAS.Util.escapeAttr(a.url)}', true)">
+        <video src="${QWAS.Util.escapeAttr(a.url)}" muted></video>
+        <div class="att-round-overlay">
+          <div class="att-round-play">
+            <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+          </div>
+        </div>
+        <div class="att-round-duration">${QWAS.Util.formatDuration(a.duration || 0)}</div>
+      </div>`;
+    },
+
+    renderFile(a) {
+      const ext = (a.name || '').split('.').pop().toUpperCase().slice(0, 4);
+      const iconChar = this.getFileIconChar(ext);
+      return `<a class="att-file" href="${QWAS.Util.escapeAttr(a.url)}" download="${QWAS.Util.escapeAttr(a.name || '')}" target="_blank">
+        <div class="att-file-icon">${iconChar}</div>
+        <div class="att-file-info">
+          <div class="att-file-name">${QWAS.Util.escapeHtml(a.name || 'Файл')}</div>
+          <div class="att-file-size">${QWAS.Util.formatSize(a.size)}</div>
+        </div>
+      </a>`;
+    },
+
+    getFileIconChar(ext) {
+      const map = {
+        PDF: '📄', DOC: '📝', DOCX: '📝', XLS: '📊', XLSX: '📊',
+        ZIP: '🗜', RAR: '🗜', '7Z': '🗜',
+        MP3: '🎵', WAV: '🎵', OGG: '🎵',
+        MP4: '🎬', MOV: '🎬', AVI: '🎬',
+        JPG: '🖼', JPEG: '🖼', PNG: '🖼', GIF: '🖼', WEBP: '🖼'
+      };
+      return map[ext] || '📎';
+    },
+
+    makeWaveform(amplitudes) {
+      const count = 40;
+      if (!amplitudes || amplitudes.length === 0) {
+        amplitudes = Array.from({ length: count }, () => 0.3 + Math.random() * 0.7);
+      } else {
+        const step = Math.max(1, Math.floor(amplitudes.length / count));
+        amplitudes = Array.from({ length: count }, (_, i) => amplitudes[i * step] || 0.3);
+      }
+      return amplitudes.map(a => `<span style="height:${Math.round(20 + a * 80)}%"></span>`).join('');
+    },
+
+    formatText(text, mentions) {
+      let formatted = QWAS.Util.detectLinks(QWAS.Util.escapeHtml(text));
+      if (mentions && mentions.length) {
+        for (const m of mentions) {
+          const re = new RegExp(`@${m}\\b`, 'g');
+          formatted = formatted.replace(re, `<span class="mention">@${QWAS.Util.escapeHtml(m)}</span>`);
+        }
+      }
+      return formatted;
+    },
+
+    renderReactions(m) {
+      if (!m.reactions || m.reactions.length === 0) return '';
+      return `<div class="reactions-row">${m.reactions.map(r => {
+        const own = r.users?.includes(QWAS.State.me);
+        return `<div class="reaction ${own ? 'own' : ''}" onclick="QWAS.Reactions.toggle('${QWAS.Util.escapeAttr(m._id)}', '${QWAS.Util.escapeAttr(r.emoji)}')">
+          <span class="emoji">${r.emoji}</span>
+          <span class="count">${r.users?.length || 1}</span>
+        </div>`;
+      }).join('')}</div>`;
+    },
+
+    renderMeta(m, isMine) {
+      const time = QWAS.Util.formatTime(m.createdAt);
+      const edited = m.edited ? '<span class="edited">ред.</span>' : '';
+      let status = '';
+      if (isMine) {
+        const cls = m.status === 'read' ? 'read' : '';
+        const icon = m.status === 'read' ? '✓✓' : '✓';
+        status = `<span class="status ${cls}">${icon}</span>`;
+      }
+      return `<div class="bubble-meta">
+        ${m.edited ? '<span class="edited">ред.</span>' : ''}
+        <span class="time">${time}</span>
+        ${status}
+      </div>`;
+    },
+
+    add(msg) {
+      const container = this.ensureContainer();
+      if (!container) return;
+      if (document.getElementById('msg-' + msg._id)) return;
+
+      const list = QWAS.State.messagesByChat.get(QWAS.State.current) || [];
+      list.push(msg);
+      QWAS.State.messagesByChat.set(QWAS.State.current, list);
+
+      const sysMsg = container.querySelector('.system-message');
+      if (sysMsg) sysMsg.remove();
+
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+
+      const html = this.renderGroups([msg]);
+      container.insertAdjacentHTML('beforeend', html);
+
+      if (isNearBottom || msg.from === QWAS.State.me) {
+        this.scrollToBottom();
+      } else {
+        QWAS.ScrollButton.show(1);
+      }
+    },
+
+    prepend(msgs) {
+      const container = this.ensureContainer();
+      if (!container || !msgs.length) return;
+      const sysMsg = container.querySelector('.system-message');
+      if (sysMsg) sysMsg.remove();
+
+      const html = this.renderGroups(msgs);
+      container.insertAdjacentHTML('afterbegin', html);
+    },
+
+    saveScrollPosition() {
+      const container = this.ensureContainer();
+      if (!container) return;
+      const firstMsg = container.querySelector('.message-group');
+      if (!firstMsg) return;
+      const containerRect = container.getBoundingClientRect();
+      const msgRect = firstMsg.getBoundingClientRect();
+      this.firstMessageBeforeLoad = {
+        offset: msgRect.top - containerRect.top
+      };
+    },
+
+    restoreScrollPosition() {
+      const container = this.ensureContainer();
+      if (!container || this.firstMessageBeforeLoad == null) return;
+      const firstMsg = container.querySelector('.message-group');
+      if (firstMsg) {
+        const containerRect = container.getBoundingClientRect();
+        const msgRect = firstMsg.getBoundingClientRect();
+        const delta = (msgRect.top - containerRect.top) - this.firstMessageBeforeLoad.offset;
+        container.scrollTop = container.scrollTop + delta;
+      }
+      this.firstMessageBeforeLoad = null;
+    },
+
+    scrollToBottom(smooth = true) {
+      const container = this.ensureContainer();
+      if (!container) return;
+      if (smooth) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      } else {
+        container.scrollTop = container.scrollHeight;
+      }
+      QWAS.ScrollButton.hide();
+    },
+
+    updateStatus(messageId, status) {
+      const bubble = document.querySelector(`[data-id="${messageId}"] .status`);
+      if (bubble) {
+        bubble.classList.toggle('read', status === 'read');
+        bubble.textContent = status === 'read' ? '✓✓' : '✓';
+      }
+    },
+
+    updateReactions(messageId, reactions) {
+      const bubble = document.querySelector(`[data-id="${messageId}"]`);
+      if (!bubble) return;
+      const existing = bubble.querySelector('.reactions-row');
+      if (existing) existing.remove();
+      const html = this.renderReactions({ _id: messageId, reactions });
+      if (html) bubble.insertAdjacentHTML('beforeend', html);
+    },
+
+    touchStart(e, id) {
+      this.touchTimer = setTimeout(() => {
+        QWAS.ContextMenu.showMessage(e, id);
+      }, 500);
+    },
+
+    touchEnd() {
+      clearTimeout(this.touchTimer);
+    },
+
+    send() {
+      const input = document.getElementById('msgInput');
+      if (!input) return;
+      const text = input.value.trim();
+      if (!text && QWAS.State.pendingFiles.length === 0) return;
+      if (!QWAS.State.current) return;
+
+      if (QWAS.State.editingId) {
+        QWAS.State.socket.emit('edit_message', {
+          messageId: QWAS.State.editingId,
+          newText: text
+        });
+        QWAS.State.editingId = null;
+        input.value = '';
+        this.cancelEdit();
+        return;
+      }
 
       const payload = {
-        to,
-        message: QWAS.State.selectedMessage.message || '',
-        isForwarded: true,
-        forwardedFrom: QWAS.State.selectedMessage.from
+        to: QWAS.State.current,
+        message: text || ''
       };
 
-      if (QWAS.State.selectedMessage.attachments && QWAS.State.selectedMessage.attachments.length > 0) {
-        payload.attachments = QWAS.State.selectedMessage.attachments;
+      if (QWAS.State.replyTo) {
+        payload.replyTo = QWAS.State.replyTo;
+        QWAS.State.replyTo = null;
+        QWAS.ReplyPreview.hide();
       }
 
-      QWAS.State.socket.emit('send_message', payload);
-      this.closeForwardModal();
-      QWAS.Notifications.success('Переслано');
-    },
+      if (QWAS.State.pendingFiles.length > 0) {
+        payload.attachments = QWAS.State.pendingFiles.slice();
+        QWAS.State.pendingFiles = [];
+        QWAS.Composer.renderAttachments();
+      }
 
-    showScrollButton: function(count = 1) {
-      const btn = document.getElementById('scrollToBottomBtn');
-      const badge = document.getElementById('scrollUnreadBadge');
-
-      if (btn) {
-        btn.classList.add('show');
-        if (badge) {
-          QWAS.State.unreadCount = (QWAS.State.unreadCount || 0) + count;
-          badge.textContent = QWAS.State.unreadCount;
-          badge.style.display = 'flex';
+      QWAS.State.socket.emit('send_message', payload, (ack) => {
+        if (ack && !ack.ok) {
+          QWAS.Toast.error(ack.error || 'Ошибка отправки');
         }
-      }
+      });
+
+      input.value = '';
+      this.autoresizeInput();
+      QWAS.Composer.updateSendButton();
     },
 
-    hideScrollButton: function() {
-      const btn = document.getElementById('scrollToBottomBtn');
-      const badge = document.getElementById('scrollUnreadBadge');
-
-      if (btn) {
-        btn.classList.remove('show');
-        if (badge) {
-          QWAS.State.unreadCount = 0;
-          badge.textContent = '';
-          badge.style.display = 'none';
-        }
-      }
+    cancelEdit() {
+      QWAS.State.editingId = null;
+      QWAS.Composer.exitEditMode();
     },
 
-    updateScrollButton: function() {
-      const container = document.getElementById('messages');
-      const btn = document.getElementById('scrollToBottomBtn');
-      if (!container || !btn) return;
-
-      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-
-      if (isNearBottom) {
-        this.hideScrollButton();
-      }
-    },
-
-    scrollToBottom: function() {
-      const container = document.getElementById('messages');
-      if (container) {
-        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-        this.hideScrollButton();
-      }
+    autoresizeInput() {
+      const ta = document.getElementById('msgInput');
+      if (!ta) return;
+      ta.style.height = 'auto';
+      ta.style.height = Math.min(ta.scrollHeight, 100) + 'px';
     }
   };
 
-  const msgInput = document.getElementById('msg');
-  if (msgInput) {
-    msgInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        QWAS.Messages.send();
+  QWAS.Messages = Messages;
+  QWAS.ScrollButton = {
+    show(n) {
+      const btn = document.getElementById('scrollToBottom');
+      const badge = document.getElementById('scrollBadge');
+      if (!btn) return;
+      QWAS.State.unreadCount = (QWAS.State.unreadCount || 0) + n;
+      btn.classList.add('show');
+      if (badge) {
+        badge.textContent = QWAS.State.unreadCount > 99 ? '99+' : QWAS.State.unreadCount;
+        badge.style.display = 'flex';
       }
-    });
-
-    msgInput.addEventListener('input', () => {
-      if (!QWAS.State.current || QWAS.State.current === QWAS.Config.FAVORITE_CHAT_ID) return;
-
-      QWAS.State.socket.emit('typing', QWAS.State.current);
-      clearTimeout(QWAS.State.typingTimeout);
-      QWAS.State.typingTimeout = setTimeout(() => {
-        QWAS.State.socket.emit('stop_typing', QWAS.State.current);
-      }, QWAS.Config.TYPING_TIMEOUT);
-    });
-  }
-
-  const messagesContainer = document.getElementById('messages');
-  if (messagesContainer) {
-    let isLoadingMore = false;
-
-    messagesContainer.addEventListener('scroll', () => {
-      const scrollTop = messagesContainer.scrollTop;
-
-      if (scrollTop < 50 && QWAS.State.hasMoreMessages && !QWAS.State.isLoadingMessages && !isLoadingMore) {
-        isLoadingMore = true;
-        QWAS.State.isLoadingMessages = true;
-        QWAS.Messages.saveScrollPosition();
-
-        if (QWAS.State.socket) QWAS.State.socket.emit('load_more');
-
-        setTimeout(() => { isLoadingMore = false; }, 2000);
-      }
-
-      QWAS.Messages.updateScrollButton();
-    });
-  }
-
-  const fileInput = document.getElementById('fileInput');
-  if (fileInput) {
-    fileInput.addEventListener('change', (e) => QWAS.Messages.handleFileSelect(e));
-  }
+    },
+    hide() {
+      const btn = document.getElementById('scrollToBottom');
+      const badge = document.getElementById('scrollBadge');
+      if (btn) btn.classList.remove('show');
+      QWAS.State.unreadCount = 0;
+      if (badge) badge.style.display = 'none';
+    }
+  };
 })();

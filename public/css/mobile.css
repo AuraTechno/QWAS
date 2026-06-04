@@ -1,24 +1,60 @@
-@media (max-width: 768px) {
-  .chat-area {
-    position: absolute;
-    inset: 0;
-  }
-  
-  .mobile-back-btn {
-    display: block;
-    background: none;
-    border: none;
-    color: var(--accent);
-    font-size: 26px;
-    cursor: pointer;
-    padding: 4px 8px;
-  }
-  
-  .auth-container {
-    padding: 30px 20px;
-  }
-  
-  .scroll-to-bottom {
-    bottom: 90px;
-  }
+@media (max-width: 900px) {
+  :root { --sidebar-width: 100%; }
+  .sidebar { width: 100%; }
+  .chat-area { display: none; }
+  .main-screen.chat-open .sidebar { display: none; }
+  .main-screen.chat-open .chat-area { display: flex; }
+  .chat-back { display: flex; }
+  .folders-bar { display: none; }
 }
+
+@media (max-width: 600px) {
+  .main-menu { width: calc(100vw - 24px); }
+  .attach-menu { left: 4px; right: 4px; min-width: 0; grid-template-columns: 1fr; }
+  .emoji-panel { right: 4px; left: 4px; width: auto; }
+  .modal { max-width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0; max-height: 92vh; align-self: flex-end; animation: modal-bottom-in 0.3s ease; }
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .auth-container { margin: 16px; padding: 28px 22px 22px; }
+  .chats-tabs .chats-tab { padding: 6px 10px; font-size: 13px; }
+  .chat-header-actions .icon-btn { width: 38px; height: 38px; }
+  .composer-btn { width: 40px; height: 40px; }
+  .scroll-to-bottom { width: 44px; height: 44px; bottom: 12px; right: 12px; }
+  .bubble-wrap { max-width: 82%; }
+  .att-image { max-width: 240px; }
+  .att-video { max-width: 240px; }
+  .att-round { width: 160px; height: 160px; }
+  .toast { font-size: 13px; padding: 10px 14px; }
+}
+
+@keyframes modal-bottom-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@media (max-width: 900px) {
+  .chat-area[data-empty="true"] { display: none; }
+  .chat-area[data-empty="false"] { display: flex; }
+}
+
+@supports (padding: max(0px)) {
+  .sidebar-header { padding-top: max(8px, env(safe-area-inset-top)); }
+  .chat-header { padding-top: max(0px, env(safe-area-inset-top)); }
+  .composer { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+  .toast-container { top: max(20px, calc(env(safe-area-inset-top) + 20px)); }
+}
+
+input, textarea, button, select {
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 0;
+}
+
+input[type="file"] { display: none; }
+
+.touch-callout { -webkit-touch-callout: none; }
+
+@media (hover: none) and (pointer: coarse) {
+  .icon-btn:hover { background: transparent; }
+}
+
+.will-animate { will-change: transform, opacity; }

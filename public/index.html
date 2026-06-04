@@ -1,242 +1,333 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru" data-theme="dark">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0f172a">
-<link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/icon-192.png">
-<link rel="icon" href="/favicon-32.png">
-<title>QWAS Messenger</title>
-<script src="/socket.io/socket.io.js"></script>
-<link rel="stylesheet" href="/css/style.css">
-<link rel="stylesheet" href="/css/mobile.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#17212b">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="icon" href="/favicon-32.png">
+  <title>QWAS Messenger</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <link rel="stylesheet" href="/css/vars.css">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/auth.css">
+  <link rel="stylesheet" href="/css/sidebar.css">
+  <link rel="stylesheet" href="/css/chat.css">
+  <link rel="stylesheet" href="/css/messages.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/animations.css">
+  <link rel="stylesheet" href="/css/mobile.css">
 </head>
 <body>
 
-<div class="notification-container" id="notificationContainer"></div>
+<div id="app">
 
-<!-- Авторизация -->
-<div id="auth">
-  <div class="auth-container">
-    <h1>QWAS</h1>
-    <input id="loginUsername" placeholder="Имя пользователя" autocomplete="off" autocapitalize="none">
-    <input id="loginPassword" type="password" placeholder="Пароль" autocomplete="off">
-    <button class="btn-primary" onclick="QWAS.Auth.handleLogin()">Войти</button>
-    <button class="auth-link" onclick="QWAS.Auth.openRegisterModal()">Создать аккаунт</button>
+  <div id="authScreen" class="auth-screen">
+    <div class="auth-bg"></div>
+    <div class="auth-container">
+      <div class="auth-brand">
+        <div class="auth-logo">
+          <svg viewBox="0 0 100 100" width="64" height="64">
+            <defs>
+              <linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#5e8ee7"/>
+                <stop offset="100%" stop-color="#2a7ae0"/>
+              </linearGradient>
+            </defs>
+            <circle cx="50" cy="50" r="48" fill="url(#lg)"/>
+            <path d="M30 30 L70 30 L70 50 Q70 70 50 70 Q30 70 30 50 Z" fill="white" opacity="0.95"/>
+          </svg>
+        </div>
+        <h1>QWAS</h1>
+        <p class="auth-tagline">Современный мессенджер</p>
+      </div>
+
+      <div id="authLogin" class="auth-form">
+        <h2>Вход</h2>
+        <div class="auth-field">
+          <input type="text" id="loginUsername" placeholder="Имя пользователя" autocomplete="username" autocapitalize="none" spellcheck="false">
+        </div>
+        <div class="auth-field">
+          <input type="password" id="loginPassword" placeholder="Пароль" autocomplete="current-password">
+          <button class="auth-eye" id="loginEye" type="button">👁</button>
+        </div>
+        <button class="btn-primary auth-btn" onclick="QWAS.Auth.handleLogin()">
+          <span>Войти</span>
+        </button>
+        <button class="auth-link" onclick="QWAS.Auth.openRegister()">Создать аккаунт</button>
+        <div class="auth-version" id="authVersion">QWAS Messenger</div>
+      </div>
+
+      <div id="authRegister" class="auth-form" style="display:none;">
+        <h2>Регистрация</h2>
+        <div class="auth-field">
+          <input type="text" id="regUsername" placeholder="Имя пользователя (a-z, 0-9, _)" autocomplete="off" autocapitalize="none" spellcheck="false">
+        </div>
+        <div class="auth-field-row">
+          <input type="text" id="regFirstName" placeholder="Имя" autocomplete="off">
+          <input type="text" id="regLastName" placeholder="Фамилия" autocomplete="off">
+        </div>
+        <div class="auth-field">
+          <input type="password" id="regPassword" placeholder="Пароль (мин. 6 символов)" autocomplete="new-password">
+        </div>
+        <div class="auth-field">
+          <input type="password" id="regConfirmPassword" placeholder="Подтвердите пароль" autocomplete="new-password">
+        </div>
+        <button class="btn-primary auth-btn" onclick="QWAS.Auth.handleRegister()">Создать аккаунт</button>
+        <button class="auth-link" onclick="QWAS.Auth.closeRegister()">Уже есть аккаунт</button>
+      </div>
+    </div>
   </div>
-</div>
 
-<!-- Регистрация -->
-<div class="modal" id="registerModal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h2>Регистрация</h2>
-      <button class="close-btn" onclick="QWAS.Auth.closeRegisterModal()">&times;</button>
-    </div>
-    <div class="modal-field">
-      <input type="text" id="regUsername" placeholder="Имя пользователя" autocomplete="off">
-    </div>
-    <div class="modal-field">
-      <input type="password" id="regPassword" placeholder="Пароль" autocomplete="new-password">
-    </div>
-    <div class="modal-field">
-      <input type="password" id="regConfirmPassword" placeholder="Подтверждение пароля">
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="QWAS.Auth.closeRegisterModal()">Отмена</button>
-      <button class="btn btn-primary" onclick="QWAS.Auth.handleRegister()">Создать</button>
-    </div>
-  </div>
-</div>
+  <div id="mainScreen" class="main-screen" style="display:none;">
 
-<!-- Чат -->
-<div id="chat">
-  <div class="sidebar" id="sidebar">
-    <div class="sidebar-header">
-      <h2>QWAS</h2>
-      <div class="user-info" onclick="QWAS.Profile.open()">
-        <div class="user-avatar" id="myAvatar">U</div>
-        <div style="flex:1;">
-          <div id="myUsername" style="font-weight:600;">username</div>
-          <div style="font-size:13px;color:var(--text-tertiary);">онлайн</div>
+    <aside id="sidebar" class="sidebar">
+
+      <header class="sidebar-header">
+        <button class="icon-btn sidebar-menu" onclick="QWAS.UI.toggleMainMenu()">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+        </button>
+        <div class="sidebar-search">
+          <svg viewBox="0 0 24 24" width="18" height="18" class="search-icon"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zM9.5 14A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14"/></svg>
+          <input type="text" id="searchInput" placeholder="Поиск" autocomplete="off">
+        </div>
+      </header>
+
+      <div id="foldersBar" class="folders-bar"></div>
+
+      <div id="storiesRail" class="stories-rail"></div>
+
+      <div class="chats-tabs">
+        <button class="chats-tab active" data-tab="all" onclick="QWAS.Chats.switchTab('all')">Все</button>
+        <button class="chats-tab" data-tab="unread" onclick="QWAS.Chats.switchTab('unread')">Непрочитанные</button>
+        <button class="chats-tab" data-tab="groups" onclick="QWAS.Chats.switchTab('groups')">Группы</button>
+        <button class="chats-tab" data-tab="channels" onclick="QWAS.Chats.switchTab('channels')">Каналы</button>
+        <button class="chats-tab" data-tab="contacts" onclick="QWAS.Chats.switchTab('contacts')">Контакты</button>
+      </div>
+
+      <div class="chats-list-wrapper">
+        <div class="chats-list" id="chatsList"></div>
+        <div class="chats-empty" id="chatsEmpty" style="display:none;">
+          <div class="chats-empty-icon">💬</div>
+          <h3>Нет чатов</h3>
+          <p>Начните общение — найдите собеседника или создайте группу</p>
+          <button class="btn-primary" onclick="QWAS.UI.openNewChat()">Новый чат</button>
         </div>
       </div>
-    </div>
-    
-    <div class="search-container">
-      <div class="search-box">
-        <span>🔍</span>
-        <input type="text" id="searchInput" placeholder="Поиск..." autocomplete="off">
+
+      <button class="fab" onclick="QWAS.UI.openNewChat()" title="Новый чат">
+        <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>
+      </button>
+    </aside>
+
+    <main id="chatArea" class="chat-area" data-empty="true">
+
+      <div class="empty-chat" id="emptyChat">
+        <div class="empty-chat-bg"></div>
+        <div class="empty-chat-content">
+          <div class="empty-chat-icon">
+            <svg viewBox="0 0 100 100" width="120" height="120">
+              <defs>
+                <linearGradient id="emptyLg" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#5e8ee7"/>
+                  <stop offset="100%" stop-color="#2a7ae0"/>
+                </linearGradient>
+              </defs>
+              <circle cx="50" cy="50" r="48" fill="url(#emptyLg)" opacity="0.15"/>
+              <path d="M20 35 Q20 25 30 25 L70 25 Q80 25 80 35 L80 60 Q80 70 70 70 L40 70 L25 80 L30 70 Q20 70 20 60 Z" fill="url(#emptyLg)" opacity="0.6"/>
+            </svg>
+          </div>
+          <h2>QWAS Messenger</h2>
+          <p>Выберите чат, чтобы начать общение</p>
+          <button class="btn-primary" onclick="QWAS.UI.openNewChat()">Создать новый чат</button>
+        </div>
       </div>
-      <div class="search-results" id="searchResults"></div>
-    </div>
-    
-    <div class="sidebar-actions">
-      <button class="sidebar-action-btn" onclick="QWAS.Groups.openCreateModal()" title="Создать группу">＋</button>
-    </div>
-    
-    <div class="section-title" id="groupsSectionTitle" style="display:none;">Группы и каналы</div>
-    <div class="users-list" id="groupsList" style="display:none;"></div>
-    
-    <div class="section-title">Чаты</div>
-    <div class="users-list" id="users"></div>
-  </div>
-  
-  <div class="chat-area">
-    <div class="chat-header" id="chatHeader" style="display: none;">
-      <button class="mobile-back-btn" onclick="QWAS.Chat.showSidebar()">←</button>
-      <div class="user-avatar small" id="chatAvatar">U</div>
-      <div class="chat-header-info">
-        <h3 id="chatUsername">Выберите чат</h3>
-        <div class="online-status" id="chatStatus"></div>
+
+      <div class="chat-content" id="chatContent" style="display:none;">
+
+        <header class="chat-header" id="chatHeader">
+          <button class="icon-btn chat-back" onclick="QWAS.Chat.close()">
+            <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20z"/></svg>
+          </button>
+          <div class="chat-header-info" onclick="QWAS.Chat.openInfo()">
+            <div class="chat-avatar" id="chatAvatar"></div>
+            <div class="chat-header-text">
+              <div class="chat-title" id="chatTitle">Имя</div>
+              <div class="chat-subtitle" id="chatSubtitle"></div>
+            </div>
+          </div>
+          <div class="chat-header-actions">
+            <button class="icon-btn" onclick="QWAS.Calls.start('voice')" title="Аудиозвонок">
+              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M20 15.5c-1.25 0-2.45-.2-3.57-.57a1 1 0 0 0-1.02.24l-2.2 2.2a15.05 15.05 0 0 1-6.59-6.58l2.2-2.21a1 1 0 0 0 .25-1A11.36 11.36 0 0 1 8.5 4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1c0 9.39 7.61 17 17 17a1 1 0 0 0 1-1v-3.5a1 1 0 0 0-1-1"/></svg>
+            </button>
+            <button class="icon-btn" onclick="QWAS.Calls.start('video')" title="Видеозвонок">
+              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11z"/></svg>
+            </button>
+            <button class="icon-btn" onclick="QWAS.Chat.openSearch()" title="Поиск в чате">
+              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zM9.5 14A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14"/></svg>
+            </button>
+            <button class="icon-btn" onclick="QWAS.Chat.openInfo()" title="Информация">
+              <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4m0 6a4 4 0 1 1 0-8 4 4 0 0 1 0 8m9-2a8 8 0 0 1-13.2 6.13L4 19l1.13-3.81A8 8 0 1 1 21 12"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <div class="pinned-bar" id="pinnedBar" style="display:none;">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2z"/></svg>
+          <div class="pinned-bar-text" id="pinnedBarText"></div>
+          <button class="icon-btn" onclick="QWAS.Chat.closePinned()" title="Закрыть">✕</button>
+        </div>
+
+        <div class="messages-wrapper" id="messagesWrapper">
+          <div class="chat-bg" id="chatBg"></div>
+          <div class="messages" id="messages"></div>
+          <div class="scroll-anchor" id="scrollAnchor"></div>
+          <div class="scroll-to-bottom" id="scrollToBottom" onclick="QWAS.Messages.scrollToBottom()">
+            <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z"/></svg>
+            <span class="scroll-badge" id="scrollBadge"></span>
+          </div>
+        </div>
+
+        <div class="typing-indicator" id="typingIndicator" style="display:none;">
+          <div class="typing-dots">
+            <span></span><span></span><span></span>
+          </div>
+          <span class="typing-text" id="typingText">печатает...</span>
+        </div>
+
+        <div class="reply-preview" id="replyPreview" style="display:none;">
+          <div class="reply-content">
+            <div class="reply-author" id="replyAuthor"></div>
+            <div class="reply-text" id="replyText"></div>
+          </div>
+          <button class="icon-btn" onclick="QWAS.Messages.cancelReply()">✕</button>
+        </div>
+
+        <div class="composer" id="composer">
+          <button class="icon-btn composer-btn" onclick="QWAS.Attach.toggle()" id="attachBtn" title="Прикрепить">
+            <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M16.5 6v11.5a4 4 0 1 1-4-4v2.5a1.5 1.5 0 1 0 1.5 1.5V6a3 3 0 1 0-3 3v8.5a5.5 5.5 0 1 0 5.5-5.5z"/></svg>
+          </button>
+          <button class="icon-btn composer-btn" onclick="QWAS.Emoji.toggle()" id="emojiBtn" title="Эмодзи">
+            <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2M12 20a8 8 0 1 1 0-16 8 8 0 0 1 0 16m3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5m-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11m3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5"/></svg>
+          </button>
+          <div class="composer-input">
+            <textarea id="msgInput" placeholder="Сообщение" rows="1"></textarea>
+          </div>
+          <button class="icon-btn composer-btn record-btn" id="recordBtn" onmousedown="QWAS.Voice.start(event)" onmouseup="QWAS.Voice.stop()" onmouseleave="QWAS.Voice.cancel()" ontouchstart="QWAS.Voice.start(event)" ontouchend="QWAS.Voice.stop()" title="Голосовое">
+            <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3m5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z"/></svg>
+          </button>
+          <button class="icon-btn send-btn" id="sendBtn" onclick="QWAS.Messages.send()" style="display:none;" title="Отправить">
+            <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M2 21 23 12 2 3v7l15 2-15 2z"/></svg>
+          </button>
+        </div>
+
+        <div class="attach-menu" id="attachMenu" style="display:none;">
+          <button class="attach-item" onclick="QWAS.Attach.pick('image')">
+            <span class="attach-icon icon-blue"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2M8.5 13.5l2.5 3.01L14.5 12l4.5 6H5z"/></svg></span>
+            <span>Фото</span>
+          </button>
+          <button class="attach-item" onclick="QWAS.Attach.pick('video')">
+            <span class="attach-icon icon-violet"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11z"/></svg></span>
+            <span>Видео</span>
+          </button>
+          <button class="attach-item" onclick="QWAS.Attach.pick('file')">
+            <span class="attach-icon icon-cyan"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zm-1 7V3.5L18.5 9z"/></svg></span>
+            <span>Файл</span>
+          </button>
+          <button class="attach-item" onclick="QWAS.Attach.startRound()">
+            <span class="attach-icon icon-pink"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2m0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8m0-13a5 5 0 1 0 5 5 5 5 0 0 0-5-5"/></svg></span>
+            <span>Видеосообщение</span>
+          </button>
+          <button class="attach-item" onclick="QWAS.Attach.pick('audio')">
+            <span class="attach-icon icon-green"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></svg></span>
+            <span>Музыка</span>
+          </button>
+          <button class="attach-item" onclick="QWAS.Attach.pick('location')">
+            <span class="attach-icon icon-orange"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 2a8 8 0 0 0-8 8c0 5.4 7.05 11.5 7.35 11.76a1 1 0 0 0 1.3 0C12.95 21.5 20 15.4 20 10a8 8 0 0 0-8-8m0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6"/></svg></span>
+            <span>Геопозиция</span>
+          </button>
+          <button class="attach-item" onclick="QWAS.Attach.pick('contact')">
+            <span class="attach-icon icon-yellow"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M20 0H4v2h16zM4 24h16v-2H4zm5-3h6v-1.5a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2zm3-7a3 3 0 1 0 0-6 3 3 0 0 0 0 6"/></svg></span>
+            <span>Контакт</span>
+          </button>
+          <button class="attach-item" onclick="QWAS.Attach.pick('poll')">
+            <span class="attach-icon icon-red"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M3 13h2v-2H3zm0 4h2v-2H3zm0-8h2V7H3zm4 4h14v-2H7zm0 4h14v-2H7zM7 7v2h14V7z"/></svg></span>
+            <span>Опрос</span>
+          </button>
+        </div>
+
+        <div class="emoji-panel" id="emojiPanel" style="display:none;">
+          <div class="emoji-categories" id="emojiCategories"></div>
+          <div class="emoji-grid" id="emojiGrid"></div>
+        </div>
+
+        <div class="voice-recording" id="voiceRecording" style="display:none;">
+          <button class="icon-btn voice-cancel" onclick="QWAS.Voice.cancel()">✕</button>
+          <div class="voice-wave" id="voiceWave">
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <div class="voice-timer" id="voiceTimer">0:00</div>
+          <button class="icon-btn voice-send" onclick="QWAS.Voice.stop()">
+            <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M2 21 23 12 2 3v7l15 2-15 2z"/></svg>
+          </button>
+        </div>
+
       </div>
-      <div class="chat-header-actions" id="chatHeaderActions" style="display:none;">
-        <button class="header-icon-btn" onclick="QWAS.Groups.showMembers()" title="Участники">👥</button>
-        <button class="header-icon-btn" onclick="QWAS.Groups.leaveGroup()" title="Выйти">🚪</button>
-      </div>
-    </div>
-    
-    <div class="messages-container" id="messages">
-      <div class="empty-state">
-        <div class="empty-state-icon">💬</div>
-        <h3>QWAS Messenger</h3>
-        <p>Выберите чат или найдите пользователя</p>
-      </div>
-    </div>
-    
-    <!-- Кнопка скролла вниз -->
-    <div class="scroll-to-bottom" id="scrollToBottomBtn" onclick="QWAS.Messages.scrollToBottom()">
-      <span>↓</span>
-      <span class="scroll-unread-badge" id="scrollUnreadBadge"></span>
-    </div>
-    
-    <div id="typingIndicator" class="typing-indicator"></div>
-    
-    <div class="file-preview" id="filePreview"></div>
-    
-    <div class="message-input-container">
-      <button class="file-upload-btn" id="fileUploadBtn" onclick="document.getElementById('fileInput').click()" title="Прикрепить файл">📎</button>
-      <input class="message-input" id="msg" placeholder="Сообщение..." disabled>
-      <button class="send-button" id="sendBtn" onclick="QWAS.Messages.send()" disabled>➤</button>
-    </div>
+    </main>
+
   </div>
+
 </div>
 
-<!-- Меню сообщения -->
-<div class="message-menu" id="messageMenu">
-  <div class="message-menu-item" onclick="QWAS.Messages.forward()">↗ Переслать</div>
-  <div class="message-menu-item" onclick="QWAS.Messages.edit()">✎ Редактировать</div>
-  <div class="message-menu-item danger" onclick="QWAS.Messages.delete()">🗑 Удалить</div>
+<div id="toastContainer" class="toast-container"></div>
+
+<div id="modalContainer"></div>
+
+<div id="lightbox" class="lightbox" style="display:none;" onclick="QWAS.Lightbox.close()">
+  <button class="lightbox-close" onclick="QWAS.Lightbox.close()">✕</button>
+  <button class="lightbox-nav lightbox-prev" id="lightboxPrev" onclick="QWAS.Lightbox.prev(event)">‹</button>
+  <img id="lightboxImg" class="lightbox-img" alt="">
+  <button class="lightbox-nav lightbox-next" id="lightboxNext" onclick="QWAS.Lightbox.next(event)">›</button>
+  <div class="lightbox-caption" id="lightboxCaption"></div>
 </div>
 
-<!-- Пересылка -->
-<div class="modal" id="forwardModal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h2>Переслать</h2>
-      <button class="close-btn" onclick="QWAS.Messages.closeForwardModal()">&times;</button>
-    </div>
-    <div class="forward-chat-list" id="forwardChatList"></div>
-  </div>
-</div>
+<div id="contextMenu" class="context-menu" style="display:none;"></div>
 
-<!-- Профиль -->
-<div class="modal" id="profileModal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h2>Профиль</h2>
-      <button class="close-btn" onclick="QWAS.Profile.close()">&times;</button>
-    </div>
-    
-    <div style="position: relative; width: 120px; margin: 0 auto 28px;">
-      <div class="profile-avatar-large" id="profileAvatarLarge" onclick="document.getElementById('avatarInput').click()">
-        <span id="profileAvatarText">U</span>
-        <img id="profileAvatarImg" style="display:none; width:100%; height:100%; border-radius:50%; object-fit:cover;">
-      </div>
-      <div class="avatar-edit-badge" onclick="document.getElementById('avatarInput').click()">📷</div>
-    </div>
-    
-    <div class="modal-field">
-      <label>Имя пользователя</label>
-      <input type="text" id="profileUsername" readonly onclick="QWAS.Profile.copyUsername()">
-      <div class="copy-feedback" id="copyFeedback">✓ Скопировано!</div>
-    </div>
-    
-    <div class="modal-actions">
-      <button class="btn btn-primary" onclick="QWAS.Profile.save()">Сохранить</button>
-      <button class="btn btn-danger" onclick="QWAS.Auth.logout()">Выйти</button>
-    </div>
-  </div>
-</div>
+<div id="reactionPopup" class="reaction-popup" style="display:none;"></div>
 
-<input type="file" id="avatarInput" accept="image/*">
-<input type="file" id="fileInput" accept="image/*,.pdf,.zip,.rar,.mp4,.mp3,.ogg,.txt" style="display:none;">
+<video id="hiddenVideo" style="display:none;" muted playsinline></video>
+<audio id="hiddenAudio" style="display:none;" muted></audio>
+<canvas id="waveformCanvas" style="display:none;"></canvas>
 
-<!-- Лайтбокс -->
-<div class="modal" id="lightboxModal" onclick="QWAS.Messages.closeLightbox()">
-  <div class="lightbox-content">
-    <button class="lightbox-close" onclick="QWAS.Messages.closeLightbox()">&times;</button>
-    <img id="lightboxImage" class="lightbox-image">
-  </div>
-</div>
+<template id="tpl-message"></template>
 
-<!-- Создание группы -->
-<div class="modal" id="createGroupModal">
-  <div class="modal-content" style="max-width:450px;">
-    <div class="modal-header">
-      <h2>Создать группу</h2>
-      <button class="close-btn" onclick="QWAS.Groups.closeCreateModal()">&times;</button>
-    </div>
-    <div class="modal-field">
-      <label>Название</label>
-      <input type="text" id="groupNameInput" placeholder="Название группы" autocomplete="off">
-    </div>
-    <div class="modal-field">
-      <label>Описание (необязательно)</label>
-      <input type="text" id="groupDescInput" placeholder="Описание" autocomplete="off">
-    </div>
-    <div class="modal-field">
-      <label>Тип</label>
-      <select id="groupTypeSelect" style="width:100%; padding:16px; background:var(--bg-primary); border:1px solid var(--border); border-radius:14px; color:var(--text-primary); font-size:16px; outline:none;">
-        <option value="group">👥 Группа</option>
-        <option value="channel">📢 Канал</option>
-      </select>
-    </div>
-    <div class="modal-field">
-      <label>Участники</label>
-      <div id="groupMemberSelect" class="member-select-list"></div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="QWAS.Groups.closeCreateModal()">Отмена</button>
-      <button class="btn btn-primary" onclick="QWAS.Groups.handleCreate()">Создать</button>
-    </div>
-  </div>
-</div>
-
-<!-- Участники группы -->
-<div class="modal" id="groupMembersModal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h2>Участники</h2>
-      <button class="close-btn" onclick="QWAS.Groups.closeMembersModal()">&times;</button>
-    </div>
-    <div id="groupMembersList" class="member-select-list"></div>
-  </div>
-</div>
-
-<script src="/js/config.js"></script>
-<script src="/js/groups.js"></script>
-<script src="/js/utils.js"></script>
-<script src="/js/notifications.js"></script>
-<script src="/js/socket.js"></script>
+<script src="/js/util.js"></script>
+<script src="/js/state.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/sidebar.js"></script>
 <script src="/js/chat.js"></script>
 <script src="/js/messages.js"></script>
+<script src="/js/composer.js"></script>
+<script src="/js/attach.js"></script>
+<script src="/js/emoji.js"></script>
+<script src="/js/voice.js"></script>
+<script src="/js/reactions.js"></script>
+<script src="/js/contextmenu.js"></script>
 <script src="/js/search.js"></script>
 <script src="/js/profile.js"></script>
-<script src="/js/auth.js"></script>
+<script src="/js/groups.js"></script>
+<script src="/js/stories.js"></script>
+<script src="/js/lightbox.js"></script>
+<script src="/js/calls.js"></script>
+<script src="/js/modals.js"></script>
+<script src="/js/notifications.js"></script>
 <script src="/js/app.js"></script>
 
 </body>
