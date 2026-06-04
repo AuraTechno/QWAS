@@ -18,13 +18,22 @@
       this.render();
     },
 
-    openVideo(url) {
+    openVideo(url, isRound) {
       const lb = document.getElementById('lightbox');
       if (!lb) return;
-      lb.innerHTML = `
-        <button class="lightbox-close" onclick="QWAS.Lightbox.close()">✕</button>
-        <video src="${url}" controls autoplay style="max-width:95vw;max-height:90vh;border-radius:8px;"></video>
-      `;
+      if (isRound) {
+        lb.innerHTML = `
+          <button class="lightbox-close" onclick="QWAS.Lightbox.close()">✕</button>
+          <div class="lightbox-round-wrap">
+            <video src="${url}" controls autoplay loop style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);"></video>
+          </div>
+        `;
+      } else {
+        lb.innerHTML = `
+          <button class="lightbox-close" onclick="QWAS.Lightbox.close()">✕</button>
+          <video src="${url}" controls autoplay style="max-width:95vw;max-height:90vh;border-radius:8px;"></video>
+        `;
+      }
       lb.style.display = 'flex';
     },
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'qwas-v3';
+const CACHE_NAME = 'qwas-v4';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -11,6 +11,7 @@ const urlsToCache = [
   '/css/messages.css',
   '/css/components.css',
   '/css/animations.css',
+  '/css/settings.css',
   '/css/mobile.css',
   '/js/util.js',
   '/js/state.js',

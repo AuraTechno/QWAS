@@ -69,10 +69,44 @@
       theme: 'dark',
       accent: '#5e8ee7',
       chatBackground: '',
+
       notifications: true,
       soundEnabled: true,
       enterToSend: true,
-      showLastSeen: true
+      showLastSeen: true,
+
+      fontSize: 'medium',
+      compactMode: false,
+      bubbleStyle: 'modern',
+      animationsEnabled: true,
+
+      videoQuality: 'sd',
+      videoFps: 30,
+      voiceQuality: 'medium',
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+
+      autoDownload: {
+        photo: true,
+        video: true,
+        voice: true,
+        file: true,
+        onWifiOnly: false,
+        maxSize: 10
+      },
+
+      readReceipts: true,
+      typingIndicators: true,
+      onlineStatus: true,
+      keepOnline: false,
+
+      autoplayVideos: true,
+      autoplayGifs: true,
+      loopAnimatedStickers: true,
+
+      messageTextSize: 14,
+      bubbleCorners: 'rounded'
     },
 
     isMobile: false,
@@ -91,6 +125,7 @@
       try {
         localStorage.setItem(QWAS.STORAGE.THEME, QWAS.State.settings.theme);
         localStorage.setItem(QWAS.STORAGE.ACCENT, QWAS.State.settings.accent);
+        localStorage.setItem('qwas_settings', JSON.stringify(QWAS.State.settings));
       } catch {}
     },
 
@@ -100,6 +135,11 @@
         if (theme) QWAS.State.settings.theme = theme;
         const accent = localStorage.getItem(QWAS.STORAGE.ACCENT);
         if (accent) QWAS.State.settings.accent = accent;
+        const stored = localStorage.getItem('qwas_settings');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          Object.assign(QWAS.State.settings, parsed);
+        }
       } catch {}
     },
 
@@ -108,8 +148,21 @@
       document.documentElement.style.setProperty('--accent', QWAS.State.settings.accent);
       const meta = document.querySelector('meta[name="theme-color"]');
       if (meta) {
-        const colors = { dark: '#17212b', light: '#ffffff', midnight: '#000000' };
+        const colors = { dark: '#17212b', light: '#ffffff', midnight: '#000000', blue: '#1e88e5' };
         meta.setAttribute('content', colors[QWAS.State.settings.theme] || colors.dark);
+      }
+      const root = document.documentElement;
+      const s = QWAS.State.settings;
+      root.style.setProperty('--bubble-radius', s.bubbleCorners === 'square' ? '4px' : s.bubbleCorners === 'round' ? '20px' : '12px');
+      root.style.setProperty('--message-text-size', (s.messageTextSize || 14) + 'px');
+      root.style.setProperty('--font-size-base', s.fontSize === 'small' ? '13px' : s.fontSize === 'large' ? '15px' : '14px');
+      root.setAttribute('data-compact', s.compactMode ? 'true' : 'false');
+      root.setAttribute('data-bubbles', s.bubbleStyle || 'modern');
+      root.setAttribute('data-animations', s.animationsEnabled === false ? 'off' : 'on');
+      if (s.chatBackground) {
+        document.body.style.setProperty('--chat-bg-image', `url("${s.chatBackground}")`);
+      } else {
+        document.body.style.removeProperty('--chat-bg-image');
       }
     }
   };

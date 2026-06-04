@@ -45,7 +45,15 @@ app.use(express.static("public", {
 }));
 app.use("/uploads", express.static("uploads", {
   maxAge: "7d",
-  setHeaders: (res) => res.setHeader("Cache-Control", "public, max-age=604800, immutable")
+  etag: true,
+  lastModified: true,
+  acceptRanges: true,
+  setHeaders: (res, filePath) => {
+    res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    if (filePath.match(/\.(webm|mp4|m4a|mov)$/i)) {
+      res.setHeader("Accept-Ranges", "bytes");
+    }
+  }
 }));
 
 const limiter = rateLimit({

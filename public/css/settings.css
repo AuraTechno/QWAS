@@ -1,0 +1,408 @@
+/* ============================================
+   Round Video Recorder (Telegram-style circles)
+   ============================================ */
+.call-overlay.round-recorder {
+  background: rgba(0,0,0,0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fade-in 0.25s ease;
+  z-index: 6000;
+}
+
+.round-rec-wrap {
+  position: relative;
+  width: 320px;
+  height: 320px;
+  max-width: 80vw;
+  max-height: 80vw;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 0 0 4px rgba(94,142,231,0.3), 0 20px 60px rgba(0,0,0,0.5);
+}
+
+.round-rec-wrap::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), #4dd599);
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.round-recorder.recording .round-rec-wrap::before {
+  opacity: 1;
+  animation: pulse-ring 1.5s infinite;
+}
+
+@keyframes pulse-ring {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.6; }
+}
+
+.round-rec-wrap video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  background: #000;
+}
+
+.round-rec-fps {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  backdrop-filter: blur(8px);
+}
+
+.round-rec-timer {
+  margin-top: 24px;
+  color: white;
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.round-rec-actions {
+  margin-top: 32px;
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+
+.round-rec-btn {
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, background 0.2s;
+  color: white;
+}
+
+.round-rec-btn.primary {
+  width: 76px;
+  height: 76px;
+  background: rgba(255,255,255,0.15);
+  border: 4px solid white;
+  position: relative;
+}
+
+.round-rec-btn.primary .rec-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #ff3b30;
+  transition: all 0.2s;
+}
+
+.round-rec-btn.primary.recording .rec-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+}
+
+.round-rec-btn.secondary {
+  width: 52px;
+  height: 52px;
+  background: rgba(255,255,255,0.1);
+}
+
+.round-rec-btn:hover {
+  transform: scale(1.05);
+  background: rgba(255,255,255,0.25);
+}
+
+/* ============================================
+   Message Status Animations
+   ============================================ */
+.status.sending,
+.status.pending {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.dot-flashing {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: var(--text-tertiary);
+  color: var(--text-tertiary);
+  animation: dot-flashing 1s infinite linear alternate;
+  animation-delay: 0.5s;
+}
+
+.dot-flashing::before,
+.dot-flashing::after {
+  content: '';
+  display: inline-block;
+  position: absolute;
+  top: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: var(--text-tertiary);
+  color: var(--text-tertiary);
+  animation: dot-flashing 1s infinite alternate;
+  opacity: 0.5;
+}
+
+.dot-flashing::before { left: -16px; animation-delay: 0s; }
+.dot-flashing::after  { left: 16px;  animation-delay: 1s; }
+
+@keyframes dot-flashing {
+  0%   { opacity: 0.3; }
+  50%, 100% { opacity: 1; }
+}
+
+.bubble.failed {
+  opacity: 0.7;
+  background: rgba(255, 59, 48, 0.08) !important;
+  border: 1px solid rgba(255, 59, 48, 0.3) !important;
+  cursor: pointer;
+}
+
+.status.failed {
+  color: #ff3b30;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  animation: shake 0.4s;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  75% { transform: translateX(2px); }
+}
+
+/* ============================================
+   Settings UI (chevron, sections, rows)
+   ============================================ */
+.setting-row-select {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.setting-row-select:hover {
+  background: var(--bg-hover);
+}
+
+.setting-row .chevron {
+  font-size: 22px;
+  color: var(--text-tertiary);
+  font-weight: 300;
+}
+
+.profile-section-subtitle {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
+/* ============================================
+   Range slider (font size)
+   ============================================ */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--bg-input);
+  height: 6px;
+  border-radius: 3px;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: none;
+}
+
+/* ============================================
+   Compact mode + font size + bubble style
+   ============================================ */
+[data-compact="true"] .message-group {
+  margin-top: 2px;
+}
+
+[data-compact="true"] .bubble {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+[data-compact="true"] .chats-list .chat-item {
+  padding: 8px 12px;
+}
+
+[data-bubbles="classic"] .bubble {
+  border-radius: 4px;
+}
+
+[data-bubbles="minimal"] .bubble {
+  background: transparent !important;
+  box-shadow: none;
+  border: 1px solid var(--bg-input);
+  padding: 6px 10px;
+}
+
+[data-bubbles="minimal"] .bubble.out {
+  border-color: var(--accent);
+}
+
+[data-animations="off"] *,
+[data-animations="off"] *::before,
+[data-animations="off"] *::after {
+  animation-duration: 0.001s !important;
+  transition-duration: 0.001s !important;
+}
+
+/* Chat background image */
+body[data-chat-bg="custom"] .messages-wrapper,
+body[data-chat-bg="custom"] #messagesWrapper {
+  background-image: var(--chat-bg-image);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+
+/* ============================================
+   Bubble corner variants
+   ============================================ */
+:root {
+  --bubble-radius: 12px;
+}
+
+.bubble {
+  border-radius: var(--bubble-radius);
+}
+
+.bubble.out {
+  border-bottom-right-radius: 4px;
+}
+
+.bubble.in {
+  border-bottom-left-radius: 4px;
+}
+
+:root[data-bc="square"] {
+  --bubble-radius: 4px;
+}
+:root[data-bc="square"] .bubble.out,
+:root[data-bc="square"] .bubble.in {
+  border-radius: 4px !important;
+}
+
+:root[data-bc="round"] {
+  --bubble-radius: 22px;
+}
+:root[data-bc="round"] .bubble.out {
+  border-bottom-right-radius: 8px;
+}
+:root[data-bc="round"] .bubble.in {
+  border-bottom-left-radius: 8px;
+}
+
+/* ============================================
+   Failed message retry hint
+   ============================================ */
+.bubble.failed::after {
+  content: 'Нажмите чтобы повторить';
+  position: absolute;
+  top: -22px;
+  right: 0;
+  background: #ff3b30;
+  color: white;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.bubble.failed:hover::after {
+  opacity: 1;
+}
+
+/* ============================================
+   Attach menu round video button
+   ============================================ */
+.attach-item-icon.icon-purple {
+  background: linear-gradient(135deg, #b78eff, #7c4dff);
+}
+
+/* ============================================
+   Loading progress on file attach
+   ============================================ */
+.composer-att-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: var(--accent);
+  transition: width 0.2s;
+  border-radius: 2px;
+}
+
+.composer-att {
+  position: relative;
+  overflow: hidden;
+}
+
+/* ============================================
+   Lightbox round video
+   ============================================ */
+.lightbox-round-wrap {
+  width: min(80vw, 480px);
+  height: min(80vw, 480px);
+  border-radius: 50%;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 0 0 4px rgba(94,142,231,0.3), 0 20px 60px rgba(0,0,0,0.7);
+  position: relative;
+}
+
+.lightbox-round-wrap video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lightbox-round-wrap video::-webkit-media-controls-panel {
+  background: linear-gradient(transparent, rgba(0,0,0,0.7));
+}

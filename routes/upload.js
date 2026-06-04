@@ -125,6 +125,10 @@ router.post("/chunk/:uploadId/complete", authMiddleware, (req, res) => {
   try {
     const dir = path.join(UPLOAD_DIR, "chunks", req.params.uploadId);
     const meta = JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8"));
+    if (meta.size > MAX_SIZE) {
+      fs.rmSync(dir, { recursive: true, force: true });
+      return res.json({ ok: false, error: "Файл слишком большой (макс 50MB)" });
+    }
     const ext = path.extname(meta.name) || "";
     const fname = crypto.randomBytes(16).toString("hex") + ext;
     const target = path.join(UPLOAD_DIR, fname);
@@ -141,9 +145,11 @@ router.post("/chunk/:uploadId/complete", authMiddleware, (req, res) => {
     fs.rmSync(dir, { recursive: true, force: true });
 
     const type = ALLOWED_TYPES[meta.mime] || "file";
+    const forceType = req.body.forceType;
+    const finalType = ["voice", "round"].includes(forceType) ? forceType : type;
     res.json({
       ok: true,
-      file: { type, url: `/uploads/${fname}`, name: meta.name, size: meta.size, mime: meta.mime }
+      file: { type: finalType, url: `/uploads/${fname}`, name: meta.name, size: meta.size, mime: meta.mime }
     });
   } catch (e) {
     res.json({ ok: false, error: "complete_failed" });

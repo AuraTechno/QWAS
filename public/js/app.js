@@ -70,10 +70,12 @@
       socket.on('connect', () => {
         console.log('✅ Socket connected');
         socket.emit('set_presence', { presence: 'online' });
+        if (QWAS.Messages && QWAS.Messages.resendPending) QWAS.Messages.resendPending();
       });
 
       socket.on('disconnect', () => {
         console.log('❌ Socket disconnected');
+        if (QWAS.Messages && QWAS.Messages.markAllPending) QWAS.Messages.markAllPending();
       });
 
       socket.on('connect_error', (err) => {
@@ -125,10 +127,19 @@
 
       socket.on('messages_read', (data) => {
         const list = QWAS.State.messagesByChat.get(QWAS.State.current) || [];
+        const isGroupRead = data.chatId && data.chatId.startsWith('group:');
         list.forEach(m => {
-          if (m.from === QWAS.State.me && (data.chatWith === m.to || data.by === m.to)) {
-            m.status = 'read';
-            QWAS.Messages.updateStatus(m._id, 'read');
+          if (m.from !== QWAS.State.me) return;
+          if (isGroupRead) {
+            if (m.to === data.chatId) {
+              m.status = 'read';
+              QWAS.Messages.updateStatus(m._id, 'read');
+            }
+          } else {
+            if (data.chatWith === m.to || data.by === m.to) {
+              m.status = 'read';
+              QWAS.Messages.updateStatus(m._id, 'read');
+            }
           }
         });
       });
@@ -212,7 +223,11 @@
     },
 
     handleNewMessage(msg) {
-      const chatKey = msg.to.startsWith('group:') ? msg.to : msg.from;
+      const me = QWAS.State.me;
+      const chatKey = msg.to.startsWith('group:')
+        ? msg.to
+        : (msg.from === me ? msg.to : msg.from);
+
       if (msg.to === QWAS.Config.FAVORITE_CHAT_ID) {
         if (QWAS.State.current === QWAS.Config.FAVORITE_CHAT_ID) {
           QWAS.Messages.add(msg);
@@ -224,13 +239,20 @@
 
       if (isCurrentChat) {
         QWAS.Messages.add(msg);
-        if (msg.from !== QWAS.State.me) {
+        if (msg.from !== me) {
           QWAS.State.socket.emit('mark_as_read', { chatId: chatKey, from: msg.from });
         }
       } else {
-        if (msg.from !== QWAS.State.me) {
+        if (msg.from !== me) {
           QWAS.Toast.show(`Новое сообщение от ${msg.from}`, 'info', 2000);
-          if ('Notification' in window && Notification.permission === 'granted') {
+          if (QWAS.State.settings && QWAS.State.settings.soundEnabled) {
+            try {
+              const a = new Audio('data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=');
+              a.volume = 0.3;
+              a.play().catch(() => {});
+            } catch {}
+          }
+          if ('Notification' in window && Notification.permission === 'granted' && QWAS.State.settings && QWAS.State.settings.notifications) {
             try {
               new Notification(`QWAS — @${msg.from}`, { body: msg.message || '📎 Вложение' });
             } catch {}

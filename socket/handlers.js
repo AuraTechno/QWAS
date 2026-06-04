@@ -318,54 +318,72 @@ function setupSocketHandlers(io, socket, online) {
     };
   }
 
-  socket.on("get_history", async (user, page = 1) => {
+  socket.on("get_history", async (user, page = 1, ack) => {
     try {
       const { Message } = getModels();
       if (!Message) {
-        socket.emit("chat_history", { messages: [], hasMore: false, page });
+        if (typeof ack === "function") ack({ ok: false, messages: [], hasMore: false, page });
         return;
+      }
+      if (socket.paginationState) {
+        socket.paginationState.currentChat = user;
+        socket.paginationState.page = page || 1;
+        socket.paginationState.hasMore = true;
+        socket.paginationState.isLoading = false;
       }
       const skip = (page - 1) * MESSAGES_PER_PAGE;
       const query = buildHistoryQuery(user, socket.username);
-      const totalMessages = await Message.countDocuments(query);
-      const msgs = await Message.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(MESSAGES_PER_PAGE)
-        .lean();
+      const [totalMessages, msgs] = await Promise.all([
+        Message.countDocuments(query),
+        Message.find(query)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(MESSAGES_PER_PAGE)
+          .lean()
+      ]);
       const hasMore = skip + msgs.length < totalMessages;
+      if (socket.paginationState) socket.paginationState.hasMore = hasMore;
       const messages = msgs.reverse();
-      socket.emit("chat_history", { messages, hasMore, page, total: totalMessages });
+      if (typeof ack === "function") ack({ ok: true, messages, hasMore, page, total: totalMessages });
     } catch (err) {
       console.error("Ошибка получения истории:", err);
-      socket.emit("chat_history", { messages: [], hasMore: false, page });
+      if (typeof ack === "function") ack({ ok: false, messages: [], hasMore: false, page });
     }
   });
 
-  socket.on("load_more", async () => {
+  socket.on("load_more", async (ack) => {
     try {
       const { Message } = getModels();
-      if (!Message) return;
+      if (!Message) {
+        if (typeof ack === "function") ack({ ok: false, messages: [] });
+        return;
+      }
       const state = socket.paginationState;
-      if (!state || !state.currentChat || !state.hasMore || state.isLoading) return;
+      if (!state || !state.currentChat || !state.hasMore || state.isLoading) {
+        if (typeof ack === "function") ack({ ok: false, messages: [], hasMore: false });
+        return;
+      }
       const nextPage = (state.page || 1) + 1;
       const user = state.currentChat;
       state.isLoading = true;
       const skip = (nextPage - 1) * MESSAGES_PER_PAGE;
       const query = buildHistoryQuery(user, socket.username);
-      const totalMessages = await Message.countDocuments(query);
-      const msgs = await Message.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(MESSAGES_PER_PAGE)
-        .lean();
+      const [totalMessages, msgs] = await Promise.all([
+        Message.countDocuments(query),
+        Message.find(query)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(MESSAGES_PER_PAGE)
+          .lean()
+      ]);
       const hasMore = skip + msgs.length < totalMessages;
       state.hasMore = hasMore;
       state.page = nextPage;
       state.isLoading = false;
-      socket.emit("chat_history", { messages: msgs.reverse(), hasMore, page: nextPage, total: totalMessages });
+      if (typeof ack === "function") ack({ ok: true, messages: msgs.reverse(), hasMore, page: nextPage, total: totalMessages });
     } catch (err) {
       if (socket.paginationState) socket.paginationState.isLoading = false;
+      if (typeof ack === "function") ack({ ok: false, messages: [] });
     }
   });
 

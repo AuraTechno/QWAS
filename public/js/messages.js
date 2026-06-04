@@ -119,7 +119,8 @@
       const lastClass = isLast ? 'last-in-group' : '';
       const pinnedClass = m.isPinned ? 'pinned' : '';
 
-      return `${authorName}<div class="bubble ${firstClass} ${lastClass} ${pinnedClass}"
+      const failedClass = m.status === 'failed' ? 'failed' : '';
+      return `${authorName}<div class="bubble ${firstClass} ${lastClass} ${pinnedClass} ${failedClass}"
         data-id="${QWAS.Util.escapeAttr(m._id)}"
         oncontextmenu="QWAS.ContextMenu.showMessage(event, '${QWAS.Util.escapeAttr(m._id)}')"
         ondblclick="QWAS.Reactions.showQuick(event, '${QWAS.Util.escapeAttr(m._id)}')"
@@ -311,12 +312,17 @@
 
     renderMeta(m, isMine) {
       const time = QWAS.Util.formatTime(m.createdAt);
-      const edited = m.edited ? '<span class="edited">ред.</span>' : '';
       let status = '';
       if (isMine) {
-        const cls = m.status === 'read' ? 'read' : '';
-        const icon = m.status === 'read' ? '✓✓' : '✓';
-        status = `<span class="status ${cls}">${icon}</span>`;
+        if (m.status === 'failed') {
+          status = `<span class="status failed" title="Нажмите чтобы повторить" onclick="QWAS.Messages.retry('${QWAS.Util.escapeAttr(m._id)}')">⚠</span>`;
+        } else if (m.status === 'sending' || m.pending) {
+          status = `<span class="status sending"><span class="dot-flashing"></span></span>`;
+        } else {
+          const cls = m.status === 'read' ? 'read' : '';
+          const icon = m.status === 'read' ? '✓✓' : '✓';
+          status = `<span class="status ${cls}">${icon}</span>`;
+        }
       }
       return `<div class="bubble-meta">
         ${m.edited ? '<span class="edited">ред.</span>' : ''}
@@ -331,6 +337,7 @@
       if (document.getElementById('msg-' + msg._id)) return;
 
       const list = QWAS.State.messagesByChat.get(QWAS.State.current) || [];
+      if (list.find(m => m._id === msg._id)) return;
       list.push(msg);
       QWAS.State.messagesByChat.set(QWAS.State.current, list);
 
@@ -428,6 +435,10 @@
       const text = input.value.trim();
       if (!text && QWAS.State.pendingFiles.length === 0) return;
       if (!QWAS.State.current) return;
+      if (!QWAS.State.socket || !QWAS.State.socket.connected) {
+        QWAS.Toast.error('Нет соединения с сервером');
+        return;
+      }
 
       if (QWAS.State.editingId) {
         QWAS.State.socket.emit('edit_message', {
@@ -457,15 +468,179 @@
         QWAS.Composer.renderAttachments();
       }
 
-      QWAS.State.socket.emit('send_message', payload, (ack) => {
-        if (ack && !ack.ok) {
-          QWAS.Toast.error(ack.error || 'Ошибка отправки');
+      const tempId = 'tmp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      const optimistic = {
+        _id: tempId,
+        from: QWAS.State.me,
+        to: QWAS.State.current,
+        message: text || '',
+        attachments: payload.attachments || [],
+        replyTo: payload.replyTo || null,
+        isForwarded: false,
+        createdAt: new Date().toISOString(),
+        status: 'sending',
+        pending: true,
+        reactions: []
+      };
+      this.add(optimistic);
+      QWAS.State.pendingMessages = QWAS.State.pendingMessages || new Map();
+      QWAS.State.pendingMessages.set(tempId, { payload, attempts: 0, optimistic });
+
+      const trySend = (tempId) => {
+        const entry = QWAS.State.pendingMessages.get(tempId);
+        if (!entry) return;
+        entry.attempts = (entry.attempts || 0) + 1;
+        if (entry.attempts > 3) {
+          this.markFailed(tempId);
+          return;
         }
-      });
+        QWAS.State.socket.emit('send_message', entry.payload, (ack) => {
+          if (ack && ack.ok) {
+            QWAS.State.pendingMessages.delete(tempId);
+            this.replaceMessage(tempId, { ...entry.optimistic, _id: ack.messageId, status: 'sent', createdAt: ack.createdAt || entry.optimistic.createdAt, pending: false });
+            QWAS.State.socket.emit('read_message', { messageId: ack.messageId });
+          } else {
+            const err = ack && ack.error;
+            if (err === 'blocked' || err === 'not_member') {
+              this.markFailed(tempId, err === 'blocked' ? 'Вы заблокированы' : 'Вы не участник');
+              QWAS.State.pendingMessages.delete(tempId);
+              return;
+            }
+            if (entry.attempts < 3) {
+              setTimeout(() => trySend(tempId), 1500 * entry.attempts);
+            } else {
+              this.markFailed(tempId);
+              QWAS.State.pendingMessages.delete(tempId);
+            }
+          }
+        });
+      };
+      trySend(tempId);
 
       input.value = '';
       this.autoresizeInput();
       QWAS.Composer.updateSendButton();
+    },
+
+    replaceMessage(oldId, newMsg) {
+      const list = QWAS.State.messagesByChat.get(QWAS.State.current) || [];
+      const newId = newMsg._id;
+      if (newId && newId !== oldId && list.find(m => m._id === newId)) {
+        const idx = list.findIndex(m => m._id === oldId);
+        if (idx >= 0) list.splice(idx, 1);
+        QWAS.State.messagesByChat.set(QWAS.State.current, list);
+        const oldEl = document.querySelector(`[data-id="${oldId}"]`);
+        if (oldEl) oldEl.remove();
+        return;
+      }
+      const idx = list.findIndex(m => m._id === oldId);
+      if (idx >= 0) {
+        list[idx] = newMsg;
+        QWAS.State.messagesByChat.set(QWAS.State.current, list);
+        const oldEl = document.querySelector(`[data-id="${oldId}"]`);
+        if (oldEl) {
+          const group = oldEl.closest('.message-group');
+          if (group) {
+            const newHtml = this.renderGroups([newMsg]);
+            const tmp = document.createElement('div');
+            tmp.innerHTML = newHtml;
+            const newGroup = tmp.firstElementChild;
+            if (newGroup) group.replaceWith(newGroup);
+          }
+        } else {
+          this.renderAll(list);
+        }
+      }
+    },
+
+    markFailed(tempId, reason) {
+      const list = QWAS.State.messagesByChat.get(QWAS.State.current) || [];
+      const idx = list.findIndex(m => m._id === tempId);
+      if (idx >= 0) {
+        list[idx].status = 'failed';
+        list[idx].pending = false;
+        QWAS.State.messagesByChat.set(QWAS.State.current, list);
+      }
+      const el = document.querySelector(`[data-id="${tempId}"]`);
+      if (el) {
+        el.classList.add('failed');
+        el.title = reason || 'Не удалось отправить';
+      }
+      QWAS.Toast.error(reason || 'Не удалось отправить. Проверьте соединение.');
+    },
+
+    retry(tempId) {
+      let entry = QWAS.State.pendingMessages.get(tempId);
+      const list = QWAS.State.messagesByChat.get(QWAS.State.current) || [];
+      const m = list.find(x => x._id === tempId);
+      if (!entry && m) {
+        entry = { payload: { to: m.to, message: m.message, attachments: m.attachments || [], replyTo: m.replyTo }, attempts: 0, optimistic: m };
+        QWAS.State.pendingMessages.set(tempId, entry);
+      }
+      if (!entry) return;
+      if (m) {
+        m.status = 'sending';
+        m.pending = true;
+      }
+      const el = document.querySelector(`[data-id="${tempId}"]`);
+      if (el) el.classList.remove('failed');
+      this._resendEntry(tempId, entry);
+    },
+
+    flushPending() {
+      QWAS.State.pendingMessages = QWAS.State.pendingMessages || new Map();
+      for (const tempId of QWAS.State.pendingMessages.keys()) {
+        const entry = QWAS.State.pendingMessages.get(tempId);
+        if (entry) this._resendEntry(tempId, entry);
+      }
+    },
+
+    _resendEntry(tempId, entry) {
+      if (!QWAS.State.socket || !QWAS.State.socket.connected) return;
+      entry.attempts = (entry.attempts || 0) + 1;
+      if (entry.attempts > 3) {
+        this.markFailed(tempId);
+        QWAS.State.pendingMessages.delete(tempId);
+        return;
+      }
+      QWAS.State.socket.emit('send_message', entry.payload, (ack) => {
+        if (ack && ack.ok) {
+          QWAS.State.pendingMessages.delete(tempId);
+          this.replaceMessage(tempId, { ...entry.optimistic, _id: ack.messageId, status: 'sent', createdAt: ack.createdAt || entry.optimistic.createdAt, pending: false });
+          QWAS.State.socket.emit('read_message', { messageId: ack.messageId });
+        } else {
+          if (entry.attempts < 3) {
+            setTimeout(() => this._resendEntry(tempId, entry), 1500 * entry.attempts);
+          } else {
+            this.markFailed(tempId);
+            QWAS.State.pendingMessages.delete(tempId);
+          }
+        }
+      });
+    },
+
+    resendPending() {
+      QWAS.State.pendingMessages = QWAS.State.pendingMessages || new Map();
+      for (const [tempId, entry] of QWAS.State.pendingMessages) {
+        this._resendEntry(tempId, entry);
+      }
+    },
+
+    markAllPending() {
+      QWAS.State.pendingMessages = QWAS.State.pendingMessages || new Map();
+      for (const [tempId] of QWAS.State.pendingMessages) {
+        const list = QWAS.State.messagesByChat.get(QWAS.State.current) || [];
+        const m = list.find(x => x._id === tempId);
+        if (m) {
+          m.status = 'pending_offline';
+          m.pending = true;
+        }
+      }
+      const c = document.getElementById('messages');
+      if (c) {
+        const list = QWAS.State.messagesByChat.get(QWAS.State.current) || [];
+        QWAS.Messages.renderAll(list);
+      }
     },
 
     cancelEdit() {

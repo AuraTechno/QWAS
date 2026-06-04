@@ -46,6 +46,45 @@
       return this.request('/upload', { method: 'POST', body: fd });
     },
 
+    async uploadSmart(file, extra = {}, onProgress) {
+      if (file.size > 3 * 1024 * 1024 && typeof onProgress === 'function') {
+        return this.uploadChunkWithProgress(file, extra, onProgress);
+      }
+      return this.upload(file, extra);
+    },
+
+    uploadChunkWithProgress(file, extra, onProgress) {
+      return new Promise((resolve, reject) => {
+        const chunkSize = 1024 * 1024;
+        const total = Math.ceil(file.size / chunkSize);
+        this.post('/upload/chunk/init', { name: file.name, size: file.size, mime: file.type })
+          .then(init => {
+            if (!init.ok) { resolve(this.upload(file, extra)); return; }
+            let uploaded = 0;
+            const next = (i) => {
+              if (i >= total) {
+                this.post(`/upload/chunk/${init.uploadId}/complete`, { forceType: extra.forceType || '' })
+                  .then(resolve, () => resolve({ ok: false, error: 'complete_failed' }));
+                return;
+              }
+              const s = i * chunkSize;
+              const e = Math.min(s + chunkSize, file.size);
+              const fd = new FormData();
+              fd.append('chunk', file.slice(s, e));
+              fd.append('index', String(i));
+              this.request(`/upload/chunk/${init.uploadId}`, { method: 'POST', body: fd })
+                .then(r => {
+                  if (!r.ok) { resolve(this.upload(file, extra)); return; }
+                  uploaded += (e - s);
+                  onProgress(uploaded / file.size);
+                  next(i + 1);
+                }, () => resolve(this.upload(file, extra)));
+            };
+            next(0);
+          }, () => resolve(this.upload(file, extra)));
+      });
+    },
+
     uploadChunk(file, onProgress) {
       return new Promise((resolve, reject) => {
         const chunkSize = 1024 * 1024;

@@ -177,10 +177,22 @@ router.post("/settings", authMiddleware, async (req, res) => {
   try {
     const { User } = getModels();
     const settings = req.body || {};
-    const allowed = ["theme", "accent", "chatBackground", "notifications", "soundEnabled", "enterToSend", "showLastSeen"];
+    const allowed = [
+      "theme", "accent", "chatBackground",
+      "notifications", "soundEnabled", "enterToSend", "showLastSeen",
+      "fontSize", "compactMode", "bubbleStyle", "animationsEnabled",
+      "videoQuality", "videoFps", "voiceQuality",
+      "echoCancellation", "noiseSuppression", "autoGainControl",
+      "readReceipts", "typingIndicators", "keepOnline", "nightModeAuto",
+      "autoplayVideos", "autoplayGifs", "loopAnimatedStickers",
+      "messageTextSize", "bubbleCorners"
+    ];
     const update = {};
     for (const k of allowed) {
       if (settings[k] !== undefined) update[`settings.${k}`] = settings[k];
+    }
+    if (settings.autoDownload && typeof settings.autoDownload === "object") {
+      update["settings.autoDownload"] = settings.autoDownload;
     }
     await User.updateOne({ username: req.user.username }, { $set: update });
     res.json({ ok: true });

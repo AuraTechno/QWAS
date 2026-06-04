@@ -64,7 +64,7 @@
         QWAS.Toast.error('Камера недоступна');
         return;
       }
-      this.openRoundRecorder();
+      QWAS.VideoRecorder.open();
     },
 
     pickLocation() {
@@ -112,7 +112,9 @@
 
       QWAS.Toast.info('Загружаем файл...');
 
-      const r = await QWAS.API.upload(file, requestedType === 'image' || requestedType === 'video' || requestedType === 'audio' ? { forceType: requestedType } : {});
+      const r = file.size > 2 * 1024 * 1024
+        ? await QWAS.API.uploadSmart(file, requestedType === 'image' || requestedType === 'video' || requestedType === 'audio' ? { forceType: requestedType } : {}, () => {})
+        : await QWAS.API.upload(file, requestedType === 'image' || requestedType === 'video' || requestedType === 'audio' ? { forceType: requestedType } : {});
       if (!r.ok) {
         QWAS.Toast.error(r.error || 'Ошибка загрузки');
         return;
@@ -161,76 +163,6 @@
       audio.addEventListener('play', tick);
 
       wrap._audio = audio;
-    },
-
-    openRoundRecorder() {
-      const overlay = document.createElement('div');
-      overlay.className = 'call-overlay';
-      overlay.innerHTML = `
-        <div style="text-align:center; color:white;">
-          <video id="roundPreview" autoplay muted style="width:300px;height:300px;border-radius:50%;object-fit:cover;background:black;"></video>
-          <div id="roundTimer" style="margin-top:20px;font-size:18px;">0:00</div>
-        </div>
-        <div class="call-actions">
-          <button class="call-btn danger" id="roundStop">
-            <svg viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M6 6h12v12H6z"/></svg>
-          </button>
-        </div>
-      `;
-      document.body.appendChild(overlay);
-
-      let stream, recorder, chunks = [];
-      let startTime = 0;
-      let timerInt;
-
-      const cleanup = () => {
-        if (stream) stream.getTracks().forEach(t => t.stop());
-        if (timerInt) clearInterval(timerInt);
-        overlay.remove();
-      };
-
-      const start = async () => {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 480, height: 480 }, audio: true });
-          const video = overlay.querySelector('#roundPreview');
-          video.srcObject = stream;
-          recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-          recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
-          recorder.onstop = async () => {
-            const blob = new Blob(chunks, { type: 'video/webm' });
-            const file = new File([blob], 'round-' + Date.now() + '.webm', { type: 'video/webm' });
-            const r = await QWAS.API.upload(file, { forceType: 'round' });
-            if (r.ok) {
-              QWAS.State.pendingFiles.push(r.file);
-              QWAS.Composer.renderAttachments();
-              QWAS.Composer.updateSendButton();
-            } else {
-              QWAS.Toast.error('Ошибка загрузки');
-            }
-            cleanup();
-          };
-          recorder.start();
-          startTime = Date.now();
-          const timerEl = overlay.querySelector('#roundTimer');
-          timerInt = setInterval(() => {
-            const s = (Date.now() - startTime) / 1000;
-            timerEl.textContent = QWAS.Util.formatDuration(s);
-          }, 100);
-        } catch (err) {
-          QWAS.Toast.error('Не удалось получить доступ к камере');
-          cleanup();
-        }
-      };
-
-      overlay.querySelector('#roundStop').onclick = () => {
-        if (recorder && recorder.state === 'recording') {
-          recorder.stop();
-        } else {
-          cleanup();
-        }
-      };
-
-      start();
     }
   };
 
