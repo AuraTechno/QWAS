@@ -642,6 +642,6 @@ function send(user, event, data) {
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Сервер запущен на http://127.0.0.1:${PORT}`);
 });
