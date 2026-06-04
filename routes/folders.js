@@ -1,65 +1,38 @@
+// Папки чатов
 const express = require("express");
-const { authMiddleware } = require("../middleware/auth");
-
 const router = express.Router();
+const foldersRepo = require("../db/repos/folders");
+const { authRequired } = require("../middleware/auth");
 
-function getModels() {
-  try { return { Folder: require("../models/Folder") }; } catch { return { Folder: null }; }
-}
-
-router.get("/", authMiddleware, async (req, res) => {
-  try {
-    const { Folder } = getModels();
-    if (!Folder) return res.json({ ok: true, folders: [] });
-    const folders = await Folder.find({ owner: req.user.username }).sort({ order: 1 }).lean();
-    res.json({ ok: true, folders });
-  } catch (err) {
-    res.json({ ok: false, folders: [] });
-  }
+router.get("/", authRequired, async (req, res) => {
+  const folders = await foldersRepo.list(req.user.username);
+  res.json({ ok: true, folders });
 });
 
-router.post("/", authMiddleware, async (req, res) => {
-  try {
-    const { Folder } = getModels();
-    if (!Folder) return res.status(503).json({ ok: false });
-    const { title, icon = "folder", color = "#5e8ee7", chatIds = [] } = req.body;
-    if (!title) return res.json({ ok: false, error: "Введите название" });
-    const count = await Folder.countDocuments({ owner: req.user.username });
-    if (count >= 10) return res.json({ ok: false, error: "Максимум 10 папок" });
-    const folder = await Folder.create({ owner: req.user.username, title, icon, color, chatIds, order: count });
-    res.json({ ok: true, folder });
-  } catch (err) {
-    res.json({ ok: false });
-  }
+router.post("/", authRequired, async (req, res) => {
+  const { name, emoji, color } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ ok: false, error: "Укажите имя" });
+  const folder = await foldersRepo.create({ username: req.user.username, name: name.trim(), emoji, color });
+  res.json({ ok: true, folder });
 });
 
-router.put("/:id", authMiddleware, async (req, res) => {
-  try {
-    const { Folder } = getModels();
-    const f = await Folder.findById(req.params.id);
-    if (!f || f.owner !== req.user.username) return res.json({ ok: false });
-    const { title, icon, color, chatIds } = req.body;
-    if (title !== undefined) f.title = title;
-    if (icon !== undefined) f.icon = icon;
-    if (color !== undefined) f.color = color;
-    if (chatIds !== undefined) f.chatIds = chatIds;
-    await f.save();
-    res.json({ ok: true, folder: f.toObject() });
-  } catch (err) {
-    res.json({ ok: false });
-  }
+router.patch("/:id", authRequired, async (req, res) => {
+  const id = parseInt(req.params.id);
+  const folder = await foldersRepo.update(id, req.user.username, req.body || {});
+  res.json({ ok: true, folder });
 });
 
-router.delete("/:id", authMiddleware, async (req, res) => {
-  try {
-    const { Folder } = getModels();
-    const f = await Folder.findById(req.params.id);
-    if (!f || f.owner !== req.user.username) return res.json({ ok: false });
-    await Folder.deleteOne({ _id: req.params.id });
-    res.json({ ok: true });
-  } catch (err) {
-    res.json({ ok: false });
-  }
+router.delete("/:id", authRequired, async (req, res) => {
+  const id = parseInt(req.params.id);
+  await foldersRepo.remove(id, req.user.username);
+  res.json({ ok: true });
+});
+
+router.post("/:id/chats/:chatId", authRequired, async (req, res) => {
+  const id = parseInt(req.params.id);
+  const chatId = parseInt(req.params.chatId);
+  await foldersRepo.addChatToFolder(req.user.username, chatId, id);
+  res.json({ ok: true });
 });
 
 module.exports = router;

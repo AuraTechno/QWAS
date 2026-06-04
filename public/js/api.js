@@ -1,126 +1,172 @@
+// API клиент: fetch обертка + chunked upload + smart upload
 (function() {
   'use strict';
   window.QWAS = window.QWAS || {};
 
+  async function request(url, options = {}) {
+    const token = QWAS.State.getToken();
+    const headers = options.headers ? { ...options.headers } : {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const opts = { ...options, headers };
+    if (opts.body && typeof opts.body === 'object' && !(opts.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(opts.body);
+    }
+    let res;
+    try {
+      res = await fetch(url, opts);
+    } catch (err) {
+      return { ok: false, error: 'Сеть недоступна' };
+    }
+    let data;
+    try { data = await res.json(); } catch { data = null; }
+    if (!res.ok) {
+      if (res.status === 401) {
+        // token invalid — try to clear
+        try { localStorage.removeItem('qwas_token'); } catch {}
+        QWAS.State.token = null;
+      }
+      return data || { ok: false, error: `HTTP ${res.status}` };
+    }
+    return data;
+  }
+
   const API = {
-    async request(path, options = {}) {
-      const opts = Object.assign({
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${QWAS.State.userToken || ''}`,
-          'Content-Type': 'application/json'
-        }
-      }, options);
+    request,
+    get(url) { return request(url, { method: 'GET' }); },
+    post(url, body) { return request(url, { method: 'POST', body }); },
+    patch(url, body) { return request(url, { method: 'PATCH', body }); },
+    delete(url, body) { return request(url, { method: 'DELETE', body }); },
 
-      if (options.body && typeof options.body !== 'string' && !(options.body instanceof FormData)) {
-        opts.body = JSON.stringify(options.body);
-      } else if (options.body instanceof FormData) {
-        delete opts.headers['Content-Type'];
-        opts.body = options.body;
-      } else if (options.body) {
-        opts.body = options.body;
-      }
+    // === Auth ===
+    login(username, password) { return this.post('/login', { username, password }); },
+    register(data) { return this.post('/register', data); },
+    me() { return this.get('/me'); },
+    logout() { return this.post('/logout', {}); },
 
-      try {
-        const res = await fetch(path, opts);
-        const ct = res.headers.get('content-type') || '';
-        if (ct.includes('application/json')) {
-          return await res.json();
-        }
-        return { ok: res.ok, status: res.status };
-      } catch (err) {
-        console.error('API error:', path, err);
-        return { ok: false, error: 'network_error' };
-      }
+    // === Profile ===
+    updateProfile(patch) { return this.patch('/profile', patch); },
+    contacts() { return this.get('/profile/contacts'); },
+    addContact(username) { return this.post(`/profile/contacts/${encodeURIComponent(username)}`); },
+    removeContact(username) { return this.delete(`/profile/contacts/${encodeURIComponent(username)}`); },
+    openDM(username) { return this.post(`/profile/dm/${encodeURIComponent(username)}`); },
+
+    // === Chats ===
+    chats(tab = 'all') { return this.get(`/chats?tab=${tab}`); },
+    archivedChats() { return this.get('/chats/archived'); },
+    pinnedChats() { return this.get('/chats/pinned'); },
+    chat(id) { return this.get(`/chats/${id}`); },
+    chatInfo(id) { return this.get(`/chats/${id}/info`); },
+    chatMessages(id, { beforeId, limit } = {}) {
+      const params = new URLSearchParams();
+      if (beforeId) params.set('beforeId', beforeId);
+      if (limit) params.set('limit', limit);
+      const qs = params.toString();
+      return this.get(`/chats/${id}/messages${qs ? '?' + qs : ''}`);
     },
+    chatMedia(id, { type, beforeId, limit } = {}) {
+      const params = new URLSearchParams();
+      if (type) params.set('type', type);
+      if (beforeId) params.set('beforeId', beforeId);
+      if (limit) params.set('limit', limit);
+      const qs = params.toString();
+      return this.get(`/chats/${id}/media${qs ? '?' + qs : ''}`);
+    },
+    searchInChat(id, q) { return this.get(`/chats/${id}/search?q=${encodeURIComponent(q)}`); },
+    markRead(id) { return this.post(`/chats/${id}/read`, {}); },
+    setPinned(id, pinned) { return this.post(`/chats/${id}/pin`, { pinned }); },
+    setArchived(id, archived) { return this.post(`/chats/${id}/archive`, { archived }); },
+    setMuted(id, muted) { return this.post(`/chats/${id}/mute`, { muted }); },
 
-    get(path) { return this.request(path); },
-    post(path, body) { return this.request(path, { method: 'POST', body }); },
-    put(path, body) { return this.request(path, { method: 'PUT', body }); },
-    del(path) { return this.request(path, { method: 'DELETE' }); },
+    // === Groups ===
+    createGroup(data) { return this.post('/groups', data); },
+    groupInfo(id) { return this.get(`/groups/${id}`); },
+    addGroupMembers(id, usernames) { return this.post(`/groups/${id}/members`, { usernames }); },
+    removeGroupMember(id, username) { return this.delete(`/groups/${id}/members/${encodeURIComponent(username)}`); },
 
-    upload(file, extra = {}) {
+    // === Search ===
+    searchUsers(q) { return this.get(`/search/users?q=${encodeURIComponent(q)}`); },
+    searchMessages(q) { return this.get(`/search/messages?q=${encodeURIComponent(q)}`); },
+    searchChats(q) { return this.get(`/search/chats?q=${encodeURIComponent(q)}`); },
+
+    // === Stories ===
+    storiesFeed() { return this.get('/stories/feed'); },
+    createStory(data) { return this.post('/stories', data); },
+    viewStory(id) { return this.post(`/stories/${id}/view`, {}); },
+    deleteStory(id) { return this.delete(`/stories/${id}`); },
+
+    // === Folders ===
+    folders() { return this.get('/folders'); },
+    createFolder(data) { return this.post('/folders', data); },
+    updateFolder(id, data) { return this.patch(`/folders/${id}`, data); },
+    deleteFolder(id) { return this.delete(`/folders/${id}`); },
+    addChatToFolder(id, chatId) { return this.post(`/folders/${id}/chats/${chatId}`); },
+
+    // === Notifications ===
+    notifications() { return this.get('/notifications'); },
+    markNotificationsRead(ids) { return this.post('/notifications/read', { ids }); },
+    markAllNotificationsRead() { return this.post('/notifications/read-all', {}); },
+
+    // === Settings ===
+    saveSettings(patch) { return this.patch('/profile', { settings: patch }); },
+
+    // === Upload ===
+    // Простая загрузка (до 2МБ)
+    async upload(file, extra = {}) {
       const fd = new FormData();
       fd.append('file', file);
-      for (const k in extra) fd.append(k, extra[k]);
-      return this.request('/upload', { method: 'POST', body: fd });
+      if (extra.type) fd.append('type', extra.type);
+      return this.post('/upload', fd);
     },
 
+    // Чанковая загрузка > 3МБ с прогрессом
     async uploadSmart(file, extra = {}, onProgress) {
       if (file.size > 3 * 1024 * 1024 && typeof onProgress === 'function') {
         return this.uploadChunkWithProgress(file, extra, onProgress);
       }
-      return this.upload(file, extra);
+      if (onProgress) onProgress(0.1);
+      const res = await this.upload(file, extra);
+      if (onProgress) onProgress(1);
+      return res;
     },
 
-    uploadChunkWithProgress(file, extra, onProgress) {
-      return new Promise((resolve, reject) => {
-        const chunkSize = 1024 * 1024;
-        const total = Math.ceil(file.size / chunkSize);
-        this.post('/upload/chunk/init', { name: file.name, size: file.size, mime: file.type })
-          .then(init => {
-            if (!init.ok) { resolve(this.upload(file, extra)); return; }
-            let uploaded = 0;
-            const next = (i) => {
-              if (i >= total) {
-                this.post(`/upload/chunk/${init.uploadId}/complete`, { forceType: extra.forceType || '' })
-                  .then(resolve, () => resolve({ ok: false, error: 'complete_failed' }));
-                return;
-              }
-              const s = i * chunkSize;
-              const e = Math.min(s + chunkSize, file.size);
-              const fd = new FormData();
-              fd.append('chunk', file.slice(s, e));
-              fd.append('index', String(i));
-              this.request(`/upload/chunk/${init.uploadId}`, { method: 'POST', body: fd })
-                .then(r => {
-                  if (!r.ok) { resolve(this.upload(file, extra)); return; }
-                  uploaded += (e - s);
-                  onProgress(uploaded / file.size);
-                  next(i + 1);
-                }, () => resolve(this.upload(file, extra)));
-            };
-            next(0);
-          }, () => resolve(this.upload(file, extra)));
+    async uploadChunkWithProgress(file, extra = {}, onProgress) {
+      const init = await this.post('/upload/chunk/init', {
+        name: file.name,
+        size: file.size,
+        mime: file.type,
+        type: extra.type || extra.forceType
       });
+      if (!init || !init.ok) return init;
+      const uploadId = init.uploadId;
+      const chunkSize = init.chunkSize || 1024 * 1024;
+      const total = Math.ceil(file.size / chunkSize);
+      let uploaded = 0;
+      for (let i = 0; i < total; i++) {
+        const start = i * chunkSize;
+        const end = Math.min(start + chunkSize, file.size);
+        const blob = file.slice(start, end);
+        const fd = new FormData();
+        fd.append('chunk', blob);
+        fd.append('index', String(i));
+        const r = await this.post(`/upload/chunk/${uploadId}`, fd);
+        if (!r || !r.ok) {
+          return r || { ok: false, error: 'chunk failed' };
+        }
+        uploaded += end - start;
+        onProgress(uploaded / file.size);
+      }
+      return this.post(`/upload/chunk/${uploadId}/complete`, {});
     },
 
-    uploadChunk(file, onProgress) {
-      return new Promise((resolve, reject) => {
-        const chunkSize = 1024 * 1024;
-        const totalChunks = Math.ceil(file.size / chunkSize);
-        const uploadId = 'up_' + Math.random().toString(36).slice(2);
+    abortUpload(uploadId) {
+      return this.delete(`/upload/chunk/${uploadId}`);
+    },
 
-        this.post('/upload/chunk/init', {
-          name: file.name, size: file.size, mime: file.type
-        }).then(init => {
-          if (!init.ok) return reject(new Error('init failed'));
-
-          let uploaded = 0;
-          const uploadNext = (i) => {
-            if (i >= totalChunks) {
-              this.post(`/upload/chunk/${init.uploadId}/complete`).then(resolve);
-              return;
-            }
-            const start = i * chunkSize;
-            const end = Math.min(start + chunkSize, file.size);
-            const chunk = file.slice(start, end);
-            const fd = new FormData();
-            fd.append('chunk', chunk);
-            fd.append('index', i);
-            this.request(`/upload/chunk/${init.uploadId}`, { method: 'POST', body: fd })
-              .then(r => {
-                if (!r.ok) return reject(new Error('chunk failed'));
-                uploaded += (end - start);
-                onProgress && onProgress(uploaded / file.size);
-                uploadNext(i + 1);
-              });
-          };
-          uploadNext(0);
-        }).catch(reject);
-      });
+    deleteUploaded(url) {
+      return this.delete('/upload/file', { url });
     }
   };
 
-  QWAS.API = API;
+  window.QWAS.API = API;
 })();

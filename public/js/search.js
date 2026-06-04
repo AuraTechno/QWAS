@@ -1,130 +1,140 @@
+// Глобальный поиск: пользователи, чаты, сообщения
 (function() {
   'use strict';
   window.QWAS = window.QWAS || {};
 
-  const Search = {
-    active: false,
-    overlay: null,
+  const SidebarSearch = {
+    timer: null,
+    lastQuery: '',
 
-    show() { this.active = true; },
-    hide() {
-      this.active = false;
-      this.removeOverlay();
+    init() {
+      const input = document.getElementById('searchInput');
+      if (!input) return;
+      input.addEventListener('input', (e) => this.onInput(e.target.value));
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.commit(input.value);
+        } else if (e.key === 'Escape') {
+          input.value = '';
+          this.hide();
+        }
+      });
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.sidebar-search') && !e.target.closest('.search-results')) {
+          this.hide();
+        }
+      });
     },
 
-    handleSearch(q) {
+    onInput(q) {
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.commit(q), 250);
+    },
+
+    async commit(q) {
       q = (q || '').trim();
+      if (q === this.lastQuery) return;
+      this.lastQuery = q;
       if (!q) { this.hide(); return; }
-      this.show();
-      this.render(q);
+      const [u, c, m] = await Promise.all([
+        QWAS.API.searchUsers(q).catch(() => ({ users: [] })),
+        QWAS.API.searchChats(q).catch(() => ({ chats: [] })),
+        QWAS.API.searchMessages(q).catch(() => ({ messages: [] }))
+      ]);
+      this.render({
+        users: (u && u.users) || [],
+        chats: (c && c.chats) || [],
+        messages: (m && m.messages) || []
+      }, q);
     },
 
-    render(q) {
-      this.removeOverlay();
-      const results = this.search(q);
-      this.overlay = document.createElement('div');
-      this.overlay.className = 'search-results';
-      this.overlay.style.cssText = 'position:absolute;top:60px;left:12px;right:12px;background:var(--bg-elevated);border-radius:12px;padding:8px;z-index:100;box-shadow:var(--shadow-2);max-height:60vh;overflow-y:auto;';
-      document.querySelector('.sidebar').appendChild(this.overlay);
-
-      if (results.length === 0) {
-        this.overlay.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-tertiary);">Ничего не найдено</div>';
+    render(data, q) {
+      let panel = document.getElementById('searchResults');
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'searchResults';
+        panel.className = 'search-results';
+        const search = document.querySelector('.sidebar-search');
+        if (search && search.parentNode) search.parentNode.appendChild(panel);
+      }
+      const has = data.users.length || data.chats.length || data.messages.length;
+      if (!has) {
+        panel.innerHTML = `<div class="search-empty">Ничего не найдено по «${QWAS.Util.escapeHtml(q)}»</div>`;
+        panel.style.display = 'block';
         return;
       }
-
-      this.overlay.innerHTML = results.map(r => this.renderItem(r)).join('');
+      let html = '';
+      if (data.users.length) {
+        html += `<div class="search-section-title">Пользователи</div>`;
+        html += data.users.map(u => `
+          <div class="search-item" data-type="user" data-username="${QWAS.Util.escapeAttr(u.username)}">
+            ${QWAS.Util.avatarHtml(u, 36)}
+            <div class="search-item-body">
+              <div class="search-item-title">${QWAS.Util.escapeHtml(QWAS.Util.getUserDisplayName(u))}</div>
+              <div class="search-item-sub">@${QWAS.Util.escapeHtml(u.username)}</div>
+            </div>
+          </div>`).join('');
+      }
+      if (data.chats.length) {
+        html += `<div class="search-section-title">Чаты</div>`;
+        html += data.chats.map(c => `
+          <div class="search-item" data-type="chat" data-chat-id="${QWAS.Util.escapeAttr(c.id)}">
+            ${QWAS.Util.avatarHtml({ firstName: c.title, username: 'g' + c.id }, 36)}
+            <div class="search-item-body">
+              <div class="search-item-title">${QWAS.Util.escapeHtml(c.title || 'Чат')}</div>
+            </div>
+          </div>`).join('');
+      }
+      if (data.messages.length) {
+        html += `<div class="search-section-title">Сообщения</div>`;
+        html += data.messages.slice(0, 20).map(m => `
+          <div class="search-item" data-type="message" data-msg-id="${QWAS.Util.escapeAttr(m.id)}" data-chat-id="${QWAS.Util.escapeAttr(m.chatId)}">
+            <div class="search-item-icon">💬</div>
+            <div class="search-item-body">
+              <div class="search-item-title">${this._highlight(m.text || '', q)}</div>
+              <div class="search-item-sub">${QWAS.Util.timeAgo(m.createdAt)}</div>
+            </div>
+          </div>`).join('');
+      }
+      panel.innerHTML = html;
+      panel.style.display = 'block';
+      panel.querySelectorAll('.search-item').forEach(el => {
+        el.addEventListener('click', () => this._onItemClick(el));
+      });
     },
 
-    renderItem(r) {
-      const isFav = r.username === QWAS.Config.FAVORITE_CHAT_ID;
-      const isGroup = r.type === 'group';
-      const displayName = isFav ? 'Избранное' :
-        isGroup ? r.name : (r.firstName ? `${r.firstName} ${r.lastName || ''}`.trim() : r.username);
-      const avatarContent = isFav ? '⭐' : isGroup ? (r.groupType === 'channel' ? '📢' : '👥') : (r.firstName || r.username || '?').substring(0, 2);
-      const gradClass = isFav ? 'avatar-gradient-4' : QWAS.Util.gradientFor(r.username || r.name);
-
-      return `<div class="search-result-item" onclick="QWAS.Search.open('${QWAS.Util.escapeAttr(r.username)}')" style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:8px;cursor:pointer;transition:background 0.15s;">
-        <div class="avatar size-40 ${gradClass}">${QWAS.Util.escapeHtml(avatarContent)}</div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:14px;font-weight:500;">${QWAS.Util.escapeHtml(displayName)}</div>
-          <div style="font-size:12px;color:var(--text-tertiary);">@${QWAS.Util.escapeHtml(isGroup ? r._id : r.username)}</div>
-        </div>
-      </div>`;
+    _onItemClick(el) {
+      const type = el.dataset.type;
+      if (type === 'user') {
+        const u = el.dataset.username;
+        this.hide();
+        if (QWAS.Modals) QWAS.Modals.openUserProfile(u);
+      } else if (type === 'chat') {
+        const id = parseInt(el.dataset.chatId);
+        this.hide();
+        if (QWAS.Chat) QWAS.Chat.open(id);
+      } else if (type === 'message') {
+        const chatId = parseInt(el.dataset.chatId);
+        this.hide();
+        if (QWAS.Chat) QWAS.Chat.open(chatId);
+        // TODO: прокрутить к сообщению
+      }
     },
 
-    search(q) {
-      const ql = q.toLowerCase();
-      const results = [];
-
-      if ('избранное'.includes(ql) || 'favorites'.includes(ql)) {
-        results.push({ username: QWAS.Config.FAVORITE_CHAT_ID });
-      }
-
-      for (const g of QWAS.State.myGroups || []) {
-        if (g.name && g.name.toLowerCase().includes(ql)) {
-          results.push({ ...g, type: 'group' });
-        }
-      }
-
-      const seen = new Set();
-      for (const c of QWAS.State.chats || []) {
-        if (!c || !c.username) continue;
-        if (seen.has(c.username)) continue;
-        const name = (c.name || c.firstName || '').toLowerCase();
-        const cUser = (c.username || '').toLowerCase();
-        if (name.includes(ql) || cUser.includes(ql)) {
-          results.push(c);
-          seen.add(c.username);
-        }
-      }
-
-      for (const u of QWAS.State.allUsers || []) {
-        if (!u || !u.username) continue;
-        if (seen.has(u.username)) continue;
-        const fName = (u.firstName || '').toLowerCase();
-        const lName = (u.lastName || '').toLowerCase();
-        const uName = (u.username || '').toLowerCase();
-        if (fName.includes(ql) || lName.includes(ql) || uName.includes(ql)) {
-          results.push(u);
-          seen.add(u.username);
-        }
-      }
-
-      return results.slice(0, 10);
+    _highlight(text, q) {
+      if (!q) return QWAS.Util.escapeHtml(text);
+      const safe = QWAS.Util.escapeHtml(text);
+      const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+      return safe.replace(re, '<mark>$1</mark>');
     },
 
-    open(username) {
-      this.hide();
-      document.getElementById('searchInput').value = '';
-      if (!username.startsWith('group:') && username !== QWAS.Config.FAVORITE_CHAT_ID) {
-        if (!QWAS.State.chats.find(c => c.username === username)) {
-          const user = (QWAS.State.allUsers || []).find(u => u.username === username);
-          if (user) {
-            QWAS.State.chats.unshift({ ...user, type: 'dm', lastMessage: '', lastMessageTime: new Date(), unreadCount: 0 });
-            QWAS.Chats.render();
-          }
-        }
-      } else if (username.startsWith('group:')) {
-        const id = username.slice(6);
-        const group = QWAS.State.myGroups.find(g => g._id === id);
-        if (group && !QWAS.State.chats.find(c => c.username === username)) {
-          QWAS.State.chats.unshift({
-            ...group, type: 'group', username, memberCount: group.memberCount, lastMessage: '', lastMessageTime: new Date(), unreadCount: 0
-          });
-          QWAS.Chats.render();
-        }
-      }
-      QWAS.Chat.open(username);
-    },
-
-    removeOverlay() {
-      if (this.overlay) {
-        this.overlay.remove();
-        this.overlay = null;
-      }
+    hide() {
+      const panel = document.getElementById('searchResults');
+      if (panel) panel.style.display = 'none';
     }
   };
 
-  QWAS.Search = Search;
-  QWAS.State.allUsers = QWAS.State.allUsers || [];
+  window.QWAS.SidebarSearch = SidebarSearch;
+  window.QWAS.Search = SidebarSearch;
 })();

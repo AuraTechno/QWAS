@@ -1,80 +1,78 @@
+// Lightbox для просмотра картинок и видео на полный экран
 (function() {
   'use strict';
   window.QWAS = window.QWAS || {};
 
   const Lightbox = {
     images: [],
-    current: 0,
+    current: -1,
 
-    open(url, caption) {
-      this.images = [{ url, caption: caption || '' }];
-      this.current = 0;
-      this.render();
-    },
-
-    openImages(images) {
-      this.images = images;
-      this.current = 0;
-      this.render();
-    },
-
-    openVideo(url, isRound) {
+    init() {
       const lb = document.getElementById('lightbox');
       if (!lb) return;
-      if (isRound) {
-        lb.innerHTML = `
-          <button class="lightbox-close" onclick="QWAS.Lightbox.close()">✕</button>
-          <div class="lightbox-round-wrap">
-            <video src="${url}" controls autoplay loop style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);"></video>
-          </div>
-        `;
-      } else {
-        lb.innerHTML = `
-          <button class="lightbox-close" onclick="QWAS.Lightbox.close()">✕</button>
-          <video src="${url}" controls autoplay style="max-width:95vw;max-height:90vh;border-radius:8px;"></video>
-        `;
-      }
+      const closeBtn = lb.querySelector('.lightbox-close');
+      if (closeBtn) closeBtn.addEventListener('click', () => this.close());
+      const prevBtn = document.getElementById('lightboxPrev');
+      const nextBtn = document.getElementById('lightboxNext');
+      if (prevBtn) prevBtn.addEventListener('click', (e) => { e.stopPropagation(); this.prev(); });
+      if (nextBtn) nextBtn.addEventListener('click', (e) => { e.stopPropagation(); this.next(); });
+      lb.addEventListener('click', () => this.close());
+      document.addEventListener('keydown', (e) => {
+        if (lb.style.display === 'none' || lb.style.display === '') return;
+        if (e.key === 'Escape') this.close();
+        else if (e.key === 'ArrowLeft') this.prev();
+        else if (e.key === 'ArrowRight') this.next();
+      });
+    },
+
+    open(src, caption) {
+      const lb = document.getElementById('lightbox');
+      if (!lb) return;
+      this.images = [{ src, caption }];
+      this.current = 0;
+      this._showCurrent();
       lb.style.display = 'flex';
     },
 
-    render() {
+    openGallery(images, index) {
       const lb = document.getElementById('lightbox');
       if (!lb) return;
+      this.images = images || [];
+      this.current = index || 0;
+      this._showCurrent();
+      lb.style.display = 'flex';
+    },
+
+    _showCurrent() {
+      const img = document.getElementById('lightboxImg');
+      const cap = document.getElementById('lightboxCaption');
       const cur = this.images[this.current];
-      lb.innerHTML = `
-        <button class="lightbox-close" onclick="QWAS.Lightbox.close()">✕</button>
-        ${this.images.length > 1 ? `<button class="lightbox-nav lightbox-prev" onclick="QWAS.Lightbox.prev(event)">‹</button>` : ''}
-        <img id="lightboxImg" class="lightbox-img" src="${cur.url}" alt="${cur.caption || ''}">
-        ${this.images.length > 1 ? `<button class="lightbox-nav lightbox-next" onclick="QWAS.Lightbox.next(event)">›</button>` : ''}
-        ${cur.caption ? `<div class="lightbox-caption">${QWAS.Util.escapeHtml(cur.caption)}</div>` : ''}
-      `;
-      lb.style.display = 'flex';
+      if (!cur) return;
+      if (img) img.src = cur.src;
+      if (cap) cap.textContent = cur.caption || '';
     },
 
     prev(e) {
       if (e) e.stopPropagation();
-      if (this.current > 0) {
-        this.current--;
-        this.render();
-      }
+      if (!this.images.length) return;
+      this.current = (this.current - 1 + this.images.length) % this.images.length;
+      this._showCurrent();
     },
 
     next(e) {
       if (e) e.stopPropagation();
-      if (this.current < this.images.length - 1) {
-        this.current++;
-        this.render();
-      }
+      if (!this.images.length) return;
+      this.current = (this.current + 1) % this.images.length;
+      this._showCurrent();
     },
 
     close() {
       const lb = document.getElementById('lightbox');
-      if (lb) {
-        lb.style.display = 'none';
-        lb.innerHTML = '';
-      }
+      if (lb) lb.style.display = 'none';
+      this.images = [];
+      this.current = -1;
     }
   };
 
-  QWAS.Lightbox = Lightbox;
+  window.QWAS.Lightbox = Lightbox;
 })();

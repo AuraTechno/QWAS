@@ -1,69 +1,69 @@
+// Прикрепление файлов: выбор, drag-drop, paste, прогресс, геолокация, контакт, опрос
 (function() {
   'use strict';
   window.QWAS = window.QWAS || {};
 
   const Attach = {
     init() {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.id = 'filePicker';
-      input.style.display = 'none';
-      document.body.appendChild(input);
-      input.addEventListener('change', (e) => this.onFile(e));
-
-      const videoInput = document.createElement('input');
-      videoInput.type = 'file';
-      videoInput.id = 'videoPicker';
-      videoInput.accept = 'video/*';
-      videoInput.style.display = 'none';
-      document.body.appendChild(videoInput);
-      videoInput.addEventListener('change', (e) => this.onFile(e, 'video'));
-
-      const audioInput = document.createElement('input');
-      audioInput.type = 'file';
-      audioInput.id = 'audioPicker';
-      audioInput.accept = 'audio/*';
-      audioInput.style.display = 'none';
-      document.body.appendChild(audioInput);
-      audioInput.addEventListener('change', (e) => this.onFile(e, 'audio'));
-
-      this.initDragDrop();
-      this.initPaste();
+      this._initInputs();
+      this._initDragDrop();
+      this._initPaste();
+      this._initAttachMenu();
     },
 
-    initDragDrop() {
-      const wrapper = document.getElementById('messagesWrapper') || document.getElementById('chatContent');
-      if (!wrapper) return;
-      let dragCounter = 0;
+    _initInputs() {
+      // Создаём скрытые input'ы
+      const create = (id, accept) => {
+        if (document.getElementById(id)) return;
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.id = id;
+        input.accept = accept;
+        input.style.display = 'none';
+        document.body.appendChild(input);
+        input.addEventListener('change', (e) => this.onFile(e));
+        return input;
+      };
+      create('filePicker', '*/*');
+      create('imagePicker', 'image/*');
+      create('videoPicker', 'video/*');
+      create('audioPicker', 'audio/*');
+    },
+
+    _initDragDrop() {
+      const wrap = document.getElementById('messagesWrapper') || document.getElementById('chatContent');
+      if (!wrap) return;
+      let counter = 0;
       const overlay = document.createElement('div');
       overlay.className = 'drag-drop-overlay';
       overlay.id = 'dragDropOverlay';
-      overlay.innerHTML = `<div class="drag-drop-content"><div class="drag-drop-icon">📎</div><div>Перетащите файл сюда</div></div>`;
+      overlay.innerHTML = '<div class="drag-drop-content"><div class="drag-drop-icon">📎</div><div>Перетащите файл сюда</div></div>';
       overlay.style.display = 'none';
       document.body.appendChild(overlay);
 
-      wrapper.addEventListener('dragenter', (e) => {
+      wrap.addEventListener('dragenter', (e) => {
+        if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
         e.preventDefault();
-        dragCounter++;
-        if (e.dataTransfer.types.includes('Files')) overlay.style.display = 'flex';
+        counter++;
+        overlay.style.display = 'flex';
       });
-      wrapper.addEventListener('dragleave', (e) => {
+      wrap.addEventListener('dragleave', (e) => {
         e.preventDefault();
-        dragCounter--;
-        if (dragCounter <= 0) { dragCounter = 0; overlay.style.display = 'none'; }
+        counter = Math.max(0, counter - 1);
+        if (counter === 0) overlay.style.display = 'none';
       });
-      wrapper.addEventListener('dragover', (e) => { e.preventDefault(); });
-      wrapper.addEventListener('drop', (e) => {
+      wrap.addEventListener('dragover', (e) => { e.preventDefault(); });
+      wrap.addEventListener('drop', (e) => {
         e.preventDefault();
-        dragCounter = 0;
+        counter = 0;
         overlay.style.display = 'none';
         const files = e.dataTransfer?.files;
-        if (!files || files.length === 0) return;
-        for (const f of files) this.handleFileObject(f);
+        if (!files || !files.length) return;
+        for (const f of files) this._addFile(f);
       });
     },
 
-    initPaste() {
+    _initPaste() {
       const ta = document.getElementById('msgInput');
       if (!ta) return;
       ta.addEventListener('paste', (e) => {
@@ -74,69 +74,67 @@
             const f = it.getAsFile();
             if (f) {
               e.preventDefault();
-              this.handleFileObject(f);
+              this._addFile(f);
             }
           }
         }
       });
     },
 
-    handleFileObject(file) {
-      const input = document.getElementById('filePicker');
-      if (input) {
-        try {
-          const dt = new DataTransfer();
-          dt.items.add(file);
-          input.files = dt.files;
-          input.dispatchEvent(new Event('change', { bubbles: true }));
-        } catch {
-          this.onFile({ target: { files: [file], dataset: {} } });
-        }
-      } else {
-        this.onFile({ target: { files: [file], dataset: {} } });
-      }
+    _initAttachMenu() {
+      // Привязка пунктов меню прикрепления
+      const map = {
+        'attach-photo': 'image',
+        'attach-video': 'video',
+        'attach-file': 'file',
+        'attach-audio': 'audio',
+        'attach-location': 'location',
+        'attach-contact': 'contact',
+        'attach-poll': 'poll',
+        'attach-round': 'round'
+      };
+      Object.keys(map).forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('click', () => {
+          if (map[id] === 'round') return this.startRound();
+          this.pick(map[id]);
+        });
+      });
     },
 
-    toggle() { QWAS.Composer.toggleAttach(); },
+    _addFile(file) {
+      // Используем onFile, эмулируя событие
+      this.onFile({ target: { files: [file], dataset: {} } });
+    },
 
     pick(type) {
-      QWAS.Composer.hideAttachMenu();
-      const inputMap = {
-        image: { id: 'filePicker', accept: 'image/*' },
-        video: { id: 'videoPicker', accept: 'video/*' },
-        audio: { id: 'audioPicker', accept: 'audio/*' },
-        file: { id: 'filePicker', accept: '*/*' }
+      if (QWAS.Composer) QWAS.Composer.hideAttachMenu();
+      const map = {
+        image: 'imagePicker',
+        video: 'videoPicker',
+        audio: 'audioPicker',
+        file: 'filePicker'
       };
-      const cfg = inputMap[type] || inputMap.file;
-      const input = document.getElementById(cfg.id) || this.createInput(cfg);
+      const id = map[type] || 'filePicker';
+      const input = document.getElementById(id);
+      if (!input) return;
       input.value = '';
-      input.accept = cfg.accept;
       input.dataset.type = type;
       input.click();
     },
 
-    createInput(cfg) {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.id = cfg.id;
-      input.accept = cfg.accept;
-      input.style.display = 'none';
-      document.body.appendChild(input);
-      input.addEventListener('change', (e) => this.onFile(e));
-      return input;
-    },
-
     startRound() {
-      QWAS.Composer.hideAttachMenu();
+      if (QWAS.Composer) QWAS.Composer.hideAttachMenu();
       if (!navigator.mediaDevices?.getUserMedia) {
         QWAS.Toast.error('Камера недоступна');
         return;
       }
-      QWAS.VideoRecorder.open();
+      if (QWAS.VideoRecorder) QWAS.VideoRecorder.open();
     },
 
     pickLocation() {
-      QWAS.Composer.hideAttachMenu();
+      if (QWAS.Composer) QWAS.Composer.hideAttachMenu();
       if (!navigator.geolocation) {
         QWAS.Toast.error('Геолокация недоступна');
         return;
@@ -151,21 +149,25 @@
             lng: longitude,
             name: 'Моя геопозиция'
           });
-          QWAS.Composer.updateSendButton();
+          if (QWAS.Composer) {
+            QWAS.Composer.renderAttachments();
+            QWAS.Composer.updateSendButton();
+          }
           QWAS.Toast.success('Местоположение добавлено');
         },
-        (err) => QWAS.Toast.error('Не удалось определить местоположение')
+        (err) => QWAS.Toast.error('Не удалось определить местоположение: ' + (err.message || '')),
+        { enableHighAccuracy: true, timeout: 15000 }
       );
     },
 
     pickContact() {
-      QWAS.Composer.hideAttachMenu();
-      QWAS.Modals.openContactPicker();
+      if (QWAS.Composer) QWAS.Composer.hideAttachMenu();
+      if (QWAS.Modals) QWAS.Modals.openContactPicker();
     },
 
     pickPoll() {
-      QWAS.Composer.hideAttachMenu();
-      QWAS.Modals.openCreatePoll();
+      if (QWAS.Composer) QWAS.Composer.hideAttachMenu();
+      if (QWAS.Modals) QWAS.Modals.openCreatePoll();
     },
 
     async onFile(e, forceType) {
@@ -173,7 +175,8 @@
       if (!file) return;
       const requestedType = e.target.dataset.type || forceType || 'file';
 
-      if (file.size > QWAS.Config.MAX_FILE_SIZE) {
+      // Лимит размера (50МБ)
+      if (file.size > 50 * 1024 * 1024) {
         QWAS.Toast.error('Файл слишком большой (макс 50 МБ)');
         e.target.value = '';
         return;
@@ -190,7 +193,7 @@
       };
       const uploadIdx = QWAS.State.pendingFiles.length;
       QWAS.State.pendingFiles.push(placeholder);
-      QWAS.Composer.renderAttachments();
+      if (QWAS.Composer) QWAS.Composer.renderAttachments();
       QWAS.Toast.info('Загружаем файл...');
 
       const onProgress = (p) => {
@@ -198,31 +201,34 @@
         const target = list[uploadIdx];
         if (target && target.uploading) {
           target.progress = p;
-          QWAS.Composer.renderAttachments();
+          if (QWAS.Composer) QWAS.Composer.renderAttachments();
         }
       };
 
       try {
-        const r = file.size > 2 * 1024 * 1024
-          ? await QWAS.API.uploadSmart(file, ['image', 'video', 'audio'].includes(requestedType) ? { forceType: requestedType } : {}, onProgress)
-          : await QWAS.API.upload(file, ['image', 'video', 'audio'].includes(requestedType) ? { forceType: requestedType } : {});
-
+        const r = await QWAS.API.uploadSmart(
+          file,
+          ['image', 'video', 'audio'].includes(requestedType) ? { type: requestedType, forceType: requestedType } : {},
+          onProgress
+        );
         const list = QWAS.State.pendingFiles;
         if (list[uploadIdx] && list[uploadIdx].uploading) {
-          if (r.ok) {
-            list[uploadIdx] = r.file;
+          if (r && r.ok) {
+            list[uploadIdx] = { ...r.file, type: requestedType };
             QWAS.Toast.success('Файл добавлен');
           } else {
             list.splice(uploadIdx, 1);
-            QWAS.Toast.error(r.error || 'Ошибка загрузки');
+            QWAS.Toast.error((r && r.error) || 'Ошибка загрузки');
           }
         }
-        QWAS.Composer.renderAttachments();
-        QWAS.Composer.updateSendButton();
-      } catch (e) {
+        if (QWAS.Composer) {
+          QWAS.Composer.renderAttachments();
+          QWAS.Composer.updateSendButton();
+        }
+      } catch (err) {
         const list = QWAS.State.pendingFiles;
         if (list[uploadIdx] && list[uploadIdx].uploading) list.splice(uploadIdx, 1);
-        QWAS.Composer.renderAttachments();
+        if (QWAS.Composer) QWAS.Composer.renderAttachments();
         QWAS.Toast.error('Ошибка загрузки');
       } finally {
         e.target.value = '';
@@ -230,44 +236,20 @@
     },
 
     playVoice(btn) {
-      const wrap = btn.closest('.att-voice');
+      const wrap = btn.closest('.att-voice, .msg-voice, .msg-round');
       if (!wrap) return;
-      const url = wrap.dataset.url;
-      const audio = new Audio(url);
-      const bars = wrap.querySelectorAll('.att-voice-wave span');
-      const total = parseFloat(wrap.dataset.duration) || 0;
-      const icon = btn.querySelector('svg');
-
-      btn.classList.add('playing');
-      if (icon) icon.innerHTML = '<path fill="currentColor" d="M6 6h4v12H6zm8 0h4v12h-4z"/>';
-
-      audio.play().catch(() => {});
-
-      const startTime = Date.now();
-      const tick = () => {
-        if (audio.paused || audio.ended) {
-          btn.classList.remove('playing');
-          if (icon) icon.innerHTML = '<path fill="currentColor" d="M8 5v14l11-7z"/>';
-          bars.forEach(b => { b.style.opacity = ''; });
-          return;
-        }
-        const elapsed = (Date.now() - startTime) / 1000;
-        const progress = Math.min(1, elapsed / total);
-        bars.forEach((b, i) => {
-          b.style.opacity = i / bars.length < progress ? '1' : '0.3';
-        });
-        requestAnimationFrame(tick);
-      };
-      audio.addEventListener('ended', () => {
-        btn.classList.remove('playing');
-        if (icon) icon.innerHTML = '<path fill="currentColor" d="M8 5v14l11-7z"/>';
-        bars.forEach(b => { b.style.opacity = ''; });
-      });
-      audio.addEventListener('play', tick);
-
-      wrap._audio = audio;
+      const url = wrap.dataset.url || wrap.querySelector('audio, video')?.src;
+      if (!url) return;
+      const audio = wrap.querySelector('audio') || (() => {
+        const a = document.createElement('audio');
+        a.src = url;
+        wrap.appendChild(a);
+        return a;
+      })();
+      if (audio.paused) audio.play().catch(() => {});
+      else { audio.pause(); audio.currentTime = 0; }
     }
   };
 
-  QWAS.Attach = Attach;
+  window.QWAS.Attach = Attach;
 })();

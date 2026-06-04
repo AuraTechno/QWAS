@@ -1,184 +1,97 @@
+// Глобальное состояние приложения
 (function() {
   'use strict';
   window.QWAS = window.QWAS || {};
 
-  QWAS.STORAGE = {
-    TOKEN: 'qwas_token',
-    USER: 'qwas_user',
-    THEME: 'qwas_theme',
-    ACCENT: 'qwas_accent',
-    FOLDERS: 'qwas_folders',
-    DRAFTS: 'qwas_drafts'
-  };
-
-  QWAS.Config = {
-    VERSION: '2.0.0',
-    FAVORITE_CHAT_ID: 'favorites',
-    SAVED_MESSAGES_ID: 'favorites',
-    MESSAGES_PER_PAGE: 30,
-    MAX_FILE_SIZE: 50 * 1024 * 1024,
-    TYPING_TIMEOUT: 1500,
-    NOTIFICATION_TIMEOUT: 3500
-  };
-
-  QWAS.State = {
-    me: '',
-    currentUser: null,
-    userToken: '',
-
+  const State = {
+    me: null,
+    token: null,
     socket: null,
-    online: new Map(),
+    online: new Set(),
 
-    chats: [],
-    archived: [],
-    pinned: [],
-    muted: {},
-    contacts: [],
-    blocked: [],
-    folders: [],
-    myGroups: [],
-    stories: {},
-    activeFolder: null,
-    currentTab: 'all',
+    // Текущий открытый чат
+    current: null,
+    currentChatInfo: null,
 
-    current: '',
-    currentChat: null,
-    currentPage: 1,
-    hasMore: true,
-    loadingMore: false,
-    selectedMessages: new Set(),
-    isSelectionMode: false,
-    unreadCount: 0,
-
+    // Кэш сообщений по chatId
     messagesByChat: new Map(),
-    pinnedMessage: null,
-    typingUsers: new Map(),
-    onlineUsers: new Map(),
+    hasMoreByChat: new Map(),
 
-    replyTo: null,
-    editingId: null,
     pendingFiles: [],
-
+    editingId: null,
+    replyingTo: null,
     recording: false,
-    recordStartTime: 0,
-    recordChunks: [],
-    recordStream: null,
-    mediaRecorder: null,
+    loadingMore: false,
 
+    // Настройки
     settings: {
       theme: 'dark',
-      accent: '#5e8ee7',
-      chatBackground: '',
-
-      notifications: true,
-      soundEnabled: true,
+      accentColor: '#5e8ee7',
       enterToSend: true,
-      showLastSeen: true,
-
-      fontSize: 'medium',
-      compactMode: false,
-      bubbleStyle: 'modern',
-      animationsEnabled: true,
-
+      voiceQuality: 'sd',
       videoQuality: 'sd',
       videoFps: 30,
-      voiceQuality: 'medium',
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-
-      autoDownload: {
-        photo: true,
-        video: true,
-        voice: true,
-        file: true,
-        onWifiOnly: false,
-        maxSize: 10
-      },
-
-      readReceipts: true,
-      typingIndicators: true,
-      onlineStatus: true,
-      keepOnline: false,
-
-      autoplayVideos: true,
-      autoplayGifs: true,
-      loopAnimatedStickers: true,
-
-      messageTextSize: 14,
-      bubbleCorners: 'rounded'
+      notifications: true,
+      soundEnabled: true,
+      desktopNotifications: true
     },
 
-    isMobile: false,
-    isOnline: navigator.onLine,
+    isReady: false,
+    onReadyCbs: [],
 
-    pagination: {
-      currentChat: null,
-      page: 1,
-      hasMore: true,
-      isLoading: false
-    }
-  };
+    onReady(cb) {
+      if (this.isReady) cb();
+      else this.onReadyCbs.push(cb);
+    },
 
-  QWAS.Prefs = {
-    save() {
+    triggerReady() {
+      this.isReady = true;
+      this.onReadyCbs.forEach(cb => { try { cb(); } catch (e) { console.error('onReady cb error', e); } });
+      this.onReadyCbs = [];
+    },
+
+    setMe(user, token) {
+      this.me = user;
+      this.token = token;
       try {
-        localStorage.setItem(QWAS.STORAGE.THEME, QWAS.State.settings.theme);
-        localStorage.setItem(QWAS.STORAGE.ACCENT, QWAS.State.settings.accent);
-        localStorage.setItem('qwas_settings', JSON.stringify(QWAS.State.settings));
+        if (user) localStorage.setItem('qwas_token', token);
       } catch {}
     },
 
-    load() {
+    getToken() {
+      if (this.token) return this.token;
       try {
-        const theme = localStorage.getItem(QWAS.STORAGE.THEME);
-        if (theme) QWAS.State.settings.theme = theme;
-        const accent = localStorage.getItem(QWAS.STORAGE.ACCENT);
-        if (accent) QWAS.State.settings.accent = accent;
-        const stored = localStorage.getItem('qwas_settings');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          Object.assign(QWAS.State.settings, parsed);
-        }
-      } catch {}
+        const t = localStorage.getItem('qwas_token');
+        if (t) this.token = t;
+        return t;
+      } catch { return null; }
     },
 
-    applyTheme() {
-      document.documentElement.setAttribute('data-theme', QWAS.State.settings.theme);
-      document.documentElement.style.setProperty('--accent', QWAS.State.settings.accent);
-      const meta = document.querySelector('meta[name="theme-color"]');
-      if (meta) {
-        const colors = { dark: '#17212b', light: '#ffffff', midnight: '#000000', blue: '#1e88e5' };
-        meta.setAttribute('content', colors[QWAS.State.settings.theme] || colors.dark);
-      }
-      const root = document.documentElement;
-      const s = QWAS.State.settings;
-      root.style.setProperty('--bubble-radius', s.bubbleCorners === 'square' ? '4px' : s.bubbleCorners === 'round' ? '20px' : '12px');
-      root.style.setProperty('--message-text-size', (s.messageTextSize || 14) + 'px');
-      root.style.setProperty('--font-size-base', s.fontSize === 'small' ? '13px' : s.fontSize === 'large' ? '15px' : '14px');
-      root.setAttribute('data-compact', s.compactMode ? 'true' : 'false');
-      root.setAttribute('data-bubbles', s.bubbleStyle || 'modern');
-      root.setAttribute('data-animations', s.animationsEnabled === false ? 'off' : 'on');
-      if (s.chatBackground) {
-        document.body.style.setProperty('--chat-bg-image', `url("${s.chatBackground}")`);
-      } else {
-        document.body.style.removeProperty('--chat-bg-image');
-      }
+    logout() {
+      this.me = null;
+      this.token = null;
+      try { localStorage.removeItem('qwas_token'); } catch {}
+      if (this.socket) { try { this.socket.disconnect(); } catch {} this.socket = null; }
+    },
+
+    clearCurrent() {
+      this.current = null;
+      this.currentChatInfo = null;
+      this.editingId = null;
+      this.replyingTo = null;
+      this.pendingFiles = [];
     }
   };
 
-  QWAS.UI = QWAS.UI || {
-    toggleMainMenu() {
-      const retry = () => QWAS.UI && QWAS.Modals && QWAS.Modals.toggleMainMenu();
-      if (QWAS.Modals) QWAS.Modals.toggleMainMenu();
-      else setTimeout(retry, 50);
-    },
-    openNewChat() {
-      if (QWAS.Modals) QWAS.Modals.openNewChat();
-    }
+  // Загрузим настройки из localStorage
+  try {
+    const s = localStorage.getItem('qwas_settings');
+    if (s) Object.assign(State.settings, JSON.parse(s));
+  } catch {}
+
+  State.saveSettings = function() {
+    try { localStorage.setItem('qwas_settings', JSON.stringify(State.settings)); } catch {}
   };
 
-  window.addEventListener('error', (e) => {
-    if (e.error) console.error('[QWAS]', e.error.message, '@', e.filename + ':' + e.lineno);
-  });
+  window.QWAS.State = State;
 })();

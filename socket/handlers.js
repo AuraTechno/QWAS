@@ -1,520 +1,280 @@
-const mongoose = require("mongoose");
-const cache = require("../db/cache");
-const chatService = require("../db/chatService");
+// Socket.io handlers: connection, message, typing, read, calls
+const usersRepo = require("../db/repos/users");
+const chatsRepo = require("../db/repos/chats");
+const messagesRepo = require("../db/repos/messages");
+const notifRepo = require("../db/repos/notifications");
+const storiesRepo = require("../db/repos/stories");
+const { sendToUser, broadcastToChat } = require("./helpers");
+const logger = require("../utils/logger");
 
-const MESSAGES_PER_PAGE = parseInt(process.env.MESSAGES_PER_PAGE) || 30;
+function getIO(app) { return app.get("io"); }
+function getOnline(app) { return app.get("onlineUsers"); }
 
-function getModels() {
-  try {
-    return {
-      User: require("../models/User"),
-      Message: require("../models/Message"),
-      Group: require("../models/Group"),
-      Notification: require("../models/Notification"),
-      Story: require("../models/Story")
-    };
-  } catch {
-    return { User: null, Message: null, Group: null, Notification: null, Story: null };
+async function onConnect(io, socket, online) {
+  logger.info(`[WS] ${socket.username} connected (${socket.id})`);
+  online.set(socket.username, socket.id);
+
+  // Присоединяемся к своим чатам
+  const chats = await chatsRepo.getUserChats(socket.username, { tab: "all", limit: 200 });
+  for (const c of chats) {
+    socket.join(`chat:${c.chatId}`);
   }
+
+  // Онлайн-статус
+  await usersRepo.setOnline(socket.username);
+  io.emit("user:online", { username: socket.username });
+
+  // Отправляем начальный стейт
+  await emitInitialState(io, socket, online);
+
+  // Регистрируем обработчики
+  registerHandlers(io, socket, online);
 }
 
-function isGroupChat(to) {
-  return typeof to === "string" && to.startsWith("group:");
-}
-
-function getGroupId(to) {
-  return to.replace("group:", "");
-}
-
-async function joinUserGroups(socket) {
+async function emitInitialState(io, socket, online) {
   try {
-    const { Group } = getModels();
-    if (!Group) return;
-    const groups = await Group.find({ "members.username": socket.username })
-      .select("_id")
-      .lean();
-    for (const g of groups) {
-      socket.join(`group:${g._id}`);
-    }
+    const [me, chats, onlineUsers, notifications, stories, totalUnread] = await Promise.all([
+      usersRepo.findById(socket.userId),
+      chatsRepo.getUserChats(socket.username, { tab: "all", limit: 200 }),
+      usersRepo.getOnlineUsernames(),
+      notifRepo.getForUser(socket.username, { limit: 50 }),
+      storiesRepo.getFeed(socket.userId),
+      chatsRepo.getTotalUnread(socket.username)
+    ]);
+    socket.emit("init", {
+      me: usersRepo.rowToUser(me),
+      chats,
+      onlineUsers: onlineUsers.map(u => ({ username: u.username, lastSeen: u.last_seen })),
+      notifications,
+      stories,
+      totalUnread
+    });
   } catch (err) {
-    console.error("Join groups error:", err);
+    logger.error("init failed for " + socket.username + ": " + err.message);
+    socket.emit("error_event", { error: "init_failed" });
   }
 }
 
-function setupSocketHandlers(io, socket, online) {
-  joinUserGroups(socket);
+function registerHandlers(io, socket, online) {
 
-  const { User, Group, Notification, Story } = getModels();
-  if (User) {
-    User.updateOne(
-      { username: socket.username },
-      { $set: { presence: "online", lastSeen: new Date() } }
-    ).catch(() => {});
-
-    Promise.all([
-      chatService.getFastChatList(socket.username).then(list => socket.emit("chat_list", list)).catch(() => {}),
-      User.find({ username: { $ne: socket.username } })
-        .select("username firstName lastName bio avatar avatarColor presence lastSeen")
-        .limit(500)
-        .lean()
-        .then(users => socket.emit("all_users", users))
-        .catch(() => {}),
-      Notification
-        ? Notification.find({ user: socket.username, read: false })
-            .sort({ createdAt: -1 }).limit(50).lean()
-            .then(notifs => socket.emit("notifications", notifs))
-            .catch(() => {})
-        : null,
-      Story && Group
-        ? User.findOne({ username: socket.username }).select("contacts").lean().then(u => {
-            if (!u) return;
-            const authors = [...(u.contacts || []), socket.username];
-            return Story.find({ author: { $in: authors } })
-              .sort({ createdAt: -1 })
-              .limit(100)
-              .lean()
-              .then(stories => socket.emit("stories_feed", stories));
-          }).catch(() => {})
-        : null
-    ]).catch(() => {});
-  }
-
+  // === Сообщения ===
   socket.on("send_message", async (data, ack) => {
     try {
-      const { Message, Group, User, Notification } = getModels();
-      if (!Message) { if (typeof ack === "function") ack({ ok: false }); return; }
-
-      const to = data.to;
-      const from = socket.username;
-
-      if (to === "favorites") {
-        const convId = `favorites:${from}`;
-        const msg = await Message.create({
-          from, to, conversationId: convId, type: "favorites",
-          message: data.message || "", attachments: data.attachments || [],
-          replyTo: data.replyTo || null, status: "sent"
+      const { chatId, text, type = "text", attachments = [], replyToId = null, replySnapshot = null,
+              mentions = [], pollData = null, locationData = null, contactData = null,
+              forwardedFromId = null, forwardedFromChatId = null, forwardedFromName = null } = data || {};
+      if (!chatId) {
+        return ack && ack({ ok: false, error: "chatId обязателен" });
+      }
+      const chatIdNum = parseInt(chatId);
+      const isMember = await chatsRepo.isMember(chatIdNum, socket.userId);
+      if (!isMember) {
+        return ack && ack({ ok: false, error: "Нет доступа к чату" });
+      }
+      // Преобразуем mentions из username в id
+      const mentionIds = [];
+      for (const m of mentions || []) {
+        if (typeof m === "string") {
+          const u = await usersRepo.findByUsername(m);
+          if (u) mentionIds.push(u.id);
+        } else if (typeof m === "number") {
+          mentionIds.push(m);
+        }
+      }
+      const replyIdNum = replyToId ? parseInt(replyToId) : null;
+      const message = await messagesRepo.create({
+        chatId: chatIdNum, fromId: socket.userId, text, type,
+        attachments, replyToId: replyIdNum, replySnapshot,
+        mentions: mentionIds, pollData, locationData, contactData,
+        forwardedFromId, forwardedFromChatId, forwardedFromName
+      });
+      // Broadcast
+      io.to(`chat:${chatIdNum}`).emit("new_message", message);
+      // Уведомления для участников (кроме автора и онлайн-юзеров в чате)
+      const memberIds = await chatsRepo.getMemberIds(chatIdNum);
+      for (const uid of memberIds) {
+        if (uid === socket.userId) continue;
+        const u = await usersRepo.findById(uid);
+        if (!u) continue;
+        // Не уведомляем если юзер сейчас в этом чате
+        const sid = online.get(u.username);
+        if (sid) {
+          const inRoom = io.sockets.sockets.get(sid)?.rooms.has(`chat:${chatIdNum}`);
+          if (inRoom) continue;
+        }
+        await notifRepo.create({
+          userId: uid, type: mentionIds.includes(uid) ? "mention" : "message",
+          chatId: chatIdNum, fromId: socket.userId,
+          payload: { text: message.text, type: message.type, messageId: message.id }
         });
-        const full = msg.toObject();
-        socket.emit("new_message", full);
-        await chatService.touchChat(from, "favorites", "favorites", full, true);
-        if (typeof ack === "function") ack({ ok: true, messageId: full._id, createdAt: full.createdAt });
-        return;
       }
+      ack && ack({ ok: true, messageId: message.id, createdAt: message.createdAt });
+    } catch (err) {
+      logger.error("send_message: " + err.message);
+      ack && ack({ ok: false, error: err.message });
+    }
+  });
 
-      if (isGroupChat(to)) {
-        if (Group) {
-          const group = await Group.findById(getGroupId(to)).select("_id members").lean();
-          if (!group || !group.members.some(m => m.username === from)) {
-            if (typeof ack === "function") ack({ ok: false, error: "not_member" });
-            return;
-          }
-        }
-        const convId = `g:${getGroupId(to)}`;
-        const msg = await Message.create({
-          from, to, conversationId: convId, type: "group",
-          message: data.message || "", attachments: data.attachments || [],
-          replyTo: data.replyTo || null, isForwarded: data.isForwarded || false,
-          forwardedFrom: data.forwardedFrom || null, forwardChain: data.forwardChain || [],
-          mentions: data.mentions || [], status: "sent"
+  // === Редактирование ===
+  socket.on("edit_message", async (data, ack) => {
+    try {
+      const { messageId, text } = data || {};
+      if (!messageId || !text) return ack && ack({ ok: false, error: "Не указан text/messageId" });
+      const id = parseInt(messageId);
+      const msg = await messagesRepo.edit(id, socket.userId, text);
+      if (!msg) return ack && ack({ ok: false, error: "Не найдено или нет прав" });
+      io.to(`chat:${msg.chatId}`).emit("message_edited", msg);
+      ack && ack({ ok: true, message: msg });
+    } catch (err) {
+      ack && ack({ ok: false, error: err.message });
+    }
+  });
+
+  // === Удаление ===
+  socket.on("delete_message", async (data, ack) => {
+    try {
+      const { messageId } = data || {};
+      if (!messageId) return ack && ack({ ok: false });
+      const id = parseInt(messageId);
+      const before = await messagesRepo.findById(id);
+      if (!before) return ack && ack({ ok: false, error: "Не найдено" });
+      await messagesRepo.softDelete(id, socket.userId);
+      io.to(`chat:${before.chatId}`).emit("message_deleted", { messageId: id, chatId: before.chatId });
+      ack && ack({ ok: true });
+    } catch (err) {
+      ack && ack({ ok: false, error: err.message });
+    }
+  });
+
+  // === Реакции ===
+  socket.on("add_reaction", async (data, ack) => {
+    try {
+      const { messageId, emoji } = data || {};
+      if (!messageId || !emoji) return ack && ack({ ok: false });
+      const id = parseInt(messageId);
+      const msg = await messagesRepo.findById(id);
+      if (!msg) return ack && ack({ ok: false });
+      const isMember = await chatsRepo.isMember(msg.chatId, socket.userId);
+      if (!isMember) return ack && ack({ ok: false, error: "Нет доступа" });
+      await messagesRepo.addReaction(id, socket.userId, emoji);
+      const reactions = await messagesRepo.getReactions([id]);
+      const payload = { messageId: id, chatId: msg.chatId, reactions: reactions.get(id) || {} };
+      io.to(`chat:${msg.chatId}`).emit("reaction_added", payload);
+      ack && ack({ ok: true });
+    } catch (err) {
+      ack && ack({ ok: false, error: err.message });
+    }
+  });
+
+  socket.on("remove_reaction", async (data, ack) => {
+    try {
+      const { messageId, emoji } = data || {};
+      if (!messageId || !emoji) return ack && ack({ ok: false });
+      const id = parseInt(messageId);
+      const msg = await messagesRepo.findById(id);
+      if (!msg) return ack && ack({ ok: false });
+      await messagesRepo.removeReaction(id, socket.userId, emoji);
+      const reactions = await messagesRepo.getReactions([id]);
+      io.to(`chat:${msg.chatId}`).emit("reaction_removed", {
+        messageId: id, chatId: msg.chatId, reactions: reactions.get(id) || {}
+      });
+      ack && ack({ ok: true });
+    } catch (err) {
+      ack && ack({ ok: false, error: err.message });
+    }
+  });
+
+  // === Чтение ===
+  socket.on("mark_as_read", async (data, ack) => {
+    try {
+      const { chatId } = data || {};
+      if (!chatId) return ack && ack({ ok: false });
+      const id = parseInt(chatId);
+      await chatsRepo.resetUnread(socket.username, id);
+      const lastMsg = await messagesRepo.getLastMessage(id);
+      if (lastMsg && lastMsg.fromUsername !== socket.username) {
+        sendToUser(io, online, lastMsg.fromUsername, "message_read", {
+          chatId: id, byUsername: socket.username, messageId: lastMsg.id
         });
-        const full = msg.toObject();
-        io.to(to).emit("new_message", full);
-        socket.emit("new_message", full);
-        if (Group && Notification) {
-          const g = await Group.findById(getGroupId(to)).select("members").lean();
-          if (g) {
-            const tasks = [];
-            for (const m of g.members) {
-              if (m.username === from) continue;
-              if (full.mentions?.length && !full.mentions.includes(m.username)) continue;
-              tasks.push(Notification.create({
-                user: m.username, type: "message", from,
-                chatId: to, messageId: full._id, preview: full.message?.slice(0, 100) || "📎"
-              }));
-              tasks.push(chatService.touchChat(m.username, getGroupId(to), "group", full, false));
-            }
-            await Promise.all(tasks);
-          }
-        }
-        if (typeof ack === "function") ack({ ok: true, messageId: full._id, createdAt: full.createdAt });
-        return;
       }
-
-      if (User && to !== "favorites") {
-        const target = await User.findOne({ username: to }).select("blocked").lean();
-        if (target?.blocked?.includes(from)) {
-          if (typeof ack === "function") ack({ ok: false, error: "blocked" });
-          return;
-        }
-      }
-      const convId = chatService.convIdDM(from, to);
-      const msg = await Message.create({
-        from, to, conversationId: convId, type: "dm",
-        message: data.message || "", attachments: data.attachments || [],
-        replyTo: data.replyTo || null, isForwarded: data.isForwarded || false,
-        forwardedFrom: data.forwardedFrom || null, forwardChain: data.forwardChain || [],
-        mentions: data.mentions || [], status: "sent"
-      });
-      const full = msg.toObject();
-      sendToUser(io, online, to, "new_message", full);
-      socket.emit("new_message", full);
-      await Promise.all([
-        chatService.touchChat(to, from, "dm", full, false),
-        chatService.touchChat(from, to, "dm", full, true),
-        Notification
-          ? Notification.create({
-              user: to, type: "message", from,
-              chatId: from, messageId: full._id, preview: full.message?.slice(0, 100) || "📎"
-            })
-          : null
-      ]);
-      if (typeof ack === "function") ack({ ok: true, messageId: full._id, createdAt: full.createdAt });
+      ack && ack({ ok: true });
     } catch (err) {
-      console.error("Ошибка отправки:", err);
-      if (typeof ack === "function") ack({ ok: false, error: "server_error" });
+      ack && ack({ ok: false, error: err.message });
     }
   });
 
-  socket.on("edit_message", async (data) => {
-    try {
-      const { Message } = getModels();
-      if (!Message) return;
-      const msg = await Message.findById(data.messageId).select("_id from to message edited editHistory");
-      if (!msg || msg.from !== socket.username) return;
-
-      msg.editHistory.push({ message: msg.message, editedAt: new Date() });
-      msg.message = data.newText;
-      msg.edited = true;
-      await msg.save();
-      const updated = msg.toObject();
-      broadcastMessageUpdate(io, online, msg.to, socket.username, "message_updated", updated);
-      cache.delByPrefix(`history:${socket.username}:`);
-    } catch (err) {}
+  // === Набор текста ===
+  socket.on("typing", (data) => {
+    const { chatId } = data || {};
+    if (!chatId) return;
+    socket.to(`chat:${chatId}`).emit("typing", {
+      chatId, username: socket.username
+    });
   });
-
-  socket.on("delete_message", async (data) => {
-    try {
-      const { Message } = getModels();
-      if (!Message) return;
-      const msg = await Message.findById(data.messageId).select("_id from to");
-      if (!msg || msg.from !== socket.username) return;
-      await Message.deleteOne({ _id: data.messageId });
-      broadcastMessageUpdate(io, online, msg.to, socket.username, "message_deleted", { messageId: data.messageId });
-      cache.delByPrefix(`history:${socket.username}:`);
-    } catch (err) {}
-  });
-
-  socket.on("delete_messages_bulk", async (data) => {
-    try {
-      const { Message } = getModels();
-      if (!Message || !data?.ids?.length) return;
-      const messages = await Message.find({ _id: { $in: data.ids }, from: socket.username })
-        .select("_id to")
-        .lean();
-      if (messages.length === 0) return;
-      await Message.deleteMany({ _id: { $in: messages.map(m => m._id) } });
-      const deleted = messages.map(m => m._id);
-      for (const msg of messages) {
-        broadcastMessageUpdate(io, online, msg.to, socket.username, "message_deleted", { messageId: msg._id });
-      }
-      cache.delByPrefix(`history:${socket.username}:`);
-    } catch (err) {}
-  });
-
-  socket.on("react_message", async (data) => {
-    try {
-      const { Message } = getModels();
-      if (!Message) return;
-      const msg = await Message.findById(data.messageId).select("_id to reactions");
-      if (!msg) return;
-      const existing = msg.reactions.find(r => r.emoji === data.emoji);
-      if (existing) {
-        if (existing.users.includes(socket.username)) {
-          existing.users = existing.users.filter(u => u !== socket.username);
-          if (existing.users.length === 0) {
-            msg.reactions = msg.reactions.filter(r => r.emoji !== data.emoji);
-          }
-        } else {
-          existing.users.push(socket.username);
-        }
-      } else {
-        msg.reactions.push({ emoji: data.emoji, users: [socket.username] });
-      }
-      await msg.save();
-      broadcastMessageUpdate(io, online, msg.to, socket.username, "message_reaction", {
-        messageId: msg._id, reactions: msg.reactions
-      });
-    } catch (err) {}
-  });
-
-  socket.on("pin_message", async (data) => {
-    try {
-      const { Message } = getModels();
-      if (!Message) return;
-      const msg = await Message.findById(data.messageId).select("_id to");
-      if (!msg) return;
-      msg.isPinned = !!data.pin;
-      msg.pinnedBy = data.pin ? socket.username : null;
-      msg.pinnedAt = data.pin ? new Date() : null;
-      await msg.save();
-      broadcastMessageUpdate(io, online, msg.to, socket.username, "message_pinned", {
-        messageId: msg._id, isPinned: msg.isPinned, pinnedBy: msg.pinnedBy
-      });
-    } catch (err) {}
-  });
-
-  socket.on("mark_as_read", async (data) => {
-    try {
-      const { Message, Group } = getModels();
-      if (!Message) return;
-
-      let result;
-      if (isGroupChat(data.chatId)) {
-        result = await Message.updateMany(
-          { to: data.chatId, status: { $ne: "read" }, from: { $ne: socket.username } },
-          { $set: { status: "read" } }
-        );
-        if (result.modifiedCount > 0 && Group) {
-          const g = await Group.findById(getGroupId(data.chatId)).select("members").lean();
-          if (g) {
-            for (const m of g.members) {
-              if (m.username !== socket.username) {
-                sendToUser(io, online, m.username, "messages_read", {
-                  by: socket.username, chatId: data.chatId
-                });
-              }
-            }
-          }
-        }
-      } else {
-        result = await Message.updateMany(
-          { from: data.from, to: socket.username, status: { $ne: "read" } },
-          { $set: { status: "read" } }
-        );
-        if (result.modifiedCount > 0) {
-          sendToUser(io, online, data.from, "messages_read", {
-            by: socket.username, chatWith: data.from
-          });
-          await chatService.markRead(socket.username, data.from);
-        }
-      }
-      socket.emit("chat_list", await chatService.getFastChatList(socket.username));
-    } catch (err) {
-      console.error("Ошибка отметки прочитано:", err);
-    }
-  });
-
-  socket.on("read_message", async (data) => {
-    try {
-      const { Message } = getModels();
-      if (!Message) return;
-      const msg = await Message.findById(data.messageId).select("_id to from status");
-      if (!msg) return;
-      if (isGroupChat(msg.to)) {
-        if (msg.from === socket.username) return;
-      } else {
-        if (msg.to !== socket.username) return;
-      }
-      if (msg.status !== "read") {
-        msg.status = "read";
-        await msg.save();
-      }
-      if (!isGroupChat(msg.to)) {
-        sendToUser(io, online, msg.from, "message_status", { messageId: msg._id, status: "read" });
-      }
-    } catch (err) {}
-  });
-
-  socket.on("get_history", async (user, pageOrBefore, ack) => {
-    try {
-      const { Message } = getModels();
-      if (!Message) {
-        if (typeof ack === "function") ack({ ok: false, messages: [], hasMore: false });
-        return;
-      }
-      if (socket.paginationState) {
-        socket.paginationState.currentChat = user;
-        socket.paginationState.isLoading = false;
-      }
-
-      const before = parseCursor(pageOrBefore);
-      const result = await chatService.getHistoryFast(socket.username, user, before, MESSAGES_PER_PAGE);
-
-      if (socket.paginationState) {
-        socket.paginationState.hasMore = result.hasMore;
-        socket.paginationState.cursor = result.messages.length ? result.messages[0].createdAt : null;
-      }
-      if (typeof ack === "function") ack({ ok: true, messages: result.messages, hasMore: result.hasMore });
-    } catch (err) {
-      console.error("Ошибка получения истории:", err);
-      if (typeof ack === "function") ack({ ok: false, messages: [], hasMore: false });
-    }
-  });
-
-  socket.on("load_more", async (ack) => {
-    try {
-      const state = socket.paginationState;
-      if (!state || !state.currentChat || !state.hasMore || state.isLoading) {
-        if (typeof ack === "function") ack({ ok: false, messages: [], hasMore: false });
-        return;
-      }
-      state.isLoading = true;
-      const result = await chatService.getHistoryFast(socket.username, state.currentChat, state.cursor, MESSAGES_PER_PAGE);
-      state.hasMore = result.hasMore;
-      state.cursor = result.messages.length ? result.messages[0].createdAt : state.cursor;
-      state.isLoading = false;
-      if (typeof ack === "function") ack({ ok: true, messages: result.messages, hasMore: result.hasMore });
-    } catch (err) {
-      if (socket.paginationState) socket.paginationState.isLoading = false;
-      if (typeof ack === "function") ack({ ok: false, messages: [] });
-    }
-  });
-
-  socket.on("reset_pagination", () => {
-    if (socket.paginationState) {
-      socket.paginationState.currentChat = null;
-      socket.paginationState.page = 1;
-      socket.paginationState.hasMore = true;
-      socket.paginationState.isLoading = false;
-      socket.paginationState.cursor = null;
-    }
-  });
-
-  socket.on("typing", (to) => {
-    if (to === "favorites") return;
-    if (isGroupChat(to)) {
-      socket.to(to).emit("typing", { from: socket.username, chatId: to });
-    } else {
-      sendToUser(io, online, to, "typing", { from: socket.username, chatId: to });
-    }
-  });
-
-  socket.on("stop_typing", (to) => {
-    if (to === "favorites") return;
-    if (isGroupChat(to)) {
-      socket.to(to).emit("stop_typing", { from: socket.username, chatId: to });
-    } else {
-      sendToUser(io, online, to, "stop_typing", { from: socket.username, chatId: to });
-    }
-  });
-
-  socket.on("set_presence", async (data) => {
-    try {
-      const { User } = getModels();
-      if (!User) return;
-      if (!["online", "offline", "away"].includes(data?.presence)) return;
-      await User.updateOne(
-        { username: socket.username },
-        { $set: { presence: data.presence, lastSeen: new Date() } }
-      );
-      const myId = online.get(socket.username);
-      const sockets = await io.fetchSockets();
-      await Promise.all(sockets.map(s => {
-        if (s.id === myId) return null;
-        const list = s.username ? null : null;
-        return list;
-      }));
-      for (const s of sockets) {
-        if (s.username) {
-          s.emit("chat_list", await chatService.getFastChatList(s.username));
-        }
-      }
-    } catch (err) {}
-  });
-
-  socket.on("profile_updated", async () => {
-    const sockets = await io.fetchSockets();
-    for (const s of sockets) {
-      if (s.username) s.emit("chat_list", await chatService.getFastChatList(s.username));
-    }
-  });
-
-  socket.on("view_story", async (storyId) => {
-    try {
-      const { Story } = getModels();
-      if (!Story) return;
-      const s = await Story.findById(storyId).select("views");
-      if (s && !s.views.includes(socket.username)) {
-        s.views.push(socket.username);
-        await s.save();
-      }
-    } catch {}
-  });
-
-  socket.on("call_user", (data) => {
-    sendToUser(io, online, data.to, "incoming_call", {
-      from: socket.username, type: data.type, callId: data.callId
+  socket.on("stop_typing", (data) => {
+    const { chatId } = data || {};
+    if (!chatId) return;
+    socket.to(`chat:${chatId}`).emit("stop_typing", {
+      chatId, username: socket.username
     });
   });
 
-  socket.on("call_signal", (data) => {
-    sendToUser(io, online, data.to, "call_signal", {
-      from: socket.username, signal: data.signal, callId: data.callId
+  // === Загрузка истории (sync) ===
+  socket.on("get_history", async (data, ack) => {
+    try {
+      const { chatId, beforeId = null, limit = 30 } = data || {};
+      if (!chatId) return ack && ack({ ok: false, error: "chatId обязателен" });
+      const id = parseInt(chatId);
+      const isMember = await chatsRepo.isMember(id, socket.userId);
+      if (!isMember) return ack && ack({ ok: false, error: "Нет доступа" });
+      const messages = await messagesRepo.getHistory(id, { beforeId: beforeId ? parseInt(beforeId) : null, limit: Math.min(limit, 100) });
+      ack && ack({ ok: true, messages, hasMore: messages.length === limit });
+    } catch (err) {
+      ack && ack({ ok: false, error: err.message });
+    }
+  });
+
+  // === Звонки (WebRTC) ===
+  socket.on("call_user", async (data, ack) => {
+    const { to, type, offer } = data || {};
+    if (!to || !offer) return ack && ack({ ok: false });
+    const ok = sendToUser(io, online, to, "incoming_call", {
+      from: socket.username, type: type || "voice", offer
     });
+    ack && ack({ ok });
+  });
+
+  socket.on("call_answer", (data) => {
+    const { to, answer } = data || {};
+    if (!to || !answer) return;
+    sendToUser(io, online, to, "call_signal", { from: socket.username, answer });
   });
 
   socket.on("call_ice_candidate", (data) => {
-    sendToUser(io, online, data.to, "call_ice_candidate", {
-      from: socket.username, candidate: data.candidate, callId: data.callId
-    });
+    const { to, candidate } = data || {};
+    if (!to || !candidate) return;
+    sendToUser(io, online, to, "call_ice_candidate", { from: socket.username, candidate });
   });
 
   socket.on("call_end", (data) => {
-    sendToUser(io, online, data.to, "call_end", {
-      from: socket.username, callId: data.callId, reason: data.reason || "ended"
-    });
+    const { to } = data || {};
+    if (!to) return;
+    sendToUser(io, online, to, "call_end", { from: socket.username });
   });
 
+  socket.on("call_reject", (data) => {
+    const { to } = data || {};
+    if (!to) return;
+    sendToUser(io, online, to, "call_end", { from: socket.username, reason: "rejected" });
+  });
+
+  // === Disconnect ===
   socket.on("disconnect", async () => {
+    logger.info(`[WS] ${socket.username} disconnected`);
     online.delete(socket.username);
-    try {
-      const { User } = getModels();
-      if (User) {
-        await User.updateOne(
-          { username: socket.username },
-          { $set: { presence: "offline", lastSeen: new Date() } }
-        );
-      }
-    } catch {}
-    if (mongoose.connection.readyState === 1) {
-      const sockets = await io.fetchSockets();
-      for (const s of sockets) {
-        if (s.username) s.emit("chat_list", await chatService.getFastChatList(s.username));
-      }
-    }
+    await usersRepo.setOffline(socket.username);
+    io.emit("user:offline", { username: socket.username, lastSeen: new Date().toISOString() });
   });
 }
 
-function parseCursor(c) {
-  if (!c) return null;
-  if (c instanceof Date) return c;
-  if (typeof c === "string") {
-    const d = new Date(c);
-    if (!isNaN(d.getTime())) return d;
-  }
-  if (typeof c === "number" && c > 1) {
-    const skip = (c - 1) * MESSAGES_PER_PAGE;
-    return new Date(Date.now() - skip * 60000);
-  }
-  return null;
-}
-
-function broadcastMessageUpdate(io, online, to, from, event, data) {
-  if (to === "favorites") {
-    sendToUser(io, online, from, event, data);
-  } else if (isGroupChat(to)) {
-    io.to(to).emit(event, data);
-  } else {
-    sendToUser(io, online, to, event, data);
-    sendToUser(io, online, from, event, data);
-  }
-}
-
-function sendToUser(io, online, username, event, data) {
-  const id = online.get(username);
-  if (id) io.to(id).emit(event, data);
-}
-
-module.exports = {
-  setupSocketHandlers
-};
+module.exports = { setupSocketHandlers: onConnect };

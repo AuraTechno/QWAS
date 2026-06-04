@@ -1,221 +1,246 @@
+// Чанковая загрузка файлов (init / chunk / complete / abort / delete)
 const express = require("express");
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
-const crypto = require("crypto");
-
-const { authMiddleware } = require("../middleware/auth");
-
 const router = express.Router();
+const fs = require("fs");
+const fsp = require("fs/promises");
+const path = require("path");
+const crypto = require("crypto");
+const multer = require("multer");
+const config = require("../config");
+const { authRequired } = require("../middleware/auth");
+const audit = require("../db/repos/audit");
+const db = require("../db/pg");
 
-const UPLOAD_DIR = path.join(__dirname, "..", "uploads");
+// === Хранилище активных загрузок (в памяти процесса) ===
+// uploadId -> { owner, name, size, mime, type, chunks: [size...], received: int, finished: bool }
+const activeUploads = new Map();
 
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const CHUNK_DIR = path.resolve(config.CHUNK_DIR);
+const UPLOAD_DIR = path.resolve(config.UPLOAD_DIR);
+
+// Убедимся что директории существуют
+for (const dir of [CHUNK_DIR, UPLOAD_DIR]) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-const ALLOWED_TYPES = {
-  "image/jpeg": "image",
-  "image/png": "image",
-  "image/gif": "image",
-  "image/webp": "image",
-  "video/mp4": "video",
-  "video/webm": "video",
-  "video/quicktime": "video",
-  "audio/mpeg": "audio",
-  "audio/ogg": "audio",
-  "audio/webm": "audio",
-  "audio/wav": "audio",
-  "audio/mp4": "audio",
-  "audio/aac": "audio",
-  "application/pdf": "file",
-  "text/plain": "file",
-  "application/zip": "file",
-  "application/x-rar-compressed": "file",
-  "application/x-7z-compressed": "file",
-  "application/msword": "file",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "file",
-  "application/vnd.ms-excel": "file",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "file"
-};
+const ALLOWED_MIME_PREFIXES = ["image/", "video/", "audio/"];
+const ALLOWED_MIME_EXACT = [
+  "application/pdf",
+  "application/zip",
+  "application/x-rar-compressed",
+  "application/x-7z-compressed",
+  "application/json",
+  "application/octet-stream",
+  "text/plain",
+  "text/csv"
+];
 
-const MAX_SIZE = 50 * 1024 * 1024;
-const CHUNK_DIR = path.join(UPLOAD_DIR, "chunks");
-if (!fs.existsSync(CHUNK_DIR)) fs.mkdirSync(CHUNK_DIR, { recursive: true });
+function isAllowedMime(mime) {
+  if (!mime) return true;
+  if (ALLOWED_MIME_EXACT.includes(mime)) return true;
+  return ALLOWED_MIME_PREFIXES.some(p => mime.startsWith(p));
+}
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase() || "";
-    const name = crypto.randomBytes(16).toString("hex") + ext;
-    cb(null, name);
-  }
-});
-
-const fileFilter = (req, file, cb) => {
-  if (ALLOWED_TYPES[file.mimetype]) {
-    cb(null, true);
-  } else {
-    cb(new Error("Неподдерживаемый тип файла"), false);
-  }
-};
-
-const upload = multer({ storage, fileFilter, limits: { fileSize: MAX_SIZE } });
-
+// multer с записью чанка в файл на диск
 const chunkStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(CHUNK_DIR, req.params.uploadId);
-    fs.mkdirSync(dir, { recursive: true });
+    const id = req.params.id;
+    if (!id) return cb(new Error("NO_ID"));
+    const dir = path.join(CHUNK_DIR, id);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
-  filename: (req, file, cb) => cb(null, `chunk_${req.body.index || 0}`)
+  filename: (req, file, cb) => {
+    const idx = parseInt(req.body.index || req.headers["x-chunk-index"] || "0");
+    cb(null, `chunk_${String(idx).padStart(6, "0")}`);
+  }
 });
-
 const chunkUpload = multer({
   storage: chunkStorage,
-  fileFilter,
-  limits: { fileSize: MAX_SIZE }
+  limits: { fileSize: config.MAX_CHUNK_SIZE + 1024 }
 });
 
-router.post("/", authMiddleware, (req, res) => {
-  upload.single("file")(req, res, (err) => {
-    if (err) {
-      if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
-        return res.json({ ok: false, error: "Файл слишком большой (макс 50MB)" });
-      }
-      return res.json({ ok: false, error: err.message || "Ошибка загрузки" });
-    }
-    if (!req.file) {
-      return res.json({ ok: false, error: "Файл не выбран" });
-    }
-
-    const type = ALLOWED_TYPES[req.file.mimetype] || "file";
-    const forceType = req.body.forceType;
-    const finalType = ["voice", "round"].includes(forceType) ? forceType : type;
-    const url = `/uploads/${req.file.filename}`;
-
-    res.json({
-      ok: true,
-      file: {
-        type: finalType,
-        url,
-        name: req.file.originalname,
-        size: req.file.size,
-        mime: req.file.mimetype
-      }
-    });
+// === INIT ===
+router.post("/chunk/init", authRequired, async (req, res) => {
+  const { name, size, mime, type, forceType } = req.body || {};
+  if (!name || !size) {
+    return res.status(400).json({ ok: false, error: "name и size обязательны" });
+  }
+  if (size > config.MAX_FILE_SIZE) {
+    return res.status(413).json({ ok: false, error: "Файл слишком большой" });
+  }
+  if (mime && !isAllowedMime(mime)) {
+    return res.status(415).json({ ok: false, error: "Тип файла не разрешён" });
+  }
+  const id = crypto.randomBytes(16).toString("hex");
+  activeUploads.set(id, {
+    owner: req.user.username,
+    ownerId: req.user.id,
+    name,
+    size,
+    mime: mime || "application/octet-stream",
+    type: type || forceType || "file",
+    chunks: [],
+    received: 0,
+    finished: false
   });
+  // Удалим через 1 час если не завершено
+  setTimeout(() => {
+    const meta = activeUploads.get(id);
+    if (meta && !meta.finished) {
+      activeUploads.delete(id);
+      fsp.rm(path.join(CHUNK_DIR, id), { recursive: true, force: true }).catch(() => {});
+    }
+  }, 60 * 60 * 1000);
+
+  res.json({ ok: true, uploadId: id, chunkSize: config.MAX_CHUNK_SIZE });
 });
 
-router.post("/chunk/init", authMiddleware, async (req, res) => {
-  try {
-    const { name, size, mime } = req.body;
-    if (size > MAX_SIZE) {
-      return res.json({ ok: false, error: "Файл слишком большой (макс 50MB)" });
-    }
-    if (!ALLOWED_TYPES[mime]) {
-      return res.json({ ok: false, error: "Неподдерживаемый тип файла" });
-    }
-    const uploadId = crypto.randomBytes(12).toString("hex");
-    const dir = path.join(CHUNK_DIR, uploadId);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "meta.json"), JSON.stringify({
-      name, size, mime, owner: req.user.username, createdAt: Date.now()
-    }));
-    res.json({ ok: true, uploadId });
-  } catch (err) {
-    res.json({ ok: false, error: "init_failed" });
+// === CHUNK ===
+router.post("/chunk/:id", authRequired, chunkUpload.single("chunk"), async (req, res) => {
+  const meta = activeUploads.get(req.params.id);
+  if (!meta) {
+    // cleanup orphan chunk
+    if (req.file) fs.unlink(req.file.path, () => {});
+    return res.status(404).json({ ok: false, error: "Загрузка не найдена" });
   }
+  if (meta.owner !== req.user.username) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    return res.status(403).json({ ok: false, error: "Нет доступа" });
+  }
+  if (meta.finished) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    return res.status(409).json({ ok: false, error: "Загрузка уже завершена" });
+  }
+  if (!req.file) {
+    return res.status(400).json({ ok: false, error: "Чанк не получен" });
+  }
+  const idx = parseInt(req.body.index || req.headers["x-chunk-index"] || "0");
+  meta.chunks[idx] = req.file.size;
+  meta.received++;
+  res.json({ ok: true, index: idx, size: req.file.size });
 });
 
-router.post("/chunk/:uploadId", authMiddleware, (req, res) => {
-  const dir = path.join(CHUNK_DIR, req.params.uploadId);
-  if (!fs.existsSync(dir)) return res.json({ ok: false, error: "no_init" });
-  try {
-    const meta = JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8"));
-    if (meta.owner !== req.user.username) {
-      return res.json({ ok: false, error: "forbidden" });
-    }
-  } catch {
-    return res.json({ ok: false, error: "no_meta" });
-  }
-  chunkUpload.single("chunk")(req, res, (err) => {
-    try {
-      if (err) return res.json({ ok: false, error: err.message });
-      res.json({ ok: true, index: parseInt(req.body.index || 0) });
-    } catch (e) {
-      res.json({ ok: false, error: "chunk_failed" });
-    }
-  });
-});
+// === COMPLETE ===
+router.post("/chunk/:id/complete", authRequired, async (req, res) => {
+  const meta = activeUploads.get(req.params.id);
+  if (!meta) return res.status(404).json({ ok: false, error: "Загрузка не найдена" });
+  if (meta.owner !== req.user.username) return res.status(403).json({ ok: false, error: "Нет доступа" });
+  if (meta.finished) return res.status(409).json({ ok: false, error: "Уже завершено" });
 
-router.post("/chunk/:uploadId/complete", authMiddleware, async (req, res) => {
-  const dir = path.join(CHUNK_DIR, req.params.uploadId);
-  if (!fs.existsSync(dir)) return res.json({ ok: false, error: "no_init" });
-  let meta;
-  try {
-    meta = JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8"));
-    if (meta.owner !== req.user.username) {
-      return res.json({ ok: false, error: "forbidden" });
-    }
-  } catch {
-    return res.json({ ok: false, error: "no_meta" });
+  const dir = path.join(CHUNK_DIR, req.params.id);
+  const files = fs.existsSync(dir) ? fs.readdirSync(dir).sort() : [];
+  const totalSize = files.reduce((s, f) => s + fs.statSync(path.join(dir, f)).size, 0);
+  if (totalSize !== meta.size) {
+    fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
+    activeUploads.delete(req.params.id);
+    return res.status(400).json({ ok: false, error: `Размер не совпадает: ${totalSize} != ${meta.size}` });
   }
 
+  // Финальное имя файла
+  const ext = path.extname(meta.name) || "";
+  const base = path.basename(meta.name, ext).replace(/[^\w\-. ]/g, "_").slice(0, 80);
+  const finalName = `${Date.now().toString(36)}_${crypto.randomBytes(6).toString("hex")}_${base}${ext}`;
+  const finalPath = path.join(UPLOAD_DIR, finalName);
+  const writeStream = fs.createWriteStream(finalPath);
   try {
-    const ext = path.extname(meta.name) || "";
-    const fname = crypto.randomBytes(16).toString("hex") + ext;
-    const target = path.join(UPLOAD_DIR, fname);
-
-    const chunks = fs.readdirSync(dir)
-      .filter(f => f.startsWith("chunk_"))
-      .sort((a, b) => parseInt(a.split("_")[1]) - parseInt(b.split("_")[1]));
-
-    let totalSize = 0;
-    const out = fs.createWriteStream(target);
-    for (const c of chunks) {
-      const data = fs.readFileSync(path.join(dir, c));
-      totalSize += data.length;
-      if (totalSize > MAX_SIZE) {
-        out.destroy();
-        fs.rmSync(dir, { recursive: true, force: true });
-        if (fs.existsSync(target)) fs.unlinkSync(target);
-        return res.json({ ok: false, error: "Файл слишком большой (макс 50MB)" });
-      }
-      out.write(data);
+    for (const f of files) {
+      const data = await fsp.readFile(path.join(dir, f));
+      await new Promise((resolve, reject) => {
+        if (writeStream.write(data)) resolve();
+        else writeStream.once("drain", resolve);
+        writeStream.once("error", reject);
+      });
     }
-    out.end();
     await new Promise((resolve, reject) => {
-      out.on("finish", resolve);
-      out.on("error", reject);
+      writeStream.end(() => resolve());
+      writeStream.once("error", reject);
     });
-    fs.rmSync(dir, { recursive: true, force: true });
-
-    const type = ALLOWED_TYPES[meta.mime] || "file";
-    const forceType = req.body.forceType;
-    const finalType = ["voice", "round"].includes(forceType) ? forceType : type;
-    res.json({
-      ok: true,
-      file: { type: finalType, url: `/uploads/${fname}`, name: meta.name, size: meta.size, mime: meta.mime }
-    });
-  } catch (e) {
-    if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
-    res.json({ ok: false, error: "complete_failed" });
+  } catch (err) {
+    writeStream.destroy();
+    fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
+    activeUploads.delete(req.params.id);
+    return res.status(500).json({ ok: false, error: "Ошибка сборки файла" });
   }
+  // cleanup чанки
+  fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
+  meta.finished = true;
+  activeUploads.delete(req.params.id);
+
+  // Audit
+  audit.log({
+    actorId: req.user.id, action: "file.upload",
+    targetType: "file", targetId: finalName,
+    newValue: { name: meta.name, size: meta.size, mime: meta.mime },
+    ipAddress: req.ip
+  });
+
+  const url = `/uploads/${finalName}`;
+  res.json({
+    ok: true,
+    file: {
+      url,
+      name: meta.name,
+      size: meta.size,
+      mime: meta.mime,
+      type: meta.type
+    }
+  });
 });
 
-router.post("/delete", authMiddleware, async (req, res) => {
-  try {
-    const { url } = req.body;
-    if (!url) return res.json({ ok: false });
-    const filepath = path.join(UPLOAD_DIR, path.basename(url));
-    if (fs.existsSync(filepath)) {
-      fs.unlinkSync(filepath);
-    }
-    res.json({ ok: true });
-  } catch (err) {
-    res.json({ ok: false });
+// === ABORT ===
+router.delete("/chunk/:id", authRequired, async (req, res) => {
+  const meta = activeUploads.get(req.params.id);
+  if (meta && meta.owner !== req.user.username) return res.status(403).json({ ok: false });
+  activeUploads.delete(req.params.id);
+  await fsp.rm(path.join(CHUNK_DIR, req.params.id), { recursive: true, force: true }).catch(() => {});
+  res.json({ ok: true });
+});
+
+// === DELETE uploaded ===
+router.delete("/file", authRequired, async (req, res) => {
+  const { url } = req.body || {};
+  if (!url || !url.startsWith("/uploads/")) return res.status(400).json({ ok: false });
+  const filename = path.basename(url);
+  const filePath = path.join(UPLOAD_DIR, filename);
+  // Разрешаем удалять только если владелец (опционально — добавить мета в БД)
+  if (fs.existsSync(filePath)) {
+    await fsp.unlink(filePath).catch(() => {});
   }
+  res.json({ ok: true });
+});
+
+// === Простая загрузка одним POST (для маленьких файлов) ===
+const simpleStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname) || "";
+    const base = path.basename(file.originalname, ext).replace(/[^\w\-. ]/g, "_").slice(0, 80);
+    cb(null, `${Date.now().toString(36)}_${crypto.randomBytes(6).toString("hex")}_${base}${ext}`);
+  }
+});
+const simpleUpload = multer({
+  storage: simpleStorage,
+  limits: { fileSize: 2 * 1024 * 1024 }
+});
+router.post("/", authRequired, simpleUpload.single("file"), (req, res) => {
+  if (!req.file) return res.status(400).json({ ok: false, error: "Файл не получен" });
+  audit.log({
+    actorId: req.user.id, action: "file.upload_simple",
+    targetType: "file", targetId: req.file.filename,
+    newValue: { name: req.file.originalname, size: req.file.size },
+    ipAddress: req.ip
+  });
+  res.json({
+    ok: true,
+    file: {
+      url: `/uploads/${req.file.filename}`,
+      name: req.file.originalname,
+      size: req.file.size,
+      mime: req.file.mimetype,
+      type: (req.body && req.body.type) || "file"
+    }
+  });
 });
 
 module.exports = router;

@@ -1,325 +1,84 @@
+// Создание групп и каналов, инфо, добавление/удаление участников
 const express = require("express");
-const { authMiddleware } = require("../middleware/auth");
-const { emitGroupChatList } = require("../socket/handlers");
-
 const router = express.Router();
+const chatsRepo = require("../db/repos/chats");
+const usersRepo = require("../db/repos/users");
+const { authRequired } = require("../middleware/auth");
+const audit = require("../db/repos/audit");
 
-function getModels() {
-  try {
-    return { User: require("../models/User"), Message: require("../models/Message"), Group: require("../models/Group") };
-  } catch {
-    return { User: null, Message: null, Group: null };
+router.post("/", authRequired, async (req, res) => {
+  const { type = "group", title, username, description, isPublic = false, members = [] } = req.body || {};
+  if (!title || !title.trim()) {
+    return res.status(400).json({ ok: false, error: "Укажите название" });
   }
-}
-
-const AVATAR_COLORS = ["#5e8ee7", "#8e44ad", "#e91e63", "#e74c3c", "#ff9800", "#f1c40f", "#27ae60", "#16a085", "#3498db"];
-
-router.post("/create", authMiddleware, async (req, res) => {
-  try {
-    const { Group } = getModels();
-    if (!Group) return res.status(503).json({ ok: false, error: "DB not ready" });
-
-    const { name, members, type, description, isPublic, username } = req.body;
-    if (!name || !name.trim()) return res.json({ ok: false, error: "Введите название" });
-    if (!members || !Array.isArray(members)) return res.json({ ok: false, error: "Добавьте участников" });
-
-    const uniqueMembers = [...new Set([req.user.username, ...members])];
-    const allMembers = uniqueMembers.map((u, i) => ({
-      username: u,
-      role: i === 0 ? "creator" : "member"
-    }));
-
-    const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
-
-    const group = await Group.create({
-      name: name.trim(),
-      avatar: "",
-      avatarColor: randomColor,
-      description: description || "",
-      type: type === "channel" ? "channel" : "group",
-      isPublic: !!isPublic,
-      username: username || "",
-      members: allMembers,
-      createdBy: req.user.username
-    });
-
-    res.json({ ok: true, group: group.toObject() });
-  } catch (err) {
-    console.error("Create group error:", err);
-    res.json({ ok: false, error: "Ошибка создания группы" });
+  if (type === "group" && (title.length < 3 || title.length > 128)) {
+    return res.status(400).json({ ok: false, error: "Название 3-128 символов" });
   }
+  if (username) {
+    if (!/^[a-z0-9_]{3,32}$/.test(username)) {
+      return res.status(400).json({ ok: false, error: "Username: 3-32, a-z, 0-9, _" });
+    }
+  }
+  const memberIds = [];
+  for (const m of members) {
+    if (typeof m === "string") {
+      const u = await usersRepo.findByUsername(m);
+      if (u) memberIds.push(u.id);
+    } else if (typeof m === "number") {
+      memberIds.push(m);
+    }
+  }
+  const chat = await chatsRepo.createGroup({
+    ownerId: req.user.id,
+    type,
+    title: title.trim(),
+    username: username || null,
+    description: description || null,
+    isPublic: !!isPublic,
+    members: memberIds
+  });
+  await audit.log({
+    actorId: req.user.id, action: "group.create",
+    targetType: "chat", targetId: chat.id, newValue: { type, title, username },
+    ipAddress: req.ip
+  });
+  res.json({ ok: true, chat });
 });
 
-router.get("/my", authMiddleware, async (req, res) => {
-  try {
-    const { Group, Message } = getModels();
-    if (!Group) return res.json({ ok: false, groups: [] });
-
-    const me = req.user.username;
-    const groups = await Group.find({ "members.username": me })
-      .select("_id name avatar avatarColor description type members createdAt")
-      .lean();
-
-    if (groups.length === 0) return res.json({ ok: true, groups: [] });
-
-    const groupIds = groups.map(g => g._id);
-    const convIds = groupIds.map(id => `g:${id}`);
-
-    const [lastMsgs, unreadAgg] = await Promise.all([
-      Message.aggregate([
-        { $match: { conversationId: { $in: convIds } } },
-        { $sort: { createdAt: -1 } },
-        {
-          $group: {
-            _id: "$conversationId",
-            lastMessage: { $first: "$$ROOT" }
-          }
-        }
-      ]),
-      Message.aggregate([
-        {
-          $match: {
-            conversationId: { $in: convIds },
-            status: { $ne: "read" },
-            from: { $ne: me }
-          }
-        },
-        { $group: { _id: "$conversationId", count: { $sum: 1 } } }
-      ])
-    ]);
-
-    const lastByConv = Object.fromEntries(lastMsgs.map(l => [l._id, l.lastMessage]));
-    const unreadByConv = Object.fromEntries(unreadAgg.map(u => [u._id, u.count]));
-
-    const groupsWithMeta = groups.map(g => {
-      const conv = `g:${g._id}`;
-      const lm = lastByConv[conv];
-      return {
-        _id: g._id,
-        name: g.name,
-        avatar: g.avatar,
-        avatarColor: g.avatarColor,
-        description: g.description,
-        type: g.type,
-        memberCount: g.members.length,
-        myRole: g.members.find(m => m.username === me)?.role,
-        lastMessage: lm?.message || (lm?.attachments?.length ? "📎 Вложение" : ""),
-        lastMessageTime: lm?.createdAt || g.createdAt,
-        unreadCount: unreadByConv[conv] || 0
-      };
-    });
-
-    groupsWithMeta.sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
-    res.json({ ok: true, groups: groupsWithMeta });
-  } catch (err) {
-    res.json({ ok: false, groups: [] });
-  }
+router.get("/:chatId", authRequired, async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+  const chat = await chatsRepo.findById(chatId);
+  if (!chat) return res.status(404).json({ ok: false, error: "Не найден" });
+  const isMember = await chatsRepo.isMember(chatId, req.user.id);
+  if (!isMember && !chat.isPublic) return res.status(403).json({ ok: false, error: "Нет доступа" });
+  const members = await chatsRepo.getMembers(chatId);
+  res.json({ ok: true, chat, members });
 });
 
-router.get("/:id", authMiddleware, async (req, res) => {
-  try {
-    const { Group, User } = getModels();
-    if (!Group) return res.status(503).json({ ok: false });
-    const group = await Group.findById(req.params.id).lean();
-    if (!group) return res.status(404).json({ ok: false, error: "Группа не найдена" });
-    const isMember = group.members.some(m => m.username === req.user.username);
-    if (!isMember) return res.status(403).json({ ok: false, error: "Вы не участник" });
-
-    const usernames = group.members.map(m => m.username);
-    const users = await User.find({ username: { $in: usernames } })
-      .select("username firstName lastName avatar avatarColor presence lastSeen")
-      .lean();
-    const byUsername = Object.fromEntries(users.map(u => [u.username, u]));
-    const members = group.members.map(m => ({ ...m, ...(byUsername[m.username] || {}) }));
-
-    res.json({ ok: true, group: { ...group, members } });
-  } catch (err) {
-    res.status(500).json({ ok: false });
+router.post("/:chatId/members", authRequired, async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+  const { usernames = [] } = req.body || {};
+  const chat = await chatsRepo.findById(chatId);
+  if (!chat) return res.status(404).json({ ok: false, error: "Не найден" });
+  const isMember = await chatsRepo.isMember(chatId, req.user.id);
+  if (!isMember) return res.status(403).json({ ok: false, error: "Нет доступа" });
+  for (const uname of usernames) {
+    const u = await usersRepo.findByUsername(uname);
+    if (u) await chatsRepo.addMember(chatId, u.id);
   }
+  res.json({ ok: true });
 });
 
-router.post("/leave", authMiddleware, async (req, res) => {
-  try {
-    const { Group } = getModels();
-    const { groupId } = req.body;
-    const group = await Group.findById(groupId);
-    if (!group) return res.json({ ok: false, error: "Группа не найдена" });
-
-    const idx = group.members.findIndex(m => m.username === req.user.username);
-    if (idx === -1) return res.json({ ok: false, error: "Вы не участник" });
-
-    if (group.members[idx].role === "creator") {
-      if (group.members.length > 1) {
-        const remaining = group.members.filter((_, i) => i !== idx);
-        const newCreator = remaining.find(m => m.role === "admin") || remaining[0];
-        newCreator.role = "creator";
-        const newMembers = remaining.map(m => m.username === newCreator.username ? newCreator : m);
-        group.members = newMembers;
-        await group.save();
-      } else {
-        await Group.deleteOne({ _id: groupId });
-      }
-    } else {
-      group.members.splice(idx, 1);
-      await group.save();
-    }
-
-    const io = req.app.get("io");
-    if (io) io.to(`group:${groupId}`).emit("group_updated", { groupId });
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ ok: false });
-  }
-});
-
-router.post("/add", authMiddleware, async (req, res) => {
-  try {
-    const { Group } = getModels();
-    const { groupId, username } = req.body;
-    if (!groupId || !username) return res.json({ ok: false, error: "Нет данных" });
-
-    const group = await Group.findById(groupId);
-    if (!group) return res.json({ ok: false, error: "Группа не найдена" });
-
-    const member = group.members.find(m => m.username === req.user.username);
-    if (!member || !["creator", "admin"].includes(member.role)) {
-      return res.json({ ok: false, error: "Нет прав" });
-    }
-
-    if (group.members.some(m => m.username === username)) {
-      return res.json({ ok: false, error: "Уже участник" });
-    }
-
-    group.members.push({ username, role: "member" });
-    await group.save();
-
-    const io = req.app.get("io");
-    if (io) {
-      io.to(`group:${groupId}`).emit("group_updated", { groupId });
-      io.to(`group:${groupId}`).emit("system_message", { groupId, text: `${username} добавлен(а) в группу` });
-    }
-    res.json({ ok: true, group: group.toObject() });
-  } catch (err) {
-    res.status(500).json({ ok: false });
-  }
-});
-
-router.post("/remove", authMiddleware, async (req, res) => {
-  try {
-    const { Group } = getModels();
-    const { groupId, username } = req.body;
-    const group = await Group.findById(groupId);
-    if (!group) return res.json({ ok: false, error: "Группа не найдена" });
-
-    const member = group.members.find(m => m.username === req.user.username);
-    if (!member || !["creator", "admin"].includes(member.role)) {
-      return res.json({ ok: false, error: "Нет прав" });
-    }
-
-    const targetIdx = group.members.findIndex(m => m.username === username);
-    if (targetIdx === -1) return res.json({ ok: false, error: "Не найден" });
-    if (group.members[targetIdx].role === "creator") {
-      return res.json({ ok: false, error: "Нельзя удалить создателя" });
-    }
-
-    group.members.splice(targetIdx, 1);
-    await group.save();
-    res.json({ ok: true, group: group.toObject() });
-  } catch (err) {
-    res.status(500).json({ ok: false });
-  }
-});
-
-router.post("/promote", authMiddleware, async (req, res) => {
-  try {
-    const { Group } = getModels();
-    const { groupId, username, role } = req.body;
-    const group = await Group.findById(groupId);
-    if (!group) return res.json({ ok: false });
-
-    const me = group.members.find(m => m.username === req.user.username);
-    if (!me || me.role !== "creator") return res.json({ ok: false, error: "Только создатель" });
-
-    const target = group.members.find(m => m.username === username);
-    if (!target) return res.json({ ok: false, error: "Не найден" });
-
-    if (target.role === "creator") return res.json({ ok: false, error: "Нельзя изменить создателя" });
-    target.role = role === "admin" ? "admin" : "member";
-    await group.save();
-    res.json({ ok: true, group: group.toObject() });
-  } catch (err) {
-    res.status(500).json({ ok: false });
-  }
-});
-
-router.post("/update", authMiddleware, async (req, res) => {
-  try {
-    const { Group } = getModels();
-    const { groupId, name, description, avatar, avatarColor, slowModeSeconds } = req.body;
-    const group = await Group.findById(groupId);
-    if (!group) return res.json({ ok: false, error: "Группа не найдена" });
-
-    const member = group.members.find(m => m.username === req.user.username);
-    if (!member || !["creator", "admin"].includes(member.role)) {
-      return res.json({ ok: false, error: "Нет прав" });
-    }
-
-    if (name !== undefined) group.name = name;
-    if (description !== undefined) group.description = description;
-    if (avatar !== undefined) group.avatar = avatar;
-    if (avatarColor !== undefined) group.avatarColor = avatarColor;
-    if (slowModeSeconds !== undefined) group.slowModeSeconds = slowModeSeconds;
-    await group.save();
-
-    const io = req.app.get("io");
-    if (io) io.to(`group:${groupId}`).emit("group_updated", { groupId });
-    res.json({ ok: true, group: group.toObject() });
-  } catch (err) {
-    res.status(500).json({ ok: false });
-  }
-});
-
-router.post("/pin", authMiddleware, async (req, res) => {
-  try {
-    const { Group, Message } = getModels();
-    const { groupId, messageId, pin = true } = req.body;
-    const group = await Group.findById(groupId);
-    if (!group) return res.json({ ok: false });
-
-    const me = group.members.find(m => m.username === req.user.username);
-    if (!me || !["creator", "admin"].includes(me.role)) {
-      return res.json({ ok: false, error: "Нет прав" });
-    }
-    if (pin) {
-      const msg = await Message.findById(messageId);
-      if (!msg) return res.json({ ok: false, error: "Сообщение не найдено" });
-      group.pinnedMessage = messageId;
-    } else {
-      group.pinnedMessage = null;
-    }
-    await group.save();
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ ok: false });
-  }
-});
-
-router.delete("/:id", authMiddleware, async (req, res) => {
-  try {
-    const { Group, Message } = getModels();
-    const group = await Group.findById(req.params.id);
-    if (!group) return res.json({ ok: false });
-    if (group.createdBy !== req.user.username) {
-      return res.json({ ok: false, error: "Только создатель может удалить" });
-    }
-    await Group.deleteOne({ _id: req.params.id });
-    await Message.deleteMany({ to: `group:${req.params.id}` });
-    const io = req.app.get("io");
-    if (io) io.to(`group:${req.params.id}`).emit("group_deleted", { groupId: req.params.id });
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ ok: false });
-  }
+router.delete("/:chatId/members/:username", authRequired, async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+  const target = await usersRepo.findByUsername(req.params.username);
+  if (!target) return res.status(404).json({ ok: false, error: "Не найден" });
+  const me = await usersRepo.findById(req.user.id);
+  const isOwner = (await chatsRepo.findById(chatId))?.ownerId === me.id;
+  const isSelf = target.id === me.id;
+  if (!isOwner && !isSelf) return res.status(403).json({ ok: false, error: "Нет прав" });
+  await chatsRepo.removeMember(chatId, target.id);
+  res.json({ ok: true });
 });
 
 module.exports = router;

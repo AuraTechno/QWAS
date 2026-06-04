@@ -1,196 +1,358 @@
-# QWAS Messenger
+# QWAS Messenger v2.0
 
-Современный мессенджер в стиле Telegram с веб-интерфейсом, real-time сообщениями через WebSocket, историями, группами, голосовыми и видео-сообщениями.
+Telegram-like мессенджер на Node.js + PostgreSQL.
 
-## Возможности
+## Что нового в v2.0
+- **PostgreSQL** вместо MongoDB (скорость, ACID, удобная админка через Adminer)
+- **Полностью переписанный backend** с репозиторной архитектурой
+- **Frontend без inline `onclick`** — все обработчики через `addEventListener`
+- **Чистая инициализация** через `boot.js`
+- **Денормализация** списка чатов через триггеры в БД
+- **Админ-панель готова к подключению** — таблицы `audit_log`, `reports`, `users` с `is_admin`, `is_banned` уже есть
 
-- **Регистрация и авторизация** — JWT-токены, безопасное хранение паролей (bcrypt)
-- **Личные чаты и группы** — текстовые сообщения, медиа, документы, голосовые, видео, опросы, геолокация
-- **Реакции** — 8 быстрых эмодзи + полная панель выбора
-- **Ответы, пересылки, редактирование, удаление** сообщений
-- **Закрепление сообщений и чатов, архивация, mute-уведомления**
-- **Папки чатов** с пользовательской настройкой
-- **Истории (Stories)** — фото/видео с авто-удалением через 24 часа
-- **Звонки** (audio/video) — WebRTC signaling
-- **Профили** — аватар, имя/фамилия, био, блокировка пользователей, контакты
-- **Темы** — тёмная, светлая, midnight с настраиваемым акцентом
-- **Mobile-first** — адаптивная вёрстка, PWA, установка на домашний экран
-- **Service Worker** — оффлайн-кэш
-- **Real-time** — Socket.io: typing, presence, read receipts, статусы доставки
-- **Загрузка файлов** — обычная и чанковая (для больших файлов)
-- **Поиск** по пользователям, группам, сообщениям
-- **Контекстное меню** — долгое нажатие / правый клик
+## Требования
+- Node.js 18+ (написан под LTS)
+- PostgreSQL 14+ (рекомендуется 16)
+- 512 МБ RAM минимум (1 ГБ рекомендуется)
+- Linux/Windows/macOS
 
-## Стек
+## Быстрый старт
 
-- **Backend:** Node.js, Express, Socket.io, MongoDB (Mongoose), JWT, bcrypt, Multer
-- **Frontend:** Vanilla JS (без фреймворков), CSS3, Service Worker, MediaRecorder API
-- **Хранение:** MongoDB, локальная FS для uploads
-
-## Структура
-
-```
-QWAS/
-├── server.js               # Express + Socket.io
-├── config.js               # URL Mongo, JWT secret, pagination
-├── ecosystem.config.js     # PM2 конфиг
-├── package.json
-├── .env                    # секреты (не коммитится)
-├── models/                 # Mongoose модели
-│   ├── User.js
-│   ├── Message.js
-│   ├── Group.js
-│   ├── Notification.js
-│   ├── Folder.js
-│   └── Story.js
-├── routes/                 # Express роуты
-│   ├── auth.js
-│   ├── profile.js
-│   ├── chats.js
-│   ├── groups.js
-│   ├── upload.js
-│   ├── stories.js
-│   └── folders.js
-├── socket/
-│   ├── auth.js             # Socket.io JWT middleware
-│   └── handlers.js         # Все события
-├── utils/logger.js
-└── public/
-    ├── index.html
-    ├── manifest.json
-    ├── sw.js               # Service worker
-    ├── icon-192.png / icon-512.png
-    ├── css/                # 9 файлов
-    └── js/                 # 22 модуля
-```
-
-## Установка (локально)
-
+### 1. Подготовка `.env`
 ```bash
-git clone <repo>
-cd QWAS
+cp .env.example .env
+# Отредактируй .env, укажи PG пароль и JWT_SECRET
+```
+
+### 2. Установка зависимостей
+```bash
 npm install
 ```
 
-Создайте `.env`:
+### 3. Создание БД в PostgreSQL
+```bash
+sudo -u postgres psql
 ```
-PORT=3000
-MONGO_URL=mongodb://127.0.0.1:27017/messenger
-JWT_SECRET=your_random_secret_here_min_32_chars
-CORS_ORIGIN=*
+```sql
+CREATE USER qwas WITH PASSWORD 'YOUR_STRONG_PASSWORD';
+CREATE DATABASE qwas OWNER qwas;
+GRANT ALL PRIVILEGES ON DATABASE qwas TO qwas;
+\q
 ```
 
-Запустите MongoDB, затем:
+### 4. Запуск миграций
 ```bash
-npm start
-# или для разработки
+npm run migrate
+```
+
+### 5. Запуск
+```bash
+# разработка
 npm run dev
+
+# продакшн
+npm start
+# или через PM2
+pm2 start ecosystem.config.js
 ```
 
-Откройте `http://localhost:3000`.
-
-## Деплой на VPS (Ubuntu)
-
-### 1. Подготовка сервера
+## Установка PostgreSQL на чистый VPS (Ubuntu/Debian)
 
 ```bash
-sudo apt update && sudo apt upgrade -y
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs nginx git
+# Установка
+sudo apt update
+sudo apt install -y postgresql postgresql-contrib
+
+# Включаем и запускаем
+sudo systemctl enable postgresql
+sudo systemctl start postgresql
+
+# Создаём пользователя и БД
+sudo -u postgres psql <<'SQL'
+CREATE USER qwas WITH PASSWORD 'STRONG_PASSWORD_HERE';
+CREATE DATABASE qwas OWNER qwas;
+GRANT ALL PRIVILEGES ON DATABASE qwas TO qwas;
+SQL
+```
+
+## Деплой на VPS (пошагово)
+
+```bash
+# 1. Подключаемся к серверу
+ssh user@your-server
+
+# 2. Устанавливаем Node.js 20 (через nvm)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+source ~/.bashrc
+nvm install 20
+nvm use 20
+
+# 3. Ставим PostgreSQL
+sudo apt update
+sudo apt install -y postgresql postgresql-contrib nginx certbot python3-certbot-nginx
+sudo systemctl enable postgresql
+sudo systemctl start postgresql
+
+# 4. Создаём БД
+sudo -u postgres psql <<'SQL'
+CREATE USER qwas WITH PASSWORD 'CHANGE_ME';
+CREATE DATABASE qwas OWNER qwas;
+GRANT ALL PRIVILEGES ON DATABASE qwas TO qwas;
+SQL
+
+# 5. Клонируем проект
+cd /var/www
+sudo git clone <your-repo-url> qwas
+sudo chown -R $USER:$USER qwas
+cd qwas
+
+# 6. Создаём .env
+cat > .env <<'EOF'
+PORT=3000
+NODE_ENV=production
+HOST=0.0.0.0
+
+PGHOST=127.0.0.1
+PGPORT=5432
+PGUSER=qwas
+PGPASSWORD=CHANGE_ME
+PGDATABASE=qwas
+PG_POOL_MAX=20
+PG_POOL_MIN=2
+
+JWT_SECRET=PASTE_RANDOM_64_BYTE_HEX_HERE
+JWT_TTL=30d
+BCRYPT_ROUNDS=10
+
+UPLOAD_DIR=uploads
+CHUNK_DIR=uploads/chunks
+MAX_FILE_SIZE=52428800
+MAX_CHUNK_SIZE=5242880
+
+STORY_TTL_HOURS=24
+CORS_ORIGIN=*
+EOF
+
+# 7. Генерируем JWT_SECRET
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+# Вставляем результат в .env в JWT_SECRET=
+
+# 8. Ставим зависимости
+npm ci --omit=dev
+
+# 9. Запускаем миграции
+npm run migrate
+
+# 10. Создаём папки для загрузок
+mkdir -p uploads/chunks
+chmod 755 uploads uploads/chunks
+
+# 11. Ставим PM2
 sudo npm install -g pm2
 
-# MongoDB
-wget -qO - https://www.mongodb.org/static/pgp/server-7.0.asc | sudo apt-key add -
-echo "deb [ arch=amd64 ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
-sudo apt update
-sudo apt install -y mongodb-org
-sudo systemctl enable --now mongod
-```
-
-### 2. Клонирование и настройка
-
-```bash
-cd /var/www
-sudo git clone https://github.com/<user>/<repo>.git qwas
-cd qwas
-sudo npm ci --production
-
-sudo nano .env
-# MONGO_URL=mongodb://127.0.0.1:27017/messenger
-# JWT_SECRET=<openssl rand -hex 32>
-# PORT=3000
-# CORS_ORIGIN=https://yourdomain.com
-
-sudo mkdir -p uploads logs
-sudo chown -R $USER:$USER /var/www/qwas
-```
-
-### 3. Запуск через PM2
-
-```bash
+# 12. Запускаем через PM2
 pm2 start ecosystem.config.js
 pm2 save
 pm2 startup
-```
 
-### 4. Nginx reverse proxy + SSL
-
-```bash
+# 13. Настраиваем Nginx
 sudo nano /etc/nginx/sites-available/qwas
 ```
-
 ```nginx
 server {
     listen 80;
-    server_name messenger.yourdomain.com;
+    server_name your-domain.com;
 
     client_max_body_size 60M;
 
     location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_cache_bypass $http_upgrade;
         proxy_read_timeout 86400;
     }
 }
 ```
-
 ```bash
 sudo ln -s /etc/nginx/sites-available/qwas /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d messenger.yourdomain.com
+sudo nginx -t
+sudo systemctl reload nginx
+
+# 14. SSL
+sudo certbot --nginx -d your-domain.com
+
+# 15. Готово!
+curl https://your-domain.com/health
+# {"status":"ok","db":"ok",...}
 ```
 
-### 5. Деплой обновлений
+## Установка Adminer (админ-панель БД)
 
 ```bash
-# локально
-git add -A
-git commit -m "update"
-git push origin main
+sudo mkdir -p /var/www/adminer
+cd /var/www/adminer
+sudo wget https://github.com/vrana/adminer/releases/download/v4.8.1/adminer-4.8.1-en.php -O index.php
+sudo chown -R www-data:www-data /var/www/adminer
 
-# на VPS
-cd /var/www/qwas
-git pull
-npm ci --production
-pm2 restart messenger
+# Добавляем в nginx
+sudo nano /etc/nginx/sites-available/qwas
 ```
+```nginx
+location /adminer {
+    alias /var/www/adminer;
+    try_files $uri $uri/ /adminer/index.php?$args;
+    location ~ \.php$ {
+        fastcgi_pass unix:/run/php/php-fpm.sock;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $request_filename;
+    }
+}
+```
+- Вход: PostgreSQL, server `127.0.0.1:5432`, user `qwas`, password из `.env`
+- Можно руками править таблицы users, chats, messages, audit_log, reports
 
-## Безопасность
+## Структура БД
 
-- JWT с подписью, токены хранятся в `User.sessionToken` (invalidate on logout)
-- Bcrypt для паролей (cost 10)
-- Helmet для HTTP-заголовков
-- Rate-limit на login/register (200 req / 15 min)
-- CORS контролируется переменной окружения
-- Блокировка пользователей — проверка на отправку и чтение сообщений
-- Максимальный размер аплоада: 50 МБ (один файл), 60 МБ (JSON body)
+| Таблица | Назначение |
+|---|---|
+| `users` | Пользователи, настройки, presence |
+| `chats` | Чаты (DM / group / channel) |
+| `chat_members` | Участники чата, роли, mute |
+| `user_chats` | **Денормализованная** таблица для быстрого списка чатов (обновляется триггерами) |
+| `messages` | Сообщения с `conversationId`, JSONB attachments, FTS-индекс |
+| `reactions` | Реакции на сообщения |
+| `notifications` | Уведомления |
+| `stories` | Сторис с TTL |
+| `chat_folders` | Папки чатов |
+| `audit_log` | **Для админ-панели** — все действия записываются |
+| `reports` | **Для админ-панели** — жалобы |
+| `user_blocks` | Блокировки пользователей |
 
-## Лицензия
+Все таблицы готовы к прямому редактированию через Adminer. Поля `is_admin`, `is_banned`, `ban_reason` уже есть в `users`.
 
-MIT
+## API Endpoints
+
+### Auth
+- `POST /register` — регистрация
+- `POST /login` — вход
+- `POST /logout` — выход
+- `GET /me` — текущий пользователь
+
+### Profile
+- `GET /profile` — свой профиль
+- `PATCH /profile` — обновить
+- `GET /profile/contacts` — контакты
+- `POST /profile/contacts/:username` — добавить
+- `DELETE /profile/contacts/:username` — удалить
+- `POST /profile/dm/:username` — открыть/создать DM
+
+### Chats
+- `GET /chats?tab=all|unread|groups|channels` — список
+- `GET /chats/:id` — инфо
+- `GET /chats/:id/info` — с участниками
+- `GET /chats/:id/messages?beforeId=X` — история (cursor)
+- `GET /chats/:id/media?type=image` — медиа
+- `GET /chats/:id/search?q=` — поиск в чате
+- `POST /chats/:id/read` — прочитано
+- `POST /chats/:id/pin` — закрепить
+- `POST /chats/:id/archive` — архив
+- `POST /chats/:id/mute` — мут
+
+### Groups
+- `POST /groups` — создать группу/канал
+- `GET /groups/:id` — инфо
+- `POST /groups/:id/members` — добавить
+- `DELETE /groups/:id/members/:username` — удалить
+
+### Upload
+- `POST /upload` — простая загрузка (до 2 МБ)
+- `POST /upload/chunk/init` — начать чанковую
+- `POST /upload/chunk/:id` — загрузить чанк
+- `POST /upload/chunk/:id/complete` — завершить
+- `DELETE /upload/chunk/:id` — отменить
+- `DELETE /upload/file` — удалить загруженный
+
+### Stories
+- `GET /stories/feed` — лента
+- `POST /stories` — создать
+- `POST /stories/:id/view` — просмотрено
+- `DELETE /stories/:id` — удалить
+
+### Folders
+- `GET /folders` — список
+- `POST /folders` — создать
+- `PATCH /folders/:id` — обновить
+- `DELETE /folders/:id` — удалить
+
+### Search
+- `GET /search/users?q=` — пользователи
+- `GET /search/messages?q=` — сообщения
+- `GET /search/chats?q=` — чаты
+
+### Notifications
+- `GET /notifications` — список
+- `POST /notifications/read` — прочитать (ids или все)
+- `POST /notifications/read-all` — прочитать все
+
+## WebSocket события (Socket.io)
+
+### Клиент → Сервер
+- `send_message` — отправить
+- `edit_message` — редактировать
+- `delete_message` — удалить
+- `add_reaction` / `remove_reaction` — реакции
+- `mark_as_read` — прочитано
+- `typing` / `stop_typing` — набор
+- `get_history` — загрузить историю
+- `call_user` / `call_answer` / `call_ice_candidate` / `call_end` / `call_reject` — WebRTC
+
+### Сервер → Клиент
+- `init` — начальный стейт
+- `new_message` — новое сообщение
+- `message_edited` / `message_deleted` / `message_read`
+- `reaction_added` / `reaction_removed`
+- `user:online` / `user:offline`
+- `typing` / `stop_typing`
+- `incoming_call` / `call_signal` / `call_ice_candidate` / `call_end`
+
+## Где что в коде
+
+| Путь | Что |
+|---|---|
+| `server.js` | Точка входа, middleware, роуты |
+| `db/pg.js` | PostgreSQL pool, утилиты транзакций |
+| `db/migrations/*.sql` | SQL-миграции |
+| `db/repos/*.js` | Доступ к данным (users, chats, messages...) |
+| `routes/*.js` | HTTP API |
+| `socket/handlers.js` | WebSocket обработчики |
+| `public/js/boot.js` | Точка входа frontend |
+| `public/js/app.js` | Инициализация приложения |
+| `public/js/emoji.js` | Эмодзи-панель (10 категорий, поиск, recent) |
+| `public/js/voice.js` | Запись голоса и видео-кружков |
+| `public/js/calls.js` | WebRTC звонки |
+| `public/js/messages.js` | Рендер и отправка сообщений |
+| `public/js/composer.js` | Композер (текст, вложения, режим записи) |
+| `public/js/attach.js` | Загрузка файлов, drag-drop, геолокация, контакт |
+
+## Скрипты
+- `npm start` — запуск
+- `npm run dev` — nodemon
+- `npm run migrate` — применить миграции
+- `npm run migrate:status` — статус миграций
+- `npm run migrate:reset` — **УДАЛИТ ВСЕ ДАННЫЕ** и пересоздаст схему
+- `npm run seed` — тестовые данные (TODO)
+
+## Что починить / доработать в будущем
+- Админ-панель (таблицы и API уже готовы, нужен UI)
+- E2E шифрование сообщений
+- Push-уведомления через Web Push API
+- Видео-конвертация на сервере (ffmpeg)
+- Глобальный поиск по всем чатам с фильтрами
+- Экспорт чата

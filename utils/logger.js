@@ -1,16 +1,33 @@
-const winston = require("winston");
+// Простой логгер с уровнями. Без внешних зависимостей, чтобы не падать в бутстрапе.
+const levels = { error: 0, warn: 1, info: 2, debug: 3 };
+const currentLevel = levels[(process.env.LOG_LEVEL || "info").toLowerCase()] ?? levels.info;
 
-const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || "info",
-  format: winston.format.combine(
-    winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
-    winston.format.printf(({ timestamp, level, message }) => `[${timestamp}] ${level.toUpperCase()}: ${message}`)
-  ),
-  transports: [
-    new winston.transports.Console(),
-    new winston.transports.File({ filename: "logs/error.log", level: "error" }),
-    new winston.transports.File({ filename: "logs/combined.log" })
-  ]
-});
+function ts() {
+  return new Date().toISOString();
+}
 
-module.exports = logger;
+function fmt(level, args) {
+  const out = args.map(a => {
+    if (a instanceof Error) return a.stack || a.message;
+    if (typeof a === "object") {
+      try { return JSON.stringify(a); } catch { return String(a); }
+    }
+    return String(a);
+  }).join(" ");
+  return `[${ts()}] [${level.toUpperCase()}] ${out}`;
+}
+
+function log(level, args) {
+  if (levels[level] > currentLevel) return;
+  const line = fmt(level, args);
+  if (level === "error") console.error(line);
+  else if (level === "warn") console.warn(line);
+  else console.log(line);
+}
+
+module.exports = {
+  error: (...args) => log("error", args),
+  warn:  (...args) => log("warn",  args),
+  info:  (...args) => log("info",  args),
+  debug: (...args) => log("debug", args)
+};

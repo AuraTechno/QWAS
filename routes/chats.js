@@ -1,139 +1,108 @@
+// Список чатов, медиа, инфо, закрепить/архив/мут, прочитать
 const express = require("express");
-const { authMiddleware } = require("../middleware/auth");
-const chatService = require("../db/chatService");
-const Chat = require("../models/Chat");
-const User = require("../models/User");
-const Message = require("../models/Message");
-
 const router = express.Router();
+const chatsRepo = require("../db/repos/chats");
+const messagesRepo = require("../db/repos/messages");
+const usersRepo = require("../db/repos/users");
+const { authRequired } = require("../middleware/auth");
 
-function getModels() {
-  try {
-    return {
-      User: require("../models/User"),
-      Message: require("../models/Message"),
-      Group: require("../models/Group")
-    };
-  } catch {
-    return { User: null, Message: null, Group: null };
-  }
-}
-
-router.get("/", authMiddleware, async (req, res) => {
-  try {
-    const me = req.user.username;
-    const list = await chatService.getFastChatList(me);
-    const all = list || [];
-    res.json({
-      ok: true,
-      chats: all,
-      archiveCount: all.filter(c => c.archived).length,
-      pinnedCount: all.filter(c => c.pinned).length
-    });
-  } catch (err) {
-    console.error("Get chats error:", err);
-    res.json({ ok: false, chats: [] });
-  }
+router.get("/", authRequired, async (req, res) => {
+  const tab = req.query.tab || "all";
+  const chats = await chatsRepo.getUserChats(req.user.username, { tab });
+  const totalUnread = await chatsRepo.getTotalUnread(req.user.username);
+  res.json({ ok: true, chats, totalUnread });
 });
 
-router.post("/archive", authMiddleware, async (req, res) => {
-  try {
-    const { chatId, archive = true } = req.body;
-    const me = req.user.username;
-    await chatService.setArchived(me, chatId, !!archive);
-    res.json({ ok: true });
-  } catch (err) {
-    res.json({ ok: false });
-  }
+router.get("/archived", authRequired, async (req, res) => {
+  const all = await chatsRepo.getUserChats(req.user.username, { tab: "all" });
+  res.json({ ok: true, chats: all.filter(c => c.isArchived) });
 });
 
-router.post("/pin", authMiddleware, async (req, res) => {
-  try {
-    const { chatId, pin = true } = req.body;
-    const me = req.user.username;
-    if (pin) {
-      const cur = await Chat.findOne({ owner: me, chatId }).select("pinOrder").lean();
-      const ord = (cur?.pinOrder || 0) + 1;
-      await chatService.setPinned(me, chatId, true, ord);
-    } else {
-      await chatService.setPinned(me, chatId, false);
-    }
-    res.json({ ok: true });
-  } catch (err) {
-    res.json({ ok: false });
-  }
+router.get("/pinned", authRequired, async (req, res) => {
+  const pinned = await chatsRepo.getPinnedChats(req.user.username);
+  res.json({ ok: true, chats: pinned });
 });
 
-router.post("/mute", authMiddleware, async (req, res) => {
-  try {
-    const { chatId, mute = true, until = null } = req.body;
-    const me = req.user.username;
-    await chatService.setMuted(me, chatId, !!mute, until);
-    res.json({ ok: true });
-  } catch (err) {
-    res.json({ ok: false });
-  }
+router.get("/:chatId", authRequired, async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+  if (!chatId) return res.status(400).json({ ok: false, error: "Неверный ID" });
+  const userChat = await chatsRepo.getUserChat(req.user.username, chatId);
+  if (!userChat) return res.status(404).json({ ok: false, error: "Чат не найден" });
+  res.json({ ok: true, chat: userChat });
 });
 
-router.get("/media/:chatId", authMiddleware, async (req, res) => {
-  try {
-    const { Message } = getModels();
-    if (!Message) return res.status(503).json({ ok: false });
-    const { chatId } = req.params;
-    const me = req.user.username;
-
-    let convId;
-    if (chatId === "favorites") {
-      convId = `favorites:${me}`;
-    } else if (chatId.startsWith("group:")) {
-      convId = `g:${chatId.slice(6)}`;
-    } else {
-      convId = chatService.convIdDM(me, chatId);
-    }
-
-    const messages = await Message.find({
-      conversationId: convId,
-      attachments: { $exists: true, $ne: [] }
-    })
-      .sort({ createdAt: -1 })
-      .limit(200)
-      .select("from createdAt attachments")
-      .lean();
-
-    const media = { images: [], videos: [], files: [], voice: [] };
-    for (const m of messages) {
-      for (const a of m.attachments || []) {
-        const item = { url: a.url, name: a.name, size: a.size, from: m.from, createdAt: m.createdAt };
-        if (a.type === "image") media.images.push(item);
-        else if (a.type === "video") media.videos.push(item);
-        else if (a.type === "voice" || a.type === "round") media.voice.push(item);
-        else media.files.push(item);
-      }
-    }
-    res.json({ ok: true, media });
-  } catch (err) {
-    res.json({ ok: false, media: { images: [], videos: [], files: [], voice: [] } });
-  }
+router.get("/:chatId/info", authRequired, async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+  const userChat = await chatsRepo.getUserChat(req.user.username, chatId);
+  if (!userChat) return res.status(404).json({ ok: false, error: "Чат не найден" });
+  const members = await chatsRepo.getMembers(chatId);
+  res.json({ ok: true, chat: userChat, members });
 });
 
-router.get("/info/:chatId", authMiddleware, async (req, res) => {
-  try {
-    const { chatId } = req.params;
-    const me = req.user.username;
-    if (chatId.startsWith("group:")) {
-      const { Group } = getModels();
-      const g = await Group.findById(chatId.slice(6)).lean();
-      if (!g) return res.json({ ok: false, error: "not_found" });
-      res.json({ ok: true, type: "group", group: g });
-    } else {
-      const u = await User.findOne({ username: chatId })
-        .select("username firstName lastName bio avatar avatarColor presence lastSeen").lean();
-      if (!u) return res.json({ ok: false, error: "not_found" });
-      res.json({ ok: true, type: "dm", user: u });
-    }
-  } catch (err) {
-    res.json({ ok: false, error: err.message });
-  }
+router.get("/:chatId/messages", authRequired, async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+  const isMember = await chatsRepo.isMember(chatId, req.user.id);
+  if (!isMember) return res.status(403).json({ ok: false, error: "Нет доступа" });
+
+  const beforeId = req.query.beforeId ? parseInt(req.query.beforeId) : null;
+  const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+  const messages = await messagesRepo.getHistory(chatId, { beforeId, limit });
+  res.json({
+    ok: true,
+    messages,
+    hasMore: messages.length === limit
+  });
+});
+
+router.get("/:chatId/media", authRequired, async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+  const isMember = await chatsRepo.isMember(chatId, req.user.id);
+  if (!isMember) return res.status(403).json({ ok: false, error: "Нет доступа" });
+
+  const type = req.query.type || null;
+  const limit = Math.min(parseInt(req.query.limit) || 60, 200);
+  const beforeId = req.query.beforeId ? parseInt(req.query.beforeId) : null;
+  const media = await messagesRepo.getMedia(chatId, { type, limit, beforeId });
+  res.json({ ok: true, media });
+});
+
+router.get("/:chatId/search", authRequired, async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+  const q = String(req.query.q || "").trim();
+  if (!q) return res.json({ ok: true, messages: [] });
+  const isMember = await chatsRepo.isMember(chatId, req.user.id);
+  if (!isMember) return res.status(403).json({ ok: false, error: "Нет доступа" });
+  const messages = await messagesRepo.search(chatId, q, { limit: 50 });
+  res.json({ ok: true, messages });
+});
+
+router.post("/:chatId/read", authRequired, async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+  const isMember = await chatsRepo.isMember(chatId, req.user.id);
+  if (!isMember) return res.status(403).json({ ok: false, error: "Нет доступа" });
+  await chatsRepo.resetUnread(req.user.username, chatId);
+  res.json({ ok: true });
+});
+
+router.post("/:chatId/pin", authRequired, async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+  const pinned = !!(req.body && req.body.pinned);
+  await chatsRepo.setPinned(req.user.username, chatId, pinned);
+  res.json({ ok: true });
+});
+
+router.post("/:chatId/archive", authRequired, async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+  const archived = !!(req.body && req.body.archived);
+  await chatsRepo.setArchived(req.user.username, chatId, archived);
+  res.json({ ok: true });
+});
+
+router.post("/:chatId/mute", authRequired, async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+  const muted = !!(req.body && req.body.muted);
+  await chatsRepo.setMuted(req.user.username, chatId, muted);
+  res.json({ ok: true });
 });
 
 module.exports = router;

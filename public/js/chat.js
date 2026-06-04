@@ -1,134 +1,192 @@
+// Открытие/закрытие чата, инфо о чате
 (function() {
   'use strict';
   window.QWAS = window.QWAS || {};
 
   const Chat = {
-    info: null,
-    searchQuery: '',
-    highlightMessageId: null,
+    init() {
+      this.bindHeaderButtons();
+      this.bindPinnedBarClose();
+      this.bindEmptyActions();
+      this.bindTyping();
+    },
 
-    open(username) {
-      if (QWAS.State.current === username && this.info) {
-        this.show();
-        return;
+    bindHeaderButtons() {
+      const map = {
+        'chatBackBtn': () => this.close(),
+        'chatVoiceCallBtn': () => QWAS.Calls && QWAS.Calls.start('voice'),
+        'chatVideoCallBtn': () => QWAS.Calls && QWAS.Calls.start('video'),
+        'chatSearchBtn': () => QWAS.Modals && QWAS.Modals.openChatSearch(),
+        'chatInfoBtn': () => this.openInfo()
+      };
+      Object.keys(map).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', map[id]);
+      });
+      const headerInfo = document.getElementById('chatHeaderInfo');
+      if (headerInfo) {
+        headerInfo.addEventListener('click', () => this.openInfo());
       }
-      if (QWAS.State.socket) {
-        QWAS.State.socket.emit('reset_pagination');
+    },
+
+    bindPinnedBarClose() {
+      const close = document.getElementById('pinnedBarClose');
+      if (close) close.addEventListener('click', () => this.closePinned());
+    },
+
+    bindEmptyActions() {
+      const btn = document.getElementById('emptyChatNewChatBtn');
+      if (btn) btn.addEventListener('click', () => QWAS.Modals && QWAS.Modals.openNewChat());
+    },
+
+    bindTyping() {
+      // очистка таймеров печатания
+      QWAS.State._typingTimers = QWAS.State._typingTimers || new Map();
+    },
+
+    async open(chatId) {
+      chatId = parseInt(chatId);
+      if (!chatId) return;
+
+      // Если открыт другой чат — закроем
+      const prev = QWAS.State.current;
+      if (prev && prev !== chatId) {
+        this.leaveChatRoom(prev);
       }
-      QWAS.State.current = username;
-      QWAS.State.pagination = { currentChat: username, page: 1, hasMore: true, isLoading: false };
-      QWAS.State.replyTo = null;
+
+      QWAS.State.current = chatId;
+      QWAS.State.currentChatInfo = null;
       QWAS.State.editingId = null;
+      QWAS.State.replyingTo = null;
       QWAS.State.pendingFiles = [];
-      QWAS.State.selectedMessages = new Set();
-      QWAS.State.isSelectionMode = false;
-      QWAS.State.typingUsers.delete(username);
-      this.searchQuery = '';
-      this.info = null;
 
-      this.show();
-      this.renderHeader();
-      this.clearMessages();
-      QWAS.Composer.updateSendButton();
-      QWAS.Composer.hideAttachMenu();
-      QWAS.Composer.hideEmojiPanel();
-      QWAS.ReplyPreview.hide();
-      QWAS.SelectionActions.hide();
+      // UI
+      const empty = document.getElementById('emptyChat');
+      const content = document.getElementById('chatContent');
+      const area = document.getElementById('chatArea');
+      if (empty) empty.style.display = 'none';
+      if (content) content.style.display = 'flex';
+      if (area) area.dataset.empty = 'false';
 
-      this.loadInfo();
-      this.loadHistory();
+      // Очистим сообщения
+      const list = document.getElementById('messages');
+      if (list) list.innerHTML = '';
 
-      if (QWAS.State.isMobile) {
-        document.getElementById('mainScreen').classList.add('chat-open');
+      // Присоединимся к комнате
+      if (QWAS.State.socket) QWAS.State.socket.emit('join_chat', { chatId });
+
+      // Загрузим инфо
+      const info = await QWAS.API.chatInfo(chatId);
+      if (info && info.ok) {
+        QWAS.State.currentChatInfo = info;
+        this.renderHeader(info);
       }
 
+      // Загрузим сообщения
+      await QWAS.Messages && QWAS.Messages.loadInitial(chatId);
+
+      // Помечаем прочитанным
+      QWAS.Chats.markRead(chatId);
+
+      // Закрыть мобильный sidebar
+      if (window.innerWidth <= 800) {
+        document.body.classList.remove('sidebar-open');
+      }
+
+      // Скроллим вниз
+      QWAS.Messages && QWAS.Messages.scrollToBottom(true);
+
+      // Обновить список чатов (highlight)
       QWAS.Chats.render();
     },
 
-    show() {
-      const empty = document.getElementById('emptyChat');
-      const content = document.getElementById('chatContent');
-      if (empty) empty.style.display = 'none';
-      if (content) content.style.display = 'flex';
-      const area = document.getElementById('chatArea');
-      if (area) area.dataset.empty = 'false';
+    leaveChatRoom(chatId) {
+      if (!chatId) return;
+      if (QWAS.State.socket) QWAS.State.socket.emit('leave_chat', { chatId });
     },
 
     close() {
-      QWAS.State.current = '';
-      QWAS.State.replyTo = null;
-      QWAS.State.editingId = null;
-      QWAS.State.pendingFiles = [];
+      const prev = QWAS.State.current;
+      if (prev) this.leaveChatRoom(prev);
+
+      QWAS.State.clearCurrent();
+
       const empty = document.getElementById('emptyChat');
       const content = document.getElementById('chatContent');
+      const area = document.getElementById('chatArea');
       if (empty) empty.style.display = 'flex';
       if (content) content.style.display = 'none';
-      const area = document.getElementById('chatArea');
       if (area) area.dataset.empty = 'true';
-      this.info = null;
 
-      if (QWAS.State.isMobile) {
-        document.getElementById('mainScreen').classList.remove('chat-open');
-      }
+      const list = document.getElementById('messages');
+      if (list) list.innerHTML = '';
+
       QWAS.Chats.render();
+
+      if (window.innerWidth <= 800) {
+        document.body.classList.add('sidebar-open');
+      }
     },
 
-    renderHeader() {
-      const username = QWAS.State.current;
-      const chat = (QWAS.State.chats || []).find(c => c.username === username) || {};
-      const title = document.getElementById('chatTitle');
-      const subtitle = document.getElementById('chatSubtitle');
-      const avatar = document.getElementById('chatAvatar');
+    renderHeader(info) {
+      const c = info.chat;
+      const other = c.otherUser;
+      let title = c.title || (other ? QWAS.Util.getUserDisplayName(other) : 'Чат');
+      const avatarEl = document.getElementById('chatAvatar');
+      const titleEl = document.getElementById('chatTitle');
+      const subtitleEl = document.getElementById('chatSubtitle');
 
-      if (username === QWAS.Config.FAVORITE_CHAT_ID) {
-        title.textContent = 'Избранное';
-        subtitle.textContent = 'Личные заметки и файлы';
-        QWAS.Util.renderAvatar(avatar, { username: 'favorites', firstName: '⭐' });
-        return;
-      }
-
-      if (chat.type === 'group') {
-        title.textContent = chat.name || 'Группа';
-        subtitle.innerHTML = `${chat.memberCount || 0} ${QWAS.Util.pluralize(chat.memberCount || 0, ['участник', 'участника', 'участников'])}`;
-      } else {
-        title.textContent = QWAS.Util.getUserDisplayName(chat) || chat.username || username;
-        if (QWAS.State.typingUsers.get(username)) {
-          subtitle.innerHTML = `печатает<span class="typing-dots-mini"><span></span><span></span><span></span></span>`;
-        } else if (chat.online) {
-          subtitle.innerHTML = '<span style="color:var(--green);">в сети</span>';
-        } else if (chat.lastSeen && QWAS.State.settings.showLastSeen) {
-          subtitle.textContent = QWAS.Util.lastSeenText(chat.lastSeen, false);
+      if (titleEl) titleEl.textContent = title;
+      if (avatarEl) {
+        if (c.avatarUrl) {
+          avatarEl.innerHTML = `<img src="${QWAS.Util.escapeAttr(c.avatarUrl)}" alt="">`;
+        } else if (other) {
+          avatarEl.innerHTML = '';
+          avatarEl.appendChild(this._avatarNode(other, 40));
         } else {
-          subtitle.textContent = '';
+          avatarEl.innerHTML = '';
+          avatarEl.appendChild(this._avatarNode({ firstName: c.title, username: 'g' + c.chatId }, 40));
         }
       }
 
-      if (chat.avatar) {
-        avatar.outerHTML = `<div class="avatar size-40 chat-avatar" id="chatAvatar" style="background-image:url(${QWAS.Util.escapeAttr(chat.avatar)})"></div>`;
-      } else {
-        QWAS.Util.renderAvatar(document.getElementById('chatAvatar'),
-          { username: username, firstName: chat.firstName || chat.name, avatarColor: chat.avatarColor });
+      if (subtitleEl) {
+        if (c.type === 'dm' && other) {
+          const online = QWAS.State.online.has(other.username);
+          subtitleEl.textContent = online ? 'в сети' : (other.lastSeen ? QWAS.Util.timeAgo(other.lastSeen) : 'не в сети');
+        } else if (c.type === 'group' || c.type === 'channel') {
+          const n = (info.members || []).length;
+          subtitleEl.textContent = `${n} участник${this._plural(n)}`;
+        } else {
+          subtitleEl.textContent = '';
+        }
       }
-
-      this.renderPinned(chat);
     },
 
-    renderPinned(chat) {
-      const bar = document.getElementById('pinnedBar');
-      const text = document.getElementById('pinnedBarText');
-      if (!bar || !text) return;
-      const pinnedId = chat.pinnedMessageId || (QWAS.State.messagesByChat.get(chat.username) || []).find(m => m.isPinned)?._id;
-      if (!pinnedId) {
-        bar.style.display = 'none';
-        return;
+    _avatarNode(u, size) {
+      const div = document.createElement('div');
+      div.className = 'avatar';
+      if (u.avatarUrl) {
+        div.innerHTML = `<img src="${QWAS.Util.escapeAttr(u.avatarUrl)}" alt="">`;
+      } else {
+        div.classList.add('avatar-letters');
+        div.style.background = QWAS.Util.avatarColor(u.username || u.firstName);
+        div.textContent = QWAS.Util.getInitials(u.firstName, u.lastName);
       }
-      const msg = (QWAS.State.messagesByChat.get(chat.username) || []).find(m => m._id === pinnedId);
-      if (!msg) { bar.style.display = 'none'; return; }
-      const sender = msg.from === QWAS.State.me ? 'Вы' : (QWAS.Util.getUserDisplayName({ firstName: msg.fromFirstName, username: msg.from }) || msg.from);
-      const preview = msg.message || (msg.attachments?.length ? '📎 Вложение' : '');
-      text.innerHTML = `<strong>${QWAS.Util.escapeHtml(sender)}</strong> <span>${QWAS.Util.escapeHtml(QWAS.Util.truncate(preview, 60))}</span>`;
-      bar.style.display = 'flex';
-      bar.onclick = () => this.scrollToMessage(pinnedId);
+      div.style.width = size + 'px';
+      div.style.height = size + 'px';
+      return div;
+    },
+
+    _plural(n) {
+      const mod10 = n % 10, mod100 = n % 100;
+      if (mod10 === 1 && mod100 !== 11) return '';
+      if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'а';
+      return 'ов';
+    },
+
+    async openInfo() {
+      if (!QWAS.State.current) return;
+      if (QWAS.Modals) QWAS.Modals.openChatInfo(QWAS.State.current);
     },
 
     closePinned() {
@@ -136,89 +194,36 @@
       if (bar) bar.style.display = 'none';
     },
 
-    scrollToMessage(id) {
-      const el = document.getElementById('msg-' + id);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        el.setAttribute('data-anim', 'highlight');
-        setTimeout(() => el.removeAttribute('data-anim'), 800);
+    onTyping(data) {
+      if (!data || !data.chatId) return;
+      if (data.chatId !== QWAS.State.current) return;
+      if (data.username === QWAS.State.me?.username) return;
+      const ind = document.getElementById('typingIndicator');
+      const txt = document.getElementById('typingText');
+      if (!ind || !txt) return;
+      txt.textContent = `${data.username} печатает...`;
+      ind.style.display = 'flex';
+      // auto-hide
+      const map = QWAS.State._typingTimers;
+      if (map.has(data.username)) clearTimeout(map.get(data.username));
+      map.set(data.username, setTimeout(() => this.onStopTyping({ chatId: data.chatId, username: data.username }), 5000));
+    },
+
+    onStopTyping(data) {
+      if (!data || !data.chatId) return;
+      if (data.chatId !== QWAS.State.current) return;
+      const map = QWAS.State._typingTimers;
+      if (map && map.has(data.username)) {
+        clearTimeout(map.get(data.username));
+        map.delete(data.username);
       }
-    },
-
-    async loadInfo() {
-      const username = QWAS.State.current;
-      if (!username || username === QWAS.Config.FAVORITE_CHAT_ID) return;
-      if (username.startsWith('group:')) {
-        const id = username.slice(6);
-        const r = await QWAS.API.get('/groups/' + id);
-        if (r.ok) this.info = { type: 'group', data: r.group };
-      } else {
-        const r = await QWAS.API.get('/profile/' + username);
-        if (r.ok) this.info = { type: 'user', data: r.user };
-      }
-    },
-
-    clearMessages() {
-      const m = document.getElementById('messages');
-      if (m) m.innerHTML = '';
-    },
-
-    async loadHistory() {
-      if (!QWAS.State.current) return;
-      const r = await new Promise(res => {
-        if (QWAS.State.socket) {
-          QWAS.State.socket.emit('get_history', QWAS.State.current, 1, res);
-        } else res({ ok: false, messages: [] });
-      });
-      if (!r) return;
-      const { messages = [], hasMore = false, page = 1 } = r;
-      QWAS.State.hasMore = hasMore;
-      QWAS.State.pagination.page = page;
-      const list = messages || [];
-      QWAS.State.messagesByChat.set(QWAS.State.current, list);
-      QWAS.Messages.renderAll(list);
-      if (QWAS.State.socket && QWAS.State.current && QWAS.State.current !== QWAS.Config.FAVORITE_CHAT_ID) {
-        QWAS.State.socket.emit('mark_as_read', {
-          chatId: QWAS.State.current,
-          from: QWAS.State.current.startsWith('group:') ? undefined : QWAS.State.current
-        });
-      }
-    },
-
-    openInfo() {
-      const username = QWAS.State.current;
-      if (!username) return;
-      if (username === QWAS.Config.FAVORITE_CHAT_ID) {
-        QWAS.Modals.openSavedMessagesInfo();
-        return;
-      }
-      QWAS.Modals.openChatInfo(username, this.info);
-    },
-
-    openSearch() {
-      const q = prompt('Поиск в чате:');
-      if (!q) return;
-      this.searchQuery = q.toLowerCase();
-      this.highlightSearch();
-    },
-
-    highlightSearch() {
-      const msgs = QWAS.State.messagesByChat.get(QWAS.State.current) || [];
-      msgs.forEach(m => {
-        const el = document.getElementById('msg-' + m._id);
-        if (!el) return;
-        const text = m.message?.toLowerCase() || '';
-        if (this.searchQuery && text.includes(this.searchQuery)) {
-          el.setAttribute('data-anim', 'highlight');
-          setTimeout(() => el.removeAttribute('data-anim'), 1000);
-        }
-      });
-    },
-
-    updateOnline(username, online, lastSeen) {
-      if (username === QWAS.State.current) this.renderHeader();
+      // Скрываем только если других "печатающих" не осталось
+      const ind = document.getElementById('typingIndicator');
+      if (!ind) return;
+      const stillTyping = map && map.size > 0;
+      if (!stillTyping) ind.style.display = 'none';
     }
   };
 
-  QWAS.Chat = Chat;
+  window.QWAS.Chat = Chat;
 })();
