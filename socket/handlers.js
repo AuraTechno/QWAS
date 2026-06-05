@@ -12,7 +12,7 @@ function getOnline(app) { return app.get("onlineUsers"); }
 
 async function onConnect(io, socket, online) {
   logger.info(`[WS] ${socket.username} connected (${socket.id})`);
-  online.set(socket.username, socket.id);
+  online.set(socket.username, { id: socket.id, lastSeen: Date.now() });
 
   // Присоединяемся к своим чатам
   const chats = await chatsRepo.getUserChats(socket.username, { tab: "all", limit: 200 });
@@ -88,6 +88,12 @@ function registerHandlers(io, socket, online) {
         mentions: mentionIds, pollData, locationData, contactData,
         forwardedFromId, forwardedFromChatId, forwardedFromName
       });
+      // Инвалидируем кеш списка чатов для всех участников
+      try {
+        const cache = require("../utils/cache");
+        const memberUsernames = await chatsRepo.getMemberUsernames(chatIdNum);
+        for (const uname of memberUsernames) await cache.delPattern(`chats:${uname}:*`);
+      } catch {}
       // Broadcast
       io.to(`chat:${chatIdNum}`).emit("new_message", message);
       // Уведомления для участников (кроме автора и онлайн-юзеров в чате)
@@ -97,7 +103,7 @@ function registerHandlers(io, socket, online) {
         const u = await usersRepo.findById(uid);
         if (!u) continue;
         // Не уведомляем если юзер сейчас в этом чате
-        const sid = online.get(u.username);
+        const sid = online.get(u.username)?.id;
         if (sid) {
           const inRoom = io.sockets.sockets.get(sid)?.rooms.has(`chat:${chatIdNum}`);
           if (inRoom) continue;

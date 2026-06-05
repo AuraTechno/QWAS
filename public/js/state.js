@@ -93,5 +93,19 @@
     try { localStorage.setItem('qwas_settings', JSON.stringify(State.settings)); } catch {}
   };
 
+  // Применим шрифт/тему/обои сразу при загрузке
+  State.applyLocalSettings = function() {
+    const root = document.documentElement;
+    if (State.settings.theme) root.dataset.theme = State.settings.theme;
+    if (State.settings.fontSize) root.dataset.fontSize = State.settings.fontSize;
+    if (State.settings.accentColor) root.style.setProperty('--accent', State.settings.accentColor);
+    if (State.settings.accentColor) root.style.setProperty('--accent-soft', State.settings.accentColor + '30');
+  };
+  // Дефолты
+  if (!State.settings.theme) State.settings.theme = 'dark';
+  if (!State.settings.fontSize) State.settings.fontSize = 'medium';
+  if (!State.settings.wallpaper) State.settings.wallpaper = 'gradient1';
+  State.applyLocalSettings();
+
   window.QWAS.State = State;
 })();

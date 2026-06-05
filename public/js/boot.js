@@ -13,8 +13,14 @@
 
     // Запускаем Auth
     QWAS.Auth.init().then(() => {
-      // Применяем сохранённую тему
+      // Применяем сохранённую тему / шрифт / обои
+      if (QWAS.State.applyLocalSettings) QWAS.State.applyLocalSettings();
       if (QWAS.Modals && QWAS.Modals._applyTheme) QWAS.Modals._applyTheme();
+      if (QWAS.Modals && QWAS.Modals._applyWallpaper) {
+        const wp = QWAS.State.settings.wallpaper || 'gradient1';
+        const custom = QWAS.State.settings.wallpaperCustom;
+        QWAS.Modals._applyWallpaper(wp, custom);
+      }
     });
   }
 

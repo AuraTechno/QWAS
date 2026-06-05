@@ -1,23 +1,26 @@
-// WebRTC звонки (аудио/видео)
+// WebRTC звонки (аудио/видео) — QWAS
+// Features:
+//  - STUN/TURN через /api/ice
+//  - Drag & drop плавающего локального видео
+//  - Авто-скрытие контролов через 3с (показ по тапу)
+//  - Flip camera (мобильные)
+//  - Voice wave animation (аудио-звонки)
+//  - Opus codec предпочтение
+//  - Перетаскиваемое, glassmorphism-стилизованное
 (function() {
   'use strict';
   window.QWAS = window.QWAS || {};
 
-  // STUN-серверы для определения внешнего IP.
-  // TURN-серверы (для NAT traversal) подгружаются с сервера через /api/ice,
-  // иначе звонки за symmetric NAT (~10% юзеров) будут падать.
   const ICE_STUN_FALLBACK = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' }
   ];
 
-  // Кеш ICE-серверов, заполняется на init
   let ICE_CACHE = null;
   let ICE_FETCH_PROMISE = null;
 
   function getIceServers() {
-    if (ICE_CACHE) return ICE_CACHE;
-    return ICE_STUN_FALLBACK;
+    return ICE_CACHE || ICE_STUN_FALLBACK;
   }
 
   async function fetchIceServers() {
@@ -37,28 +40,31 @@
     return ICE_FETCH_PROMISE;
   }
 
-  // SVG-иконки для кнопок (mute/camera)
-  const ICONS = {
-    mic: '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3m5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z"/></svg>',
-    micOff: '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23A6.92 6.92 0 0 0 19 11m-4 .08L15 11c0 1.66-1.34 3-3 3v1.5c2.21 0 4.16-1.21 5.21-3M4.27 3 3 4.27 7.73 9H6c0 1.66 1.34 3 3 3v6h2v-1.73L14.73 17H10v-1c-.71 0-1.39-.16-2-.43L6.27 15 4.27 13 6.73 10.54 3.18 7 4.27 6.18 5 5.45 6 4.45 8.27 2.18 4.27 3M19 11h-1.7c0-.74-.16-1.43-.43-2.05l1.23 1.23A6.92 6.92 0 0 1 19 11z"/></svg>',
-    cam: '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11z"/></svg>',
-    camOff: '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M21 6.5 17.5 10 21 13.5V6.5M3.27 2 2 3.27 4.73 6H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12c.21 0 .39-.08.55-.18L19.73 21 21 19.73 3.27 2M16 16.5 5.5 6H16v10.5z"/></svg>',
-    end: '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
-    accept: '<svg viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M20 15.5c-1.25 0-2.45-.2-3.57-.57a1 1 0 0 0-1.02.24l-2.2 2.2a15.05 15.05 0 0 1-6.59-6.58l2.2-2.21a1 1 0 0 0 .25-1A11.36 11.36 0 0 1 8.5 4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1c0 9.39 7.61 17 17 17a1 1 0 0 0 1-1v-3.5a1 1 0 0 0-1-1"/></svg>',
-    reject: '<svg viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>'
-  };
+  // Помощник для иконок
+  const I = (name, size = 24) => QWAS.Util && QWAS.Util.icon ? QWAS.Util.icon(name, { size }) : '';
 
   const Calls = {
     pc: null,
     localStream: null,
     remoteStream: null,
-    currentCall: null, // { peerName, type, isCaller }
+    currentCall: null,
     ringtone: null,
     ringtoneCtx: null,
+    ringtoneAnalyser: null,
+    ringtoneAnimFrame: null,
+    ringtoneLevel: 0,
     timer: null,
     timerStart: 0,
     overlay: null,
     _pendingOffer: null,
+    _hideControlsTimer: null,
+    _videoSender: null,    // RTCRtpSender для camera track
+    _facingMode: 'user',   // user | environment
+    _dragging: false,
+    _dragOffset: { x: 0, y: 0 },
+    _audioAnalyser: null,
+    _audioLevel: 0,
+    _audioAnimFrame: null,
 
     init() {
       this._injectStyles();
@@ -70,34 +76,216 @@
       const s = document.createElement('style');
       s.id = 'call-styles';
       s.textContent = `
-        .call-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 10000; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; }
-        .call-stage { position: relative; width: min(900px, 90vw); height: min(70vh, 600px); background: #111; border-radius: 12px; overflow: hidden; }
-        .call-remote-video { width: 100%; height: 100%; object-fit: cover; background: #222; }
-        .call-local-video { position: absolute; bottom: 16px; right: 16px; width: 140px; height: 200px; border-radius: 8px; object-fit: cover; background: #000; box-shadow: 0 4px 16px rgba(0,0,0,.5); z-index: 2; border: 2px solid rgba(255,255,255,.2); }
-        .call-header { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; align-items: center; gap: 12px; z-index: 2; }
-        .call-avatar { width: 40px; height: 40px; border-radius: 50%; background: #2a7ae0; display: flex; align-items: center; justify-content: center; font-weight: 700; }
-        .call-name { font-weight: 600; font-size: 16px; }
-        .call-status { font-size: 13px; opacity: 0.7; }
-        .call-timer { position: absolute; top: 16px; right: 16px; z-index: 2; font-size: 14px; background: rgba(0,0,0,.5); padding: 4px 10px; border-radius: 12px; }
-        .call-actions { position: absolute; bottom: 24px; left: 0; right: 0; display: flex; gap: 12px; justify-content: center; z-index: 2; }
-        .call-btn { width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.15); color: #fff; }
-        .call-btn:hover { background: rgba(255,255,255,.25); }
-        .call-btn.danger { background: #e74c3c; }
-        .call-btn.accept { background: #2ecc71; }
-        .call-btn.secondary { background: rgba(255,255,255,.15); }
-        .call-btn.active { background: #2a7ae0; }
+        .call-overlay {
+          position: fixed; inset: 0;
+          background: radial-gradient(circle at 50% 30%, #1a2a3a 0%, #050810 100%);
+          z-index: 10000;
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          color: #fff;
+          font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+          overflow: hidden;
+          animation: call-fade-in 0.3s var(--ease-ios, cubic-bezier(0.32, 0.72, 0, 1));
+        }
+        @keyframes call-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+        .call-stage {
+          position: absolute; inset: 0;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .call-remote-video {
+          width: 100%; height: 100%;
+          object-fit: cover;
+          background: #000;
+        }
+        .call-remote-audio { display: none; }
+
+        /* === Плавающая локальная камера (draggable) === */
+        .call-local-wrap {
+          position: fixed;
+          top: 80px; right: 16px;
+          width: 140px; height: 200px;
+          border-radius: 14px;
+          overflow: hidden;
+          background: #000;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.6), 0 0 0 2px rgba(255,255,255,0.15);
+          z-index: 10002;
+          cursor: grab;
+          touch-action: none;
+          transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s;
+          will-change: transform;
+        }
+        .call-local-wrap:active { cursor: grabbing; transform: scale(1.04); }
+        .call-local-wrap.dragging {
+          transform: scale(1.06);
+          box-shadow: 0 16px 40px rgba(0,0,0,0.7), 0 0 0 2px rgba(106, 178, 242, 0.5);
+          transition: none;
+        }
+        .call-local-video {
+          width: 100%; height: 100%;
+          object-fit: cover;
+          background: #000;
+          display: block;
+        }
+
+        /* === Заголовок звонка === */
+        .call-header {
+          position: absolute; top: 0; left: 0; right: 0;
+          padding: calc(20px + env(safe-area-inset-top, 0)) 20px 20px;
+          background: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, transparent 100%);
+          display: flex; align-items: center; gap: 14px;
+          z-index: 10001;
+          transition: opacity 0.3s;
+          pointer-events: auto;
+        }
+        .call-avatar {
+          width: 48px; height: 48px; border-radius: 50%;
+          background: linear-gradient(135deg, #5e8ee7, #2a7ae0);
+          display: flex; align-items: center; justify-content: center;
+          font-weight: 700; font-size: 18px; color: #fff;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .call-name { font-weight: 600; font-size: 17px; letter-spacing: -0.01em; }
+        .call-status { font-size: 13px; opacity: 0.75; margin-top: 2px; }
+
+        .call-timer {
+          position: absolute; top: calc(20px + env(safe-area-inset-top, 0)); right: 20px;
+          font-size: 13px; font-weight: 600;
+          background: rgba(0,0,0,0.5);
+          -webkit-backdrop-filter: blur(10px);
+          backdrop-filter: blur(10px);
+          padding: 5px 12px; border-radius: 12px;
+          z-index: 10001;
+          transition: opacity 0.3s;
+        }
+
+        /* === Аудио-экран === */
+        .call-audio {
+          position: absolute; inset: 0;
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          padding: 40px 20px;
+          gap: 24px;
+        }
+        .call-audio-avatar {
+          width: 140px; height: 140px; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 56px; font-weight: 700; color: #fff;
+          background: linear-gradient(135deg, #5e8ee7, #2a7ae0);
+          box-shadow: 0 12px 40px rgba(94, 142, 231, 0.4);
+          position: relative;
+        }
+        .call-audio-name { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+        .call-audio-status { font-size: 15px; opacity: 0.7; }
+
+        /* Голосовая волна */
+        .call-wave {
+          display: flex; align-items: center; justify-content: center;
+          gap: 3px; height: 56px;
+        }
+        .call-wave-bar {
+          width: 4px; min-height: 4px;
+          background: linear-gradient(180deg, #6ab2f2, #5e8ee7);
+          border-radius: 4px;
+          transition: height 0.08s ease;
+        }
+        .call-audio.speaking .call-audio-avatar { animation: pulse 1.4s ease-in-out infinite; }
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.05); }
+        }
+
+        /* === Кнопки управления === */
+        .call-actions {
+          position: absolute; bottom: 0; left: 0; right: 0;
+          padding: 20px 20px calc(28px + env(safe-area-inset-bottom, 0));
+          display: flex; gap: 12px; justify-content: center; align-items: center;
+          background: linear-gradient(0deg, rgba(0,0,0,0.6) 0%, transparent 100%);
+          z-index: 10001;
+          transition: opacity 0.3s, transform 0.3s;
+        }
+        .call-overlay.controls-hidden .call-header,
+        .call-overlay.controls-hidden .call-timer,
+        .call-overlay.controls-hidden .call-actions {
+          opacity: 0;
+          pointer-events: none;
+        }
+        .call-overlay.controls-hidden .call-header,
+        .call-overlay.controls-hidden .call-actions {
+          transform: translateY(20px);
+        }
+        .call-overlay.controls-hidden .call-local-wrap { cursor: grab; }
+
+        .call-btn {
+          width: 56px; height: 56px;
+          border-radius: 50%;
+          border: none;
+          cursor: pointer;
+          display: flex; align-items: center; justify-content: center;
+          background: rgba(255,255,255,0.18);
+          color: #fff;
+          -webkit-backdrop-filter: blur(20px);
+          backdrop-filter: blur(20px);
+          transition: background 0.15s, transform 0.15s;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .call-btn:hover { background: rgba(255,255,255,0.28); }
+        .call-btn:active { transform: scale(0.92); }
+        .call-btn svg { width: 26px; height: 26px; }
+        .call-btn.danger { background: #ff3b30; }
+        .call-btn.danger:hover { background: #ff453a; }
+        .call-btn.accept { background: #34c759; }
+        .call-btn.accept:hover { background: #30d158; }
+        .call-btn.active { background: #ffffff; color: #0a0a0a; }
+        .call-btn.lg {
+          width: 68px; height: 68px;
+          background: rgba(255,255,255,0.22);
+        }
+        .call-btn.lg.danger { background: #ff3b30; }
+
+        /* === Flip camera === */
+        .call-flip-btn {
+          position: absolute;
+          top: 50%; right: 12px;
+          transform: translateY(-50%);
+          width: 40px; height: 40px;
+          border-radius: 50%;
+          background: rgba(0,0,0,0.5);
+          color: #fff;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer;
+          z-index: 10003;
+          -webkit-backdrop-filter: blur(10px);
+          backdrop-filter: blur(10px);
+          transition: background 0.15s, transform 0.15s;
+        }
+        .call-flip-btn:hover { background: rgba(0,0,0,0.7); }
+        .call-flip-btn:active { transform: translateY(-50%) scale(0.9); }
+        .call-flip-btn svg { width: 22px; height: 22px; }
+
+        /* === Качество видео === */
+        .call-quality {
+          position: absolute; top: calc(20px + env(safe-area-inset-top, 0)); right: 20px;
+          font-size: 11px; opacity: 0.6;
+          z-index: 10001;
+        }
+
+        /* === Адаптив === */
+        @media (max-width: 600px) {
+          .call-local-wrap { width: 110px; height: 160px; }
+          .call-audio-avatar { width: 120px; height: 120px; font-size: 48px; }
+          .call-audio-name { font-size: 22px; }
+          .call-btn { width: 52px; height: 52px; }
+          .call-btn.lg { width: 64px; height: 64px; }
+        }
       `;
       document.head.appendChild(s);
     },
 
     async start(type) {
-      if (this.currentCall) {
-        QWAS.Toast.error('Звонок уже идёт');
-        return;
-      }
+      if (this.currentCall) { QWAS.Toast.error('Звонок уже идёт'); return; }
       if (!QWAS.State.currentChatInfo || !QWAS.State.currentChatInfo.chat) {
-        QWAS.Toast.error('Откройте чат');
-        return;
+        QWAS.Toast.error('Откройте чат'); return;
       }
       const c = QWAS.State.currentChatInfo.chat;
       const other = c.otherUser;
@@ -107,11 +295,8 @@
 
     async _startCall(peerName, type) {
       try {
-        const constraints = {
-          audio: true,
-          video: type === 'video' ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false
-        };
-        this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        this._facingMode = 'user';
+        this.localStream = await this._getMedia({ video: type === 'video', audio: true });
       } catch (err) {
         QWAS.Toast.error('Нет доступа к медиа: ' + (err.message || err.name));
         return;
@@ -119,41 +304,116 @@
       await fetchIceServers();
       this._showOverlay(peerName, type, true);
       this._playRingtone();
-      // Создаём peer connection
-      this.pc = new RTCPeerConnection({ iceServers: getIceServers() });
-      this.localStream.getTracks().forEach(t => this.pc.addTrack(t, this.localStream));
-      this.pc.ontrack = (e) => this._onTrack(e);
-      this.pc.onicecandidate = (e) => {
-        if (e.candidate) {
-          QWAS.State.socket && QWAS.State.socket.emit('call_ice_candidate', { to: peerName, candidate: e.candidate });
-        }
-      };
-      this.pc.onconnectionstatechange = () => {
-        if (!this.pc) return;
-        if (['failed', 'disconnected', 'closed'].includes(this.pc.connectionState)) {
-          this._cleanup();
-          QWAS.Toast.error('Связь потеряна');
-        }
-      };
-
+      this.pc = this._createPeer(peerName);
+      this.localStream.getTracks().forEach(t => {
+        const sender = this.pc.addTrack(t, this.localStream);
+        if (t.kind === 'video') this._videoSender = sender;
+      });
       try {
-        const offer = await this.pc.createOffer();
+        const offer = await this.pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: type === 'video' });
         await this.pc.setLocalDescription(offer);
         QWAS.State.socket && QWAS.State.socket.emit('call_user', { to: peerName, type, offer });
-        this.currentCall = { peerName: peerName, type, isCaller: true };
+        this.currentCall = { peerName, type, isCaller: true };
+        this._setPreferredCodecs();
       } catch (err) {
         QWAS.Toast.error('Не удалось начать звонок');
         this._cleanup();
       }
     },
 
+    async _getMedia({ video, audio }) {
+      // video: false | { facingMode: 'user' | 'environment' }
+      const constraints = {
+        audio: audio ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false,
+        video: video ? {
+          facingMode: this._facingMode,
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } : false
+      };
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    },
+
+    async _flipCamera() {
+      if (!this.localStream) return;
+      this._facingMode = this._facingMode === 'user' ? 'environment' : 'user';
+      try {
+        const newStream = await this._getMedia({
+          video: this.currentCall?.type === 'video',
+          audio: false
+        });
+        const newVideoTrack = newStream.getVideoTracks()[0];
+        if (newVideoTrack && this._videoSender) {
+          await this._videoSender.replaceTrack(newVideoTrack);
+        }
+        // Заменяем в локальном стриме
+        const oldVideo = this.localStream.getVideoTracks()[0];
+        if (oldVideo) {
+          this.localStream.removeTrack(oldVideo);
+          oldVideo.stop();
+        }
+        this.localStream.addTrack(newVideoTrack);
+        // Обновить video в overlay
+        const localVideo = this.overlay?.querySelector('#callLocalVideo');
+        if (localVideo) localVideo.srcObject = this.localStream;
+      } catch (err) {
+        QWAS.Toast.error('Не удалось переключить камеру');
+        // Откатить facingMode
+        this._facingMode = this._facingMode === 'user' ? 'environment' : 'user';
+      }
+    },
+
+    _createPeer(peerName) {
+      const pc = new RTCPeerConnection({
+        iceServers: getIceServers(),
+        iceTransportPolicy: 'all',
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require'
+      });
+      pc.ontrack = (e) => this._onTrack(e);
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          QWAS.State.socket && QWAS.State.socket.emit('call_ice_candidate', { to: peerName, candidate: e.candidate });
+        }
+      };
+      pc.onconnectionstatechange = () => {
+        if (!this.pc) return;
+        const st = this.pc.connectionState;
+        if (st === 'connected') {
+          this._stopRingtone();
+          this._startAudioAnalyser();
+        }
+        if (['failed', 'disconnected', 'closed'].includes(st)) {
+          this._cleanup();
+          QWAS.Toast.error('Связь потеряна');
+        }
+      };
+      return pc;
+    },
+
+    async _setPreferredCodecs() {
+      if (!this.pc) return;
+      try {
+        const transceivers = this.pc.getTransceivers();
+        for (const tr of transceivers) {
+          if (tr.sender && tr.sender.track?.kind === 'audio') {
+            const caps = RTCRtpSender.getCapabilities('audio');
+            const opus = caps.codecs.find(c => c.mimeType.toLowerCase().includes('opus'));
+            if (opus) {
+              await tr.setCodecPreferences([opus, ...caps.codecs.filter(c => c !== opus)]);
+            }
+          }
+        }
+      } catch {}
+    },
+
     onIncoming(data) {
       if (!data || !data.from) return;
-      // Если уже в звонке — отклонить
       if (this.currentCall) {
         QWAS.State.socket && QWAS.State.socket.emit('call_reject', { to: data.from });
         return;
       }
+      this._facingMode = 'user';
       this._showOverlay(data.from, data.type, false);
       this._playRingtone();
       this._pendingOffer = data.offer;
@@ -164,33 +424,19 @@
       const call = this.currentCall;
       if (!call || call.isCaller) return;
       try {
-        const constraints = {
-          audio: true,
-          video: call.type === 'video' ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false
-        };
-        this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        this.localStream = await this._getMedia({ video: call.type === 'video', audio: true });
       } catch (err) {
         QWAS.Toast.error('Нет доступа к медиа');
         this._cleanup();
         return;
       }
-      await fetchIceServers();
       this._stopRingtone();
-      this.pc = new RTCPeerConnection({ iceServers: getIceServers() });
-      this.localStream.getTracks().forEach(t => this.pc.addTrack(t, this.localStream));
-      this.pc.ontrack = (e) => this._onTrack(e);
-      this.pc.onicecandidate = (e) => {
-        if (e.candidate) {
-          QWAS.State.socket && QWAS.State.socket.emit('call_ice_candidate', { to: call.peerName, candidate: e.candidate });
-        }
-      };
-      this.pc.onconnectionstatechange = () => {
-        if (!this.pc) return;
-        if (['failed', 'disconnected', 'closed'].includes(this.pc.connectionState)) {
-          this._cleanup();
-          QWAS.Toast.error('Связь потеряна');
-        }
-      };
+      await fetchIceServers();
+      this.pc = this._createPeer(call.peerName);
+      this.localStream.getTracks().forEach(t => {
+        const sender = this.pc.addTrack(t, this.localStream);
+        if (t.kind === 'video') this._videoSender = sender;
+      });
       try {
         await this.pc.setRemoteDescription(new RTCSessionDescription(this._pendingOffer));
         const answer = await this.pc.createAnswer();
@@ -201,9 +447,9 @@
         this._cleanup();
         return;
       }
-      // Переключаем оверлей: accept/reject → mute/camera/end, статус → "В разговоре"
       this._swapToInCall(call.peerName, call.type);
       this._startTimer();
+      this._setPreferredCodecs();
     },
 
     reject() {
@@ -214,11 +460,11 @@
     },
 
     onSignal(data) {
-      if (!data || !data.answer) return;
-      if (!this.pc) return;
+      if (!data || !data.answer || !this.pc) return;
       this.pc.setRemoteDescription(new RTCSessionDescription(data.answer)).catch(() => {});
       this._stopRingtone();
       this._startTimer();
+      this._startAudioAnalyser();
     },
 
     onIceCandidate(data) {
@@ -244,10 +490,8 @@
       if (!stream) return;
       const video = this.overlay?.querySelector('#callRemoteVideo');
       const audio = this.overlay?.querySelector('#callRemoteAudio');
-      // Видео-элемент существует всегда, но для аудио-звонка он display:none.
-      // Используем audio-элемент, если видео скрыто или его нет.
-      const videoVisible = video && video.style.display !== 'none' && getComputedStyle(video).display !== 'none';
-      if (videoVisible) {
+      const videoVisible = video && getComputedStyle(video).display !== 'none';
+      if (videoVisible && video) {
         video.srcObject = stream;
         video.play().catch(() => {});
       }
@@ -264,65 +508,72 @@
       o.id = 'callOverlay';
       o.innerHTML = `
         <div class="call-stage">
-          <video id="callRemoteVideo" class="call-remote-video" autoplay playsinline ${type === 'video' ? '' : 'style="display:none"'}></video>
-          <audio id="callRemoteAudio" autoplay></audio>
-          ${type === 'video' ? '' : `
-            <div class="call-header" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
-              <div class="call-avatar" style="width:80px;height:80px;font-size:32px">${QWAS.Util.getInitials(peerName)}</div>
-              <div class="call-name" style="margin-top:12px;font-size:22px">${QWAS.Util.escapeHtml(peerName)}</div>
-              <div class="call-status" id="callStatus">${isCaller ? 'Вызов...' : 'Входящий звонок'}</div>
-            </div>
-          `}
           ${type === 'video' ? `
-            <div class="call-header">
-              <div class="call-avatar">${QWAS.Util.getInitials(peerName)}</div>
-              <div>
-                <div class="call-name">${QWAS.Util.escapeHtml(peerName)}</div>
-                <div class="call-status" id="callStatus">${isCaller ? 'Вызов...' : 'Входящий звонок'}</div>
+            <video id="callRemoteVideo" class="call-remote-video" autoplay playsinline></video>
+            <audio id="callRemoteAudio" class="call-remote-audio" autoplay></audio>
+          ` : `
+            <audio id="callRemoteAudio" class="call-remote-audio" autoplay></audio>
+            <div class="call-audio" id="callAudioPane">
+              <div class="call-audio-avatar" id="callAudioAvatar">${QWAS.Util.escapeHtml(QWAS.Util.getInitials(peerName))}</div>
+              <div class="call-audio-name">${QWAS.Util.escapeHtml(peerName)}</div>
+              <div class="call-audio-status" id="callStatus">${isCaller ? 'Вызов...' : 'Входящий звонок'}</div>
+              <div class="call-wave" id="callWave">
+                ${Array.from({ length: 24 }, () => '<div class="call-wave-bar" style="height: 6px"></div>').join('')}
               </div>
             </div>
-          ` : ''}
-          <div class="call-timer" id="callTimer" style="display:none">0:00</div>
-          ${type === 'video' ? '<video id="callLocalVideo" class="call-local-video" autoplay muted playsinline></video>' : ''}
+          `}
         </div>
+
+        ${type === 'video' ? `
+          <div class="call-header">
+            <div class="call-avatar">${QWAS.Util.escapeHtml(QWAS.Util.getInitials(peerName))}</div>
+            <div>
+              <div class="call-name">${QWAS.Util.escapeHtml(peerName)}</div>
+              <div class="call-status" id="callStatus">${isCaller ? 'Вызов...' : 'Входящий звонок'}</div>
+            </div>
+          </div>
+          <div class="call-timer" id="callTimer" style="display:none">0:00</div>
+          <div class="call-local-wrap" id="callLocalWrap">
+            <video id="callLocalVideo" class="call-local-video" autoplay muted playsinline></video>
+            <button class="call-flip-btn" id="callFlipBtn" title="Переключить камеру">${I('refresh')}</button>
+          </div>
+        ` : ''}
+
         <div class="call-actions" id="callActions">
           ${!isCaller ? `
-            <button class="call-btn accept" id="callAcceptBtn" title="Принять">${ICONS.accept}</button>
-            <button class="call-btn danger" id="callRejectBtn" title="Отклонить">${ICONS.reject}</button>
+            <button class="call-btn lg accept" id="callAcceptBtn" title="Принять">${I('phone', 32)}</button>
+            <button class="call-btn lg danger" id="callRejectBtn" title="Отклонить">${I('phoneOff', 32)}</button>
           ` : `
-            <button class="call-btn secondary" id="callMuteBtn" title="Микрофон">${ICONS.mic}</button>
-            ${type === 'video' ? `<button class="call-btn secondary" id="callCameraBtn" title="Камера">${ICONS.cam}</button>` : ''}
-            <button class="call-btn danger" id="callEndBtn" title="Завершить">${ICONS.end}</button>
+            <button class="call-btn" id="callMuteBtn" title="Микрофон">${I('mic')}</button>
+            ${type === 'video' ? `<button class="call-btn" id="callCameraBtn" title="Камера">${I('video')}</button>` : ''}
+            <button class="call-btn lg danger" id="callEndBtn" title="Завершить">${I('phoneOff', 32)}</button>
           `}
         </div>
       `;
       document.body.appendChild(o);
       this.overlay = o;
+
       // Local preview
       const local = o.querySelector('#callLocalVideo');
       if (local && this.localStream) {
         local.srcObject = this.localStream;
       }
+
       this._bindActionButtons();
+      this._bindDragAndDrop();
+      this._bindAutoHideControls();
     },
 
     _swapToInCall(peerName, type) {
-      // Меняет accept/reject на mute/camera/end (для callee после принятия).
-      // Также обновляет #callStatus на "В разговоре".
       const actions = this.overlay?.querySelector('#callActions');
       if (!actions) return;
       actions.innerHTML = `
-        <button class="call-btn secondary" id="callMuteBtn" title="Микрофон">${ICONS.mic}</button>
-        ${type === 'video' ? `<button class="call-btn secondary" id="callCameraBtn" title="Камера">${ICONS.cam}</button>` : ''}
-        <button class="call-btn danger" id="callEndBtn" title="Завершить">${ICONS.end}</button>
+        <button class="call-btn" id="callMuteBtn" title="Микрофон">${I('mic')}</button>
+        ${type === 'video' ? `<button class="call-btn" id="callCameraBtn" title="Камера">${I('video')}</button>` : ''}
+        <button class="call-btn lg danger" id="callEndBtn" title="Завершить">${I('phoneOff', 32)}</button>
       `;
       const status = this.overlay.querySelector('#callStatus');
       if (status) status.textContent = 'В разговоре';
-      // Показать локальный preview для видео
-      const local = this.overlay.querySelector('#callLocalVideo');
-      if (local && this.localStream && !local.srcObject) {
-        local.srcObject = this.localStream;
-      }
       this._bindActionButtons();
     },
 
@@ -333,6 +584,7 @@
       const endBtn = this.overlay.querySelector('#callEndBtn');
       const muteBtn = this.overlay.querySelector('#callMuteBtn');
       const camBtn = this.overlay.querySelector('#callCameraBtn');
+      const flipBtn = this.overlay.querySelector('#callFlipBtn');
       if (acceptBtn) acceptBtn.addEventListener('click', () => this.accept());
       if (rejectBtn) rejectBtn.addEventListener('click', () => this.reject());
       if (endBtn) endBtn.addEventListener('click', () => this.end());
@@ -341,19 +593,136 @@
         if (!t) return;
         t.enabled = !t.enabled;
         muteBtn.classList.toggle('active', !t.enabled);
-        muteBtn.innerHTML = !t.enabled ? ICONS.micOff : ICONS.mic;
+        muteBtn.innerHTML = !t.enabled ? I('micOff') : I('mic');
       });
       if (camBtn) camBtn.addEventListener('click', () => {
         const t = this.localStream?.getVideoTracks()[0];
         if (!t) return;
         t.enabled = !t.enabled;
         camBtn.classList.toggle('active', !t.enabled);
-        camBtn.innerHTML = !t.enabled ? ICONS.camOff : ICONS.cam;
+        camBtn.innerHTML = !t.enabled ? I('videoOff') : I('video');
       });
+      if (flipBtn) flipBtn.addEventListener('click', () => this._flipCamera());
+    },
+
+    /**
+     * Drag & drop для плавающей локальной камеры
+     */
+    _bindDragAndDrop() {
+      const wrap = this.overlay?.querySelector('#callLocalWrap');
+      if (!wrap) return;
+      const onStart = (clientX, clientY) => {
+        this._dragging = true;
+        wrap.classList.add('dragging');
+        const rect = wrap.getBoundingClientRect();
+        this._dragOffset.x = clientX - rect.left;
+        this._dragOffset.y = clientY - rect.top;
+        // Снять transition на время drag
+        wrap.style.transition = 'none';
+      };
+      const onMove = (clientX, clientY) => {
+        if (!this._dragging) return;
+        const x = Math.max(0, Math.min(window.innerWidth - wrap.offsetWidth, clientX - this._dragOffset.x));
+        const y = Math.max(60, Math.min(window.innerHeight - wrap.offsetHeight - 100, clientY - this._dragOffset.y));
+        wrap.style.left = x + 'px';
+        wrap.style.top = y + 'px';
+        wrap.style.right = 'auto';
+        wrap.style.bottom = 'auto';
+      };
+      const onEnd = () => {
+        this._dragging = false;
+        wrap.classList.remove('dragging');
+        wrap.style.transition = '';
+      };
+      // Mouse
+      wrap.addEventListener('mousedown', e => { e.preventDefault(); onStart(e.clientX, e.clientY); });
+      document.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+      document.addEventListener('mouseup', onEnd);
+      // Touch
+      wrap.addEventListener('touchstart', e => { const t = e.touches[0]; onStart(t.clientX, t.clientY); }, { passive: true });
+      document.addEventListener('touchmove', e => { const t = e.touches[0]; onMove(t.clientX, t.clientY); }, { passive: true });
+      document.addEventListener('touchend', onEnd);
+    },
+
+    /**
+     * Авто-скрытие контролов через 3с бездействия
+     */
+    _bindAutoHideControls() {
+      if (!this.overlay) return;
+      const show = () => {
+        this.overlay.classList.remove('controls-hidden');
+        clearTimeout(this._hideControlsTimer);
+        this._hideControlsTimer = setTimeout(() => {
+          if (this.overlay && this.currentCall && this.pc?.connectionState === 'connected') {
+            this.overlay.classList.add('controls-hidden');
+          }
+        }, 3000);
+      };
+      this.overlay.addEventListener('click', show);
+      this.overlay.addEventListener('touchstart', show, { passive: true });
+      this.overlay.addEventListener('mousemove', show);
+      show();
+    },
+
+    /**
+     * Анимация голосовой волны по уровню входящего аудио
+     */
+    _startAudioAnalyser() {
+      if (!this.overlay) return;
+      const audioPane = this.overlay.querySelector('#callAudioPane');
+      const wave = this.overlay.querySelector('#callWave');
+      if (!audioPane || !wave) return;
+      const bars = wave.querySelectorAll('.call-wave-bar');
+      if (!bars.length) return;
+
+      const audio = this.overlay.querySelector('#callRemoteAudio');
+      if (!audio || !audio.srcObject) return;
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const src = ctx.createMediaStreamSource(audio.srcObject);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 128;
+        src.connect(analyser);
+        this._audioAnalyser = { ctx, analyser, src };
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        const tick = () => {
+          if (!this._audioAnalyser) return;
+          analyser.getByteFrequencyData(data);
+          let sum = 0;
+          for (let i = 0; i < 32; i++) sum += data[i];
+          const avg = sum / 32;
+          const norm = Math.min(1, avg / 96);
+          this._audioLevel = norm;
+          bars.forEach((b, i) => {
+            const offset = Math.sin(Date.now() / 200 + i * 0.5) * 0.3 + 0.7;
+            const h = 4 + norm * 50 * offset;
+            b.style.height = h + 'px';
+          });
+          if (norm > 0.05) audioPane.classList.add('speaking');
+          else audioPane.classList.remove('speaking');
+          this._audioAnimFrame = requestAnimationFrame(tick);
+        };
+        tick();
+      } catch (e) { /* no audio analysis available */ }
+    },
+
+    _stopAudioAnalyser() {
+      if (this._audioAnimFrame) {
+        cancelAnimationFrame(this._audioAnimFrame);
+        this._audioAnimFrame = null;
+      }
+      if (this._audioAnalyser) {
+        try { this._audioAnalyser.ctx.close(); } catch {}
+        this._audioAnalyser = null;
+      }
     },
 
     _removeOverlay() {
-      if (this.overlay) { this.overlay.remove(); this.overlay = null; }
+      if (this.overlay) {
+        this.overlay.remove();
+        this.overlay = null;
+      }
+      this._stopAudioAnalyser();
     },
 
     _startTimer() {
@@ -363,8 +732,6 @@
       this.timer = setInterval(() => {
         const sec = Math.floor((Date.now() - this.timerStart) / 1000);
         if (el) el.textContent = QWAS.Util.formatDuration(sec);
-        const status = this.overlay?.querySelector('#callStatus');
-        if (status && this.currentCall?.isCaller) status.textContent = 'В разговоре';
       }, 1000);
     },
 
@@ -380,6 +747,7 @@
           const g = ctx.createGain();
           o.connect(g); g.connect(ctx.destination);
           o.frequency.value = 440;
+          o.type = 'sine';
           g.gain.value = 0.05;
           o.start();
           setTimeout(() => { try { o.stop(); } catch {} }, 200);
@@ -396,12 +764,16 @@
 
     _cleanup() {
       this._stopRingtone();
+      this._stopAudioAnalyser();
+      clearTimeout(this._hideControlsTimer);
       if (this.timer) { clearInterval(this.timer); this.timer = null; }
+      if (this._videoSender) { try { this._videoSender = null; } catch {} this._videoSender = null; }
       if (this.pc) { try { this.pc.close(); } catch {} this.pc = null; }
       if (this.localStream) { this.localStream.getTracks().forEach(t => t.stop()); this.localStream = null; }
       this.remoteStream = null;
       this.currentCall = null;
       this._pendingOffer = null;
+      this._dragging = false;
       this._removeOverlay();
     }
   };

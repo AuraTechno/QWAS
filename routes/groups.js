@@ -81,4 +81,90 @@ router.delete("/:chatId/members/:username", authRequired, async (req, res) => {
   res.json({ ok: true });
 });
 
+// === Каналы (Channels) ===
+
+// Проверить занятость username канала (для real-time)
+router.get("/check-channel-username", authRequired, async (req, res) => {
+  const u = String(req.query.u || "").trim().toLowerCase();
+  if (!u) return res.json({ ok: true, available: false, error: "Пусто" });
+  if (!/^[a-z0-9_]{3,32}$/.test(u)) {
+    return res.json({ ok: true, available: false, error: "Неверный формат" });
+  }
+  const found = await chatsRepo.findChannelByUsername(u);
+  res.json({ ok: true, available: !found });
+});
+
+router.post("/channel", authRequired, async (req, res) => {
+  const { title, username, description, isPublic = true } = req.body || {};
+  if (!title || !title.trim()) {
+    return res.status(400).json({ ok: false, error: "Укажите название" });
+  }
+  if (!username) {
+    return res.status(400).json({ ok: false, error: "Укажите username канала" });
+  }
+  if (!/^[a-z0-9_]{3,32}$/.test(username)) {
+    return res.status(400).json({ ok: false, error: "Username: 3-32, a-z, 0-9, _" });
+  }
+  const existing = await chatsRepo.findChannelByUsername(username);
+  if (existing) {
+    return res.status(409).json({ ok: false, error: "Этот username уже занят" });
+  }
+  const chat = await chatsRepo.createChannel({
+    ownerId: req.user.id,
+    title: title.trim(),
+    username: username.toLowerCase(),
+    description: description || null,
+    isPublic
+  });
+  await audit.log({
+    actorId: req.user.id, action: "channel.create",
+    targetType: "chat", targetId: chat.id, newValue: { title, username },
+    ipAddress: req.ip
+  });
+  res.json({ ok: true, chat });
+});
+
+// Подписаться / отписаться
+router.post("/:chatId/subscribe", authRequired, async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+  const chat = await chatsRepo.findById(chatId);
+  if (!chat) return res.status(404).json({ ok: false, error: "Не найден" });
+  if (chat.type !== "channel") return res.status(400).json({ ok: false, error: "Не канал" });
+  if (!chat.isPublic) {
+    const isAdmin = await chatsRepo.isChannelAdmin(chatId, req.user.id);
+    if (!isAdmin) return res.status(403).json({ ok: false, error: "Приватный канал" });
+  }
+  await chatsRepo.subscribeToChannel(chatId, req.user.id);
+  res.json({ ok: true });
+});
+
+router.delete("/:chatId/subscribe", authRequired, async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+  await chatsRepo.unsubscribeFromChannel(chatId, req.user.id);
+  res.json({ ok: true });
+});
+
+// Подписчики канала
+router.get("/:chatId/subscribers", authRequired, async (req, res) => {
+  const chatId = parseInt(req.params.chatId);
+  const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+  const offset = parseInt(req.query.offset) || 0;
+  const subscribers = await chatsRepo.getChannelSubscribers(chatId, { limit, offset });
+  res.json({ ok: true, subscribers });
+});
+
+// Поиск публичных каналов
+router.get("/search-channels", authRequired, async (req, res) => {
+  const q = String(req.query.q || "").trim();
+  const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+  const channels = await chatsRepo.searchPublicChannels(q, limit);
+  res.json({ ok: true, channels });
+});
+
+// Каналы пользователя (которыми владеет)
+router.get("/my-channels", authRequired, async (req, res) => {
+  const channels = await chatsRepo.getUserChannels(req.user.id);
+  res.json({ ok: true, channels });
+});
+
 module.exports = router;

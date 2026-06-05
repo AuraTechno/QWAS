@@ -6,11 +6,30 @@
   const Chat = {
     init() {
       this.bindHeaderButtons();
-      this.bindPinnedBarClose();
+      this.bindPinnedBar();
       this.bindEmptyActions();
       this.bindTyping();
       this.bindSwipeBack();
       this.bindPopState();
+      this.fillPinnedBarIcons();
+    },
+
+    fillPinnedBarIcons() {
+      const id = (sel, name) => { const el = document.querySelector(sel); if (el) el.innerHTML = QWAS.Util.icon(name, { size: 18 }); };
+      id('#pinnedBarIcon', 'pin');
+      id('#pinnedBarActionIcon', 'chevronDown');
+      id('#pinnedBarCloseIcon', 'x');
+    },
+
+    bindPinnedBar() {
+      const bar = document.getElementById('pinnedBar');
+      const content = document.getElementById('pinnedBarContent');
+      const action = document.getElementById('pinnedBarAction');
+      const close = document.getElementById('pinnedBarClose');
+      if (content) content.addEventListener('click', () => QWAS.Messages?.scrollToPinned?.());
+      if (action) action.addEventListener('click', (e) => { e.stopPropagation(); QWAS.Messages?.scrollToPinned?.(); });
+      if (close) close.addEventListener('click', (e) => { e.stopPropagation(); QWAS.Messages?.unpinMessage?.(); });
+      if (bar) bar.addEventListener('click', () => QWAS.Messages?.scrollToPinned?.());
     },
 
     bindSwipeBack() {
@@ -102,6 +121,7 @@
       QWAS.State.editingId = null;
       QWAS.State.replyingTo = null;
       QWAS.State.pendingFiles = [];
+      QWAS.State.pinnedMessage = null;
 
       // UI
       const empty = document.getElementById('emptyChat');
@@ -127,6 +147,9 @@
 
       // Загрузим сообщения
       await QWAS.Messages && QWAS.Messages.loadInitial(chatId);
+
+      // Загрузим закреплённое сообщение
+      await QWAS.Messages?.loadPinnedMessage?.();
 
       // Помечаем прочитанным
       QWAS.Chats.markRead(chatId);
@@ -240,8 +263,7 @@
     },
 
     closePinned() {
-      const bar = document.getElementById('pinnedBar');
-      if (bar) bar.style.display = 'none';
+      QWAS.Messages?.unpinMessage?.();
     },
 
     onTyping(data) {

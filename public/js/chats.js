@@ -258,6 +258,13 @@
       } else {
         await QWAS.API.markRead(chatId);
       }
+    },
+
+    confirmClearHistory(chatId) {
+      const c = (this.list || []).find(x => x.chatId === chatId);
+      const name = c?.title || c?.displayName || 'чат';
+      if (!window.confirm(`Очистить историю в чате "${name}"?\n\nСообщения будут удалены без возможности восстановления.`)) return;
+      QWAS.Toast?.info?.('Очистка истории: функция в разработке');
     }
   };
 

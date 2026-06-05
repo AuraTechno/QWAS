@@ -43,6 +43,8 @@
     register(data) { return this.post('/register', data); },
     me() { return this.get('/me'); },
     logout() { return this.post('/logout', {}); },
+    checkUsername(username) { return this.get('/check-username?u=' + encodeURIComponent(username)); },
+    checkEmail(email) { return this.get('/check-email?e=' + encodeURIComponent(email)); },
 
     // === Profile ===
     updateProfile(patch) { return this.patch('/profile', patch); },
@@ -50,6 +52,23 @@
     addContact(username) { return this.post(`/profile/contacts/${encodeURIComponent(username)}`); },
     removeContact(username) { return this.delete(`/profile/contacts/${encodeURIComponent(username)}`); },
     openDM(username) { return this.post(`/profile/dm/${encodeURIComponent(username)}`); },
+
+    // === Auth extended ===
+    sessions() { return this.get('/sessions'); },
+    terminateSession(id) { return this.delete(`/sessions/${id}`); },
+    terminateAllSessions() { return this.post('/sessions/terminate-all', {}); },
+
+    // === Channels ===
+    checkChannelUsername(u) { return this.get(`/groups/check-channel-username?u=${encodeURIComponent(u)}`); },
+    createChannel(data) { return this.post('/groups/channel', data); },
+    subscribeChannel(id) { return this.post(`/groups/${id}/subscribe`); },
+    unsubscribeChannel(id) { return this.delete(`/groups/${id}/subscribe`); },
+    channelSubscribers(id, params = {}) {
+      const q = new URLSearchParams(params).toString();
+      return this.get(`/groups/${id}/subscribers${q ? '?' + q : ''}`);
+    },
+    searchChannels(q) { return this.get(`/groups/search-channels?q=${encodeURIComponent(q)}`); },
+    myChannels() { return this.get('/groups/my-channels'); },
 
     // === Chats ===
     chats(tab = 'all') { return this.get(`/chats?tab=${tab}`); },
@@ -77,6 +96,9 @@
     setPinned(id, pinned) { return this.post(`/chats/${id}/pin`, { pinned }); },
     setArchived(id, archived) { return this.post(`/chats/${id}/archive`, { archived }); },
     setMuted(id, muted) { return this.post(`/chats/${id}/mute`, { muted }); },
+    pinMessage(id, messageId) { return this.post(`/chats/${id}/pin-message`, { messageId }); },
+    unpinMessage(id) { return this.delete(`/chats/${id}/pin-message`); },
+    getPinnedMessage(id) { return this.get(`/chats/${id}/pinned`); },
 
     // === Groups ===
     createGroup(data) { return this.post('/groups', data); },

@@ -1,40 +1,60 @@
+/* === QWAS CSS Variables === */
+/* Glassmorphism design system с поддержкой light/dark/midnight тем */
+
 :root,
 [data-theme="dark"] {
+  /* === Backgrounds (base) === */
   --bg-page: #0e1621;
-  --bg-sidebar: #17212b;
+  --bg-sidebar: rgba(23, 33, 43, 0.85);
   --bg-chat: #0e1621;
-  --bg-elevated: #1e2c39;
-  --bg-elevated-hover: #232f3d;
-  --bg-input: #242f3d;
-  --bg-hover: #202b36;
-  --bg-active: #2b5278;
+  --bg-elevated: rgba(30, 44, 57, 0.7);
+  --bg-elevated-hover: rgba(35, 47, 61, 0.85);
+  --bg-input: rgba(36, 47, 61, 0.6);
+  --bg-hover: rgba(32, 43, 54, 0.5);
+  --bg-active: rgba(43, 82, 120, 0.65);
 
-  --bubble-me: #2b5278;
+  /* === Glass surfaces === */
+  --glass-1: rgba(30, 44, 57, 0.55);
+  --glass-2: rgba(36, 47, 61, 0.7);
+  --glass-3: rgba(43, 82, 120, 0.45);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-strong: rgba(255, 255, 255, 0.14);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.36);
+  --glass-blur: saturate(180%) blur(20px);
+  --glass-blur-strong: saturate(180%) blur(32px);
+
+  /* === Bubbles === */
+  --bubble-me: linear-gradient(135deg, rgba(94, 142, 231, 0.95), rgba(42, 122, 224, 0.95));
   --bubble-me-text: #ffffff;
-  --bubble-other: #182533;
+  --bubble-other: rgba(24, 37, 51, 0.85);
   --bubble-other-text: #ffffff;
-  --bubble-system: #2a3a4a;
+  --bubble-system: rgba(42, 58, 74, 0.85);
   --bubble-system-text: #93b3c7;
 
+  /* === Text === */
   --text-primary: #ffffff;
-  --text-secondary: #708499;
-  --text-tertiary: #5f7281;
-  --text-muted: #4a5867;
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-tertiary: rgba(255, 255, 255, 0.5);
+  --text-muted: rgba(255, 255, 255, 0.35);
   --text-link: #6ab2f2;
   --text-accent: #6ab2f2;
   --text-mention: #6ab2f2;
   --text-error: #ff6b6b;
   --text-success: #4dd599;
 
-  --border: #0e1621;
-  --border-light: #1f2d3a;
-  --divider: #101921;
+  /* === Borders / Dividers === */
+  --border: rgba(255, 255, 255, 0.06);
+  --border-light: rgba(255, 255, 255, 0.08);
+  --divider: rgba(255, 255, 255, 0.04);
 
+  /* === Accent === */
   --accent: #6ab2f2;
-  --accent-hover: #5a9ee0;
+  --accent-hover: #8ec3f5;
   --accent-active: #2b5278;
-  --accent-soft: rgba(106, 178, 242, 0.15);
+  --accent-soft: rgba(106, 178, 242, 0.18);
+  --accent-glow: 0 0 24px rgba(106, 178, 242, 0.3);
 
+  /* === Semantic colors === */
   --green: #4dd599;
   --red: #ff6b6b;
   --yellow: #ffd54f;
@@ -43,112 +63,183 @@
   --pink: #ff7eb6;
   --cyan: #5fc7d7;
 
-  --shadow-1: 0 1px 2px rgba(0,0,0,0.2);
-  --shadow-2: 0 4px 12px rgba(0,0,0,0.25);
-  --shadow-3: 0 8px 24px rgba(0,0,0,0.3);
-  --shadow-glow: 0 0 0 2px var(--accent-soft);
+  /* === Shadows === */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.28);
+  --shadow-3: 0 12px 40px rgba(0, 0, 0, 0.4);
+  --shadow-4: 0 24px 64px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 0 3px var(--accent-soft);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 
-  --header-height: 56px;
-  --composer-height: 62px;
+  /* === Layout === */
+  --header-height: 60px;
+  --composer-height: 64px;
   --sidebar-width: 360px;
   --right-panel-width: 340px;
+  --chat-list-min: 280px;
+  --chat-list-max: 460px;
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
-  --radius-xl: 24px;
+  /* === Radii === */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-2xl: 36px;
   --radius-full: 9999px;
 
-  --bubble-radius: 18px;
+  --bubble-radius: 20px;
   --bubble-radius-tail: 6px;
 
-  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-bounce: 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* === Spacing scale (iOS-like) === */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* === Transitions (iOS-like cubic-bezier) === */
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --transition-fast: 0.15s var(--ease-ios);
+  --transition: 0.25s var(--ease-ios);
+  --transition-slow: 0.4s var(--ease-ios);
+  --transition-spring: 0.5s var(--ease-spring);
+  --transition-out: 0.3s var(--ease-out);
+
+  /* === Font scale === */
+  --font-base: 15px;
+  --font-sm: 13px;
+  --font-xs: 11px;
+  --font-lg: 17px;
+  --font-xl: 20px;
+  --font-2xl: 24px;
+  --font-3xl: 32px;
+  --font-message: 15px;
 
   color-scheme: dark;
 }
 
 [data-theme="light"] {
-  --bg-page: #ffffff;
-  --bg-sidebar: #f4f4f5;
+  --bg-page: #f4f7fb;
+  --bg-sidebar: rgba(255, 255, 255, 0.78);
   --bg-chat: #ffffff;
-  --bg-elevated: #ffffff;
-  --bg-elevated-hover: #f0f0f0;
-  --bg-input: #ffffff;
-  --bg-hover: #f0f0f0;
-  --bg-active: #4d9ad7;
+  --bg-elevated: rgba(255, 255, 255, 0.85);
+  --bg-elevated-hover: rgba(240, 244, 250, 0.95);
+  --bg-input: rgba(245, 247, 250, 0.85);
+  --bg-hover: rgba(220, 230, 245, 0.6);
+  --bg-active: rgba(77, 154, 215, 0.7);
 
-  --bubble-me: #effdde;
-  --bubble-me-text: #0f1419;
-  --bubble-other: #ffffff;
+  --glass-1: rgba(255, 255, 255, 0.6);
+  --glass-2: rgba(255, 255, 255, 0.78);
+  --glass-3: rgba(77, 154, 215, 0.35);
+  --glass-border: rgba(15, 20, 25, 0.06);
+  --glass-border-strong: rgba(15, 20, 25, 0.1);
+  --glass-shadow: 0 8px 32px rgba(15, 20, 25, 0.1);
+  --glass-blur: saturate(180%) blur(20px);
+  --glass-blur-strong: saturate(180%) blur(32px);
+
+  --bubble-me: linear-gradient(135deg, rgba(94, 174, 255, 0.95), rgba(51, 144, 236, 0.95));
+  --bubble-me-text: #ffffff;
+  --bubble-other: rgba(255, 255, 255, 0.9);
   --bubble-other-text: #0f1419;
-  --bubble-system: #e3e7ea;
+  --bubble-system: rgba(227, 231, 234, 0.85);
   --bubble-system-text: #6c7883;
 
   --text-primary: #0f1419;
-  --text-secondary: #707579;
-  --text-tertiary: #8e969c;
-  --text-muted: #b0b6bc;
+  --text-secondary: rgba(15, 20, 25, 0.65);
+  --text-tertiary: rgba(15, 20, 25, 0.45);
+  --text-muted: rgba(15, 20, 25, 0.3);
   --text-link: #3390ec;
   --text-accent: #3390ec;
   --text-mention: #3390ec;
   --text-error: #e53935;
-  --text-success: #4caf50;
+  --text-success: #2e7d32;
 
-  --border: #e6e6e6;
-  --border-light: #f0f0f0;
-  --divider: #f0f0f0;
+  --border: rgba(15, 20, 25, 0.06);
+  --border-light: rgba(15, 20, 25, 0.08);
+  --divider: rgba(15, 20, 25, 0.04);
 
   --accent: #3390ec;
   --accent-hover: #2483d6;
   --accent-active: #1c7ccc;
-  --accent-soft: rgba(51, 144, 236, 0.15);
+  --accent-soft: rgba(51, 144, 236, 0.14);
+  --accent-glow: 0 0 24px rgba(51, 144, 236, 0.25);
 
-  --shadow-1: 0 1px 2px rgba(0,0,0,0.06);
-  --shadow-2: 0 2px 8px rgba(0,0,0,0.1);
-  --shadow-3: 0 8px 24px rgba(0,0,0,0.12);
+  --shadow-1: 0 1px 2px rgba(15, 20, 25, 0.06);
+  --shadow-2: 0 4px 16px rgba(15, 20, 25, 0.1);
+  --shadow-3: 0 12px 40px rgba(15, 20, 25, 0.14);
+  --shadow-4: 0 24px 64px rgba(15, 20, 25, 0.18);
+  --shadow-glow: 0 0 0 3px var(--accent-soft);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.5);
 
   color-scheme: light;
 }
 
 [data-theme="midnight"] {
   --bg-page: #000000;
-  --bg-sidebar: #0a0a0a;
+  --bg-sidebar: rgba(10, 10, 10, 0.85);
   --bg-chat: #000000;
-  --bg-elevated: #1a1a1a;
-  --bg-elevated-hover: #232323;
-  --bg-input: #1a1a1a;
-  --bg-hover: #181818;
-  --bg-active: #2a2a2a;
-  --bubble-me: #2a2a2a;
-  --bubble-other: #1a1a1a;
+  --bg-elevated: rgba(26, 26, 26, 0.7);
+  --bg-elevated-hover: rgba(35, 35, 35, 0.85);
+  --bg-input: rgba(26, 26, 26, 0.6);
+  --bg-hover: rgba(24, 24, 24, 0.5);
+  --bg-active: rgba(42, 42, 42, 0.65);
+
+  --glass-1: rgba(26, 26, 26, 0.55);
+  --glass-2: rgba(36, 36, 36, 0.7);
+  --glass-3: rgba(167, 139, 250, 0.3);
+  --glass-border: rgba(255, 255, 255, 0.05);
+  --glass-border-strong: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+
+  --bubble-me: linear-gradient(135deg, rgba(167, 139, 250, 0.95), rgba(124, 77, 255, 0.95));
+  --bubble-other: rgba(26, 26, 26, 0.85);
   --text-primary: #e5e5e5;
-  --text-secondary: #888888;
+  --text-secondary: rgba(229, 229, 229, 0.7);
   --accent: #a78bfa;
-  --accent-soft: rgba(167, 139, 250, 0.15);
+  --accent-hover: #b8a3fc;
+  --accent-soft: rgba(167, 139, 250, 0.18);
 
   color-scheme: dark;
 }
 
+/* === Safe areas (iPhone X+) === */
 :root {
   --safe-top: env(safe-area-inset-top, 0);
   --safe-bottom: env(safe-area-inset-bottom, 0);
+  --safe-left: env(safe-area-inset-left, 0);
+  --safe-right: env(safe-area-inset-right, 0);
 }
 
-html, body, #app, .sidebar, .chat-area, .composer, .messages-wrapper {
-  transition: background-color var(--transition), color var(--transition);
+/* === Smooth theme switching === */
+html, body, #app, .sidebar, .chat-area, .composer, .messages-wrapper,
+.auth-container, .modal, .glass {
+  transition: background-color var(--transition),
+              color var(--transition),
+              border-color var(--transition);
 }
 
+/* === Tap highlight === */
 body { -webkit-tap-highlight-color: transparent; }
-
 button, [role="button"] {
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
 }
-
 input, textarea {
   -webkit-appearance: none;
   appearance: none;
 }
+
+/* === Font size override (settings) === */
+[data-font-size="small"]  { --font-base: 13px; --font-message: 13px; --font-sm: 12px; }
+[data-font-size="medium"] { --font-base: 15px; --font-message: 15px; --font-sm: 13px; }
+[data-font-size="large"]  { --font-base: 17px; --font-message: 17px; --font-sm: 14px; }
+[data-font-size="xlarge"] { --font-base: 19px; --font-message: 19px; --font-sm: 15px; }

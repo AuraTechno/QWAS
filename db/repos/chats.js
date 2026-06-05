@@ -335,6 +335,44 @@ async function setMuted(username, chatId, muted) {
   );
 }
 
+async function setPinnedMessage(chatId, messageId) {
+  await db.query(
+    `UPDATE chats SET pinned_message_id = $2, updated_at = NOW() WHERE id = $1`,
+    [chatId, messageId]
+  );
+}
+
+async function getPinnedMessage(chatId) {
+  const r = await db.query(
+    `SELECT m.id, m.from_id, m.type, m.text, m.created_at, m.reply_to_id,
+            m.attachments, m.reactions,
+            m.is_edited, m.forwarded_from_id,
+            u.username, u.first_name, u.last_name, u.avatar_url
+     FROM chats c
+     LEFT JOIN messages m ON m.id = c.pinned_message_id
+     LEFT JOIN users u ON u.id = m.from_id
+     WHERE c.id = $1 AND c.pinned_message_id IS NOT NULL`,
+    [chatId]
+  );
+  if (!r.rows[0]?.id) return null;
+  const row = r.rows[0];
+  return {
+    id: row.id,
+    chatId,
+    fromId: row.from_id,
+    fromUsername: row.username,
+    fromName: [row.first_name, row.last_name].filter(Boolean).join(' '),
+    avatar: row.avatar_url,
+    type: row.type,
+    text: row.text,
+    createdAt: row.created_at,
+    replyToId: row.reply_to_id,
+    isEdited: row.is_edited,
+    attachments: row.attachments || null,
+    reactions: row.reactions || null
+  };
+}
+
 async function resetUnread(username, chatId) {
   await db.query(
     `UPDATE user_chats SET unread_count = 0, updated_at = NOW()
@@ -354,12 +392,167 @@ async function getTotalUnread(username) {
   return parseInt(res.rows[0]?.total || 0);
 }
 
+// === Каналы (Channels) ===
+async function findChannelByUsername(username) {
+  const res = await db.query(
+    `SELECT * FROM chats WHERE lower(username) = $1 AND type = 'channel' LIMIT 1`,
+    [username.toLowerCase()]
+  );
+  return rowToChat(res.rows[0]);
+}
+
+async function createChannel({ ownerId, title, username, description = null, isPublic = true }) {
+  return await db.withTransaction(async (client) => {
+    const chatRes = await client.query(
+      `INSERT INTO chats (type, title, username, description, owner_id, is_public, is_channel)
+       VALUES ('channel', $1, $2, $3, $4, $5, TRUE)
+       RETURNING *`,
+      [title, username.toLowerCase(), description, ownerId, !!isPublic]
+    );
+    const chat = chatRes.rows[0];
+
+    // Owner становится member + admin
+    await client.query(
+      `INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, 'owner')
+       ON CONFLICT DO NOTHING`,
+      [chat.id, ownerId]
+    );
+    await client.query(
+      `INSERT INTO chat_admins (chat_id, user_id, role, granted_by)
+       VALUES ($1, $2, 'owner', $2)
+       ON CONFLICT DO NOTHING`,
+      [chat.id, ownerId]
+    );
+    if (isPublic) {
+      await client.query(
+        `INSERT INTO channel_subscribers (channel_id, user_id) VALUES ($1, $2)
+         ON CONFLICT DO NOTHING`,
+        [chat.id, ownerId]
+      );
+      await client.query(
+        `UPDATE chats SET subscriber_count = subscriber_count + 1 WHERE id = $1`,
+        [chat.id]
+      );
+    }
+    return rowToChat(chat);
+  });
+}
+
+async function subscribeToChannel(channelId, userId) {
+  return await db.withTransaction(async (client) => {
+    await client.query(
+      `INSERT INTO channel_subscribers (channel_id, user_id)
+       VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [channelId, userId]
+    );
+    await client.query(
+      `UPDATE chats SET subscriber_count = (SELECT COUNT(*) FROM channel_subscribers WHERE channel_id = $1)
+       WHERE id = $1`,
+      [channelId]
+    );
+    // Также добавляем как chat_member (если канал = group-like)
+    await client.query(
+      `INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, 'member')
+       ON CONFLICT DO NOTHING`,
+      [channelId, userId]
+    );
+  });
+}
+
+async function unsubscribeFromChannel(channelId, userId) {
+  return await db.withTransaction(async (client) => {
+    await client.query(
+      `DELETE FROM channel_subscribers WHERE channel_id = $1 AND user_id = $2`,
+      [channelId, userId]
+    );
+    await client.query(
+      `UPDATE chats SET subscriber_count = (SELECT COUNT(*) FROM channel_subscribers WHERE channel_id = $1)
+       WHERE id = $1`,
+      [channelId]
+    );
+  });
+}
+
+async function getChannelSubscribers(channelId, { limit = 200, offset = 0 } = {}) {
+  const res = await db.query(
+    `SELECT u.id, u.username, u.first_name, u.last_name, u.avatar_url, u.presence, cs.joined_at
+     FROM channel_subscribers cs
+     JOIN users u ON u.id = cs.user_id
+     WHERE cs.channel_id = $1
+     ORDER BY cs.joined_at DESC
+     LIMIT $2 OFFSET $3`,
+    [channelId, limit, offset]
+  );
+  return res.rows.map(r => ({
+    id: db.bigintToNum(r.id),
+    username: r.username,
+    firstName: r.first_name,
+    lastName: r.last_name,
+    avatarUrl: r.avatar_url,
+    presence: r.presence,
+    joinedAt: r.joined_at
+  }));
+}
+
+async function searchPublicChannels(query, limit = 30) {
+  if (!query) return [];
+  const q = `%${query.toLowerCase()}%`;
+  const res = await db.query(
+    `SELECT id, title, username, description, avatar_url, subscriber_count
+     FROM chats
+     WHERE type = 'channel' AND is_public = TRUE
+       AND (lower(username) LIKE $1 OR lower(title) LIKE $1)
+     ORDER BY subscriber_count DESC
+     LIMIT $2`,
+    [q, limit]
+  );
+  return res.rows.map(r => ({
+    id: db.bigintToNum(r.id),
+    title: r.title,
+    username: r.username,
+    description: r.description,
+    avatarUrl: r.avatar_url,
+    subscriberCount: r.subscriber_count
+  }));
+}
+
+async function getUserChannels(userId) {
+  const res = await db.query(
+    `SELECT c.id, c.title, c.username, c.description, c.avatar_url, c.subscriber_count
+     FROM chats c
+     WHERE c.type = 'channel' AND c.owner_id = $1
+     ORDER BY c.created_at DESC`,
+    [userId]
+  );
+  return res.rows.map(r => ({
+    id: db.bigintToNum(r.id),
+    title: r.title,
+    username: r.username,
+    description: r.description,
+    avatarUrl: r.avatar_url,
+    subscriberCount: r.subscriber_count
+  }));
+}
+
+async function isChannelAdmin(channelId, userId) {
+  const res = await db.query(
+    `SELECT 1 FROM chat_admins WHERE chat_id = $1 AND user_id = $2 LIMIT 1`,
+    [channelId, userId]
+  );
+  return res.rows.length > 0;
+}
+
 module.exports = {
   findOrCreateDM, createGroup,
   findById, getMembers, isMember, addMember, removeMember,
   getMemberIds, getMemberUsernames,
   getUserChats, getUserChat, getArchivedChats, getPinnedChats,
-  setPinned, setArchived, setMuted,
+  setPinned, setArchived, setMuted, setPinnedMessage, getPinnedMessage,
   resetUnread, getTotalUnread,
+  // Channels
+  findChannelByUsername, createChannel,
+  subscribeToChannel, unsubscribeFromChannel,
+  getChannelSubscribers, searchPublicChannels, getUserChannels,
+  isChannelAdmin,
   rowToChat, rowToUserChat
 };

@@ -135,9 +135,46 @@
     return `<div class="avatar avatar-letters" style="width:${size}px;height:${size}px;background:${color}">${escapeHtml(initials)}</div>`;
   }
 
+  function icon(name, opts) {
+    return QWAS.Icons ? QWAS.Icons.get(name, opts) : '';
+  }
+
+  function setIcon(el, name, opts) {
+    if (!el || !QWAS.Icons) return;
+    el.innerHTML = QWAS.Icons.get(name, opts);
+  }
+
+  function isValidUsername(s) {
+    return typeof s === 'string' && /^[a-z0-9_]{3,32}$/.test(s);
+  }
+
+  function isValidEmail(s) {
+    return typeof s === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s) && s.length <= 254;
+  }
+
+  function copyToClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    }
+    return Promise.resolve(fallbackCopy(text));
+  }
+
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch {}
+    document.body.removeChild(ta);
+    return true;
+  }
+
   window.QWAS.Util = {
     escapeHtml, escapeAttr, getInitials, getUserDisplayName,
     formatDuration, formatTime, formatFullTime, formatBytes, timeAgo,
-    throttle, debounce, $, $$, onReady, avatarColor, avatarHtml
+    throttle, debounce, $, $$, onReady, avatarColor, avatarHtml,
+    icon, setIcon, isValidUsername, isValidEmail, copyToClipboard
   };
 })();

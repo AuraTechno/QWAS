@@ -17,6 +17,8 @@ const db = require("./db/pg");
 const { runMigrations } = require("./scripts/migrate");
 const socketAuth = require("./socket/auth");
 const { setupSocketHandlers } = require("./socket/handlers");
+const cache = require("./utils/cache");
+const { createQueue } = require("./utils/queue");
 
 const app = express();
 const server = http.createServer(app);
@@ -134,6 +136,22 @@ async function bootstrap() {
     process.exit(1);
   }
 
+  // Кеш (Redis или in-memory)
+  cache.init().catch(() => {});
+
+  // Очереди
+  const emailQueue = createQueue("emails", { concurrency: 2, retries: 3 });
+  emailQueue.process("send", async (job) => {
+    const { sendEmail } = require("./utils/mailer");
+    await sendEmail(job);
+  });
+  const mediaQueue = createQueue("media", { concurrency: 4, retries: 1 });
+  mediaQueue.process("postprocess", async (job) => {
+    const { postprocessMedia } = require("./utils/media");
+    await postprocessMedia(job);
+  });
+  app.set("queues", { email: emailQueue, media: mediaQueue });
+
   // Миграции
   if (process.env.AUTO_MIGRATE !== "false") {
     try {
@@ -144,7 +162,7 @@ async function bootstrap() {
     }
   }
 
-  // WebSocket
+  // WebSocket — heartbeat + защита от зомби-соединений
   io.use(socketAuth);
   io.on("connection", async (socket) => {
     try {
@@ -155,7 +173,25 @@ async function bootstrap() {
     }
   });
 
+  // Периодическая очистка онлайна (если клиент не пингует 90с)
+  setInterval(() => {
+    const now = Date.now();
+    for (const [username, info] of online.entries()) {
+      const entry = info && typeof info === 'object' ? info : null;
+      if (!entry) continue;
+      if (entry.lastSeen && now - entry.lastSeen > 90000) {
+        const s = io.sockets.sockets.get(entry.id);
+        if (!s || !s.connected) {
+          online.delete(username);
+          io.emit("presence:update", { username, online: false });
+          try { usersRepo.setOffline && usersRepo.setOffline(username); } catch {}
+        }
+      }
+    }
+  }, 30000);
+
   app.set("io", io);
+  app.set("cache", cache);
 
   server.listen(config.PORT, config.HOST, () => {
     logger.info(`QWAS Messenger running on http://${config.HOST}:${config.PORT}`);

@@ -746,11 +746,94 @@
       // TODO: режим выделения
     },
 
+    enterSelectMode(id) {
+      QWAS.Toast?.info?.('Режим выделения скоро появится');
+    },
+
     async pinMessage(id) {
       const chatId = QWAS.State.current;
       if (!chatId) return;
-      // Закреп на уровне чата (через socket/API)
-      if (QWAS.Modals) QWAS.Modals.openPinMessage(chatId, id);
+      try {
+        const r = await QWAS.API.pinMessage(chatId, id);
+        if (r && r.ok) {
+          QWAS.State.pinnedMessage = r.message || null;
+          this.renderPinnedBar();
+          QWAS.Toast?.success?.('Сообщение закреплено');
+        }
+      } catch (e) {
+        QWAS.Toast?.error?.('Не удалось закрепить');
+      }
+    },
+
+    async unpinMessage() {
+      const chatId = QWAS.State.current;
+      if (!chatId) return;
+      try {
+        const r = await QWAS.API.unpinMessage(chatId);
+        if (r && r.ok) {
+          QWAS.State.pinnedMessage = null;
+          this.renderPinnedBar();
+          QWAS.Toast?.info?.('Закреп снят');
+        }
+      } catch (e) {
+        QWAS.Toast?.error?.('Не удалось открепить');
+      }
+    },
+
+    async loadPinnedMessage() {
+      const chatId = QWAS.State.current;
+      if (!chatId) {
+        QWAS.State.pinnedMessage = null;
+        this.renderPinnedBar();
+        return;
+      }
+      try {
+        const r = await QWAS.API.getPinnedMessage(chatId);
+        QWAS.State.pinnedMessage = (r && r.ok) ? r.pinnedMessage : null;
+        this.renderPinnedBar();
+      } catch (e) {
+        QWAS.State.pinnedMessage = null;
+        this.renderPinnedBar();
+      }
+    },
+
+    renderPinnedBar() {
+      const bar = document.getElementById('pinnedBar');
+      if (!bar) return;
+      const m = QWAS.State.pinnedMessage;
+      if (!m) {
+        bar.classList.remove('visible');
+        setTimeout(() => { if (!bar.classList.contains('visible')) bar.style.display = 'none'; }, 200);
+        return;
+      }
+      bar.style.display = 'flex';
+      const me = QWAS.State.me;
+      const isMine = m.fromId === me?.id;
+      const author = isMine ? 'Вы' : (m.fromName || m.fromUsername || 'Пользователь');
+      let preview = m.text || '';
+      if (!preview && m.attachments) {
+        const a = Array.isArray(m.attachments) ? m.attachments[0] : null;
+        if (a) preview = a.type === 'image' ? '📷 Фото' : a.type === 'video' ? '🎬 Видео' : a.type === 'voice' ? '🎤 Голосовое' : a.type === 'round' ? '🔵 Кружок' : a.type === 'file' ? `📎 ${a.name || 'Файл'}` : 'Вложение';
+      } else if (!preview) preview = 'Сообщение';
+      bar.querySelector('.pinned-author').textContent = author;
+      bar.querySelector('.pinned-preview').textContent = preview;
+      void bar.offsetWidth;
+      bar.classList.add('visible');
+    },
+
+    scrollToPinned() {
+      const m = QWAS.State.pinnedMessage;
+      if (!m) return;
+      const el = document.querySelector(`.message[data-id="${m.id}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.remove('pinned-highlight');
+        void el.offsetWidth;
+        el.classList.add('pinned-highlight');
+        setTimeout(() => el.classList.remove('pinned-highlight'), 2000);
+      } else {
+        QWAS.Toast?.info?.('Сообщение вне загруженной истории');
+      }
     },
 
     async toggleReaction(messageId, emoji) {

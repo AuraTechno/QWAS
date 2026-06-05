@@ -1,6 +1,7 @@
 // Хелпер для отправки события пользователю по username (через online map)
 function sendToUser(io, online, username, event, payload) {
-  const sid = online.get(username);
+  const entry = online.get(username);
+  const sid = entry && typeof entry === 'object' ? entry.id : entry;
   if (sid) {
     io.to(sid).emit(event, payload);
     return true;
