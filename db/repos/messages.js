@@ -97,6 +97,17 @@ async function getHistory(chatId, { beforeId = null, limit = 30 } = {}) {
 }
 
 /**
+ * Получить сообщение по ID.
+ */
+async function getById(messageId) {
+  const res = await db.query(
+    `${BASE_SELECT} WHERE m.id = $1 LIMIT 1`,
+    [messageId]
+  );
+  return res.rows[0] ? rowToMessage(res.rows[0]) : null;
+}
+
+/**
  * Сообщения вокруг указанного (для перехода по поиску).
  */
 async function getAround(chatId, messageId, { before = 15, after = 15 } = {}) {
@@ -238,7 +249,7 @@ async function getLastMessage(chatId) {
 }
 
 module.exports = {
-  create, findById, getHistory, getAround, getMedia,
+  create, findById, getById, getHistory, getAround, getMedia,
   edit, softDelete, search, globalSearch,
   addReaction, removeReaction, getReactions, getLastMessage,
   rowToMessage

@@ -773,17 +773,90 @@
         { label: 'Закрыть', type: 'secondary', onclick: 'QWAS.Modals.close()' }
       ]);
       this.show(overlay);
-      overlay.querySelectorAll('[data-info-action]').forEach(btn => {
+      this._bindInfoActions(overlay, chatId, c);
+    },
+
+    /**
+     * Рендерит ту же инфо-панель в произвольный контейнер (для right-panel).
+     */
+    async renderChatInfoPanel(targetEl, chatId) {
+      const r = await QWAS.API.chatInfo(chatId);
+      if (!r || !r.ok) {
+        if (targetEl) targetEl.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-secondary);font-size:13px">Не удалось загрузить</div>';
+        return;
+      }
+      const c = r.chat;
+      const members = r.members || [];
+      const isGroup = c.type === 'group' || c.type === 'channel';
+      const other = c.otherUser;
+      const title = c.title || (other && QWAS.Util.getUserDisplayName(other));
+      if (!targetEl) return;
+      targetEl.innerHTML = `
+        <div class="right-panel-header">
+          <div class="right-panel-title">Информация</div>
+          <button class="icon-btn right-panel-close" id="rightPanelCloseBtn" type="button" title="Закрыть">
+            <span id="rightPanelCloseIcon"></span>
+          </button>
+        </div>
+        <div class="info-modal">
+          <div class="info-avatar">${c.avatarUrl
+            ? `<img src="${QWAS.Util.escapeAttr(c.avatarUrl)}" alt="">`
+            : QWAS.Util.avatarHtml(other || { firstName: title, username: 'g' + c.id }, 96)}</div>
+          <div class="info-name">${QWAS.Util.escapeHtml(title)}</div>
+          ${other ? `<div class="info-sub">@${QWAS.Util.escapeHtml(other.username)}</div>` : ''}
+          ${c.description ? `<div class="info-desc">${QWAS.Util.escapeHtml(c.description)}</div>` : ''}
+          ${isGroup ? `
+            <div class="info-section">
+              <h4>Участники (${members.length})</h4>
+              <div class="info-members">
+                ${members.map(m => `
+                  <div class="info-member">
+                    ${QWAS.Util.avatarHtml(m, 36)}
+                    <div>
+                      <div>${QWAS.Util.escapeHtml(QWAS.Util.getUserDisplayName(m))}</div>
+                      <div class="info-member-sub">@${QWAS.Util.escapeHtml(m.username)}${m.role !== 'member' ? ' · ' + (m.role === 'owner' ? 'владелец' : 'админ') : ''}</div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
+          <div class="info-actions">
+            <button class="btn-secondary" data-info-action="pin">${c.isPinned ? 'Открепить' : 'Закрепить'}</button>
+            <button class="btn-secondary" data-info-action="mute">${c.isMuted ? 'Вкл. звук' : 'Откл. звук'}</button>
+            <button class="btn-secondary" data-info-action="archive">${c.isArchived ? 'Разархивировать' : 'В архив'}</button>
+            <button class="btn-secondary" data-info-action="media">Медиа</button>
+            <button class="btn-danger" data-info-action="delete">Удалить чат</button>
+          </div>
+        </div>
+      `;
+      // Иконка close
+      const closeIcon = targetEl.querySelector('#rightPanelCloseIcon');
+      if (closeIcon && QWAS.Util && QWAS.Util.icon) closeIcon.innerHTML = QWAS.Util.icon('x', { size: 18 });
+      // Кнопка close
+      const closeBtn = targetEl.querySelector('#rightPanelCloseBtn');
+      if (closeBtn) closeBtn.addEventListener('click', () => {
+        const panel = document.getElementById('rightPanel');
+        if (panel) {
+          panel.classList.remove('open');
+          delete panel.dataset.chatId;
+        }
+      });
+      // Info actions
+      this._bindInfoActions(targetEl, chatId, c);
+    },
+
+    _bindInfoActions(scope, chatId, c) {
+      scope.querySelectorAll('[data-info-action]').forEach(btn => {
         btn.addEventListener('click', () => {
           const a = btn.dataset.infoAction;
-          if (a === 'pin') QWAS.Chats.setPinned(chatId, !c.isPinned).then(() => this.close());
-          else if (a === 'mute') QWAS.Chats.setMuted(chatId, !c.isMuted).then(() => this.close());
-          else if (a === 'archive') QWAS.Chats.setArchived(chatId, !c.isArchived).then(() => this.close());
+          if (a === 'pin') QWAS.Chats.setPinned(chatId, !c.isPinned);
+          else if (a === 'mute') QWAS.Chats.setMuted(chatId, !c.isMuted);
+          else if (a === 'archive') QWAS.Chats.setArchived(chatId, !c.isArchived);
           else if (a === 'media') this.openMediaGallery(chatId);
           else if (a === 'delete') {
             if (confirm('Удалить чат?')) {
               QWAS.Toast.info('TODO: удаление');
-              this.close();
             }
           }
         });

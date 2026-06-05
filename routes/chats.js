@@ -131,7 +131,7 @@ router.post("/:chatId/pin-message", authRequired, async (req, res) => {
   const isMember = await chatsRepo.isMember(chatId, req.user.id);
   if (!isMember) return res.status(403).json({ ok: false, error: "Нет доступа" });
   await chatsRepo.setPinnedMessage(chatId, messageId);
-  const msg = await messagesRepo.getById(chatId, messageId);
+  const msg = await messagesRepo.getById(messageId);
   res.json({ ok: true, message: msg });
 });
 

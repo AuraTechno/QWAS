@@ -21,6 +21,8 @@
         const custom = QWAS.State.settings.wallpaperCustom;
         QWAS.Modals._applyWallpaper(wp, custom);
       }
+      // Мобильная навигация
+      if (QWAS.MobileNav) QWAS.MobileNav.init();
     });
   }
 

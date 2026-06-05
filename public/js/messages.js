@@ -25,6 +25,44 @@
       // Клики внутри сообщений
       const list = document.getElementById('messages');
       if (!list) return;
+
+      // === Двойной тап (custom, работает на mobile + desktop) ===
+      const DOUBLE_TAP_DELAY = 280; // ms
+      const TAP_MOVE_TOLERANCE = 10; // px
+      const _lastTap = { id: null, t: 0, x: 0, y: 0 };
+      const _handleTap = (e) => {
+        const grp = e.target.closest('.message-group[data-msg-id]');
+        if (!grp) return false;
+        // Не открывать меню если кликнули по интерактивному элементу
+        if (e.target.closest('[data-action], [data-play-voice], [data-scroll-to], [data-download], a, button, video, audio, input, textarea, .att-image, .att-voice, .att-round, .att-video, .att-file, .bubble-reply, .reaction')) {
+          return false;
+        }
+        const id = parseInt(grp.dataset.msgId);
+        const now = Date.now();
+        const dx = Math.abs((e.clientX || 0) - _lastTap.x);
+        const dy = Math.abs((e.clientY || 0) - _lastTap.y);
+        const isDouble = _lastTap.id === id && (now - _lastTap.t) < DOUBLE_TAP_DELAY && dx < TAP_MOVE_TOLERANCE && dy < TAP_MOVE_TOLERANCE;
+        _lastTap.id = id;
+        _lastTap.t = now;
+        _lastTap.x = e.clientX || 0;
+        _lastTap.y = e.clientY || 0;
+        if (isDouble) {
+          _lastTap.id = null; // сброс чтобы не сработало 3 раза
+          // Haptic feedback (iOS Safari не поддерживает, Android — да)
+          if (navigator.vibrate) try { navigator.vibrate(15); } catch {}
+          // Визуальный фидбек
+          grp.classList.add('msg-double-tapped');
+          setTimeout(() => grp.classList.remove('msg-double-tapped'), 220);
+          // Открываем контекст-меню
+          if (QWAS.ContextMenu) {
+            QWAS.ContextMenu.showMessageMenu({ clientX: e.clientX, clientY: e.clientY, target: grp }, id);
+          }
+          return true;
+        }
+        return false;
+      };
+
+      // Одиночный тап (только если не было двойного)
       list.addEventListener('click', (e) => {
         const action = e.target.closest('[data-action]');
         if (action) {
@@ -43,6 +81,8 @@
           }
           return;
         }
+        // Кастомный double-tap (работает на mobile + desktop)
+        if (_handleTap(e)) return;
         // Клик по картинке — lightbox
         const img = e.target.closest('.att-image img, img[data-lightbox-img]');
         if (img) {
@@ -65,6 +105,17 @@
         const att = e.target.closest('[data-download]');
         if (att) {
           this.downloadAttachment(att.dataset.download, att.dataset.name);
+        }
+      });
+
+      // Правый клик — меню (desktop)
+      list.addEventListener('contextmenu', (e) => {
+        const grp = e.target.closest('.message-group[data-msg-id]');
+        if (!grp) return;
+        if (e.target.closest('[data-action], a, button, input, textarea')) return;
+        e.preventDefault();
+        if (QWAS.ContextMenu) {
+          QWAS.ContextMenu.showMessageMenu(e, parseInt(grp.dataset.msgId));
         }
       });
     },
@@ -542,10 +593,20 @@
     scrollToBottom(force) {
       const wrap = document.getElementById('messagesWrapper');
       if (!wrap) return;
+      const target = wrap.scrollHeight;
       if (force) {
-        wrap.scrollTop = wrap.scrollHeight;
+        // Прыжок мгновенно (своё сообщение, открытие чата)
+        wrap.scrollTop = target;
       } else {
-        QWAS.Util.throttle(() => { wrap.scrollTop = wrap.scrollHeight; }, 50)();
+        // Плавный скролл (новые сообщения других)
+        const start = wrap.scrollTop;
+        const distance = target - start - wrap.clientHeight;
+        if (Math.abs(distance) < 4) {
+          wrap.scrollTop = target;
+        } else if (distance > 0) {
+          // native smooth для производительности
+          try { wrap.scrollTo({ top: target, behavior: 'smooth' }); } catch { wrap.scrollTop = target; }
+        }
       }
       const btn = document.getElementById('scrollToBottom');
       if (btn) btn.style.display = 'none';
@@ -631,7 +692,13 @@
       list.push(tmpMsg);
       QWAS.State.messagesByChat.set(chatId, list);
       this.renderAll(chatId);
-      this.scrollToBottom(true);
+      // Двойной rAF — гарантирует что DOM обновился и viewport пересчитан
+      // (важно для мобильных браузеров с виртуальной клавиатурой)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => this.scrollToBottom(true));
+        // Дополнительный фолбек через 80мс для медленных устройств
+        setTimeout(() => this.scrollToBottom(true), 80);
+      });
 
       // Очистим инпут
       if (ta) ta.value = '';

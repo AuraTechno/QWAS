@@ -154,11 +154,17 @@
       // Помечаем прочитанным
       QWAS.Chats.markRead(chatId);
 
+      // Прокрутим вниз после рендера (двойной rAF)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => QWAS.Messages?.scrollToBottom?.(true));
+      });
+
       // Мобильный: показать чат со слайдом
       if (window.innerWidth <= 900) {
         const main = document.getElementById('mainScreen');
         if (main) {
           main.classList.add('chat-open');
+          document.body.classList.add('chat-open');
           // Запускаем историю для браузерной кнопки "назад"
           try { history.pushState({ chat: chatId }, '', '#chat/' + chatId); } catch (e) {}
         }
@@ -197,6 +203,7 @@
       if (window.innerWidth <= 900) {
         const main = document.getElementById('mainScreen');
         if (main) main.classList.remove('chat-open');
+        document.body.classList.remove('chat-open');
         try { if (location.hash.startsWith('#chat/')) history.back(); } catch (e) {}
       }
     },
@@ -259,7 +266,38 @@
 
     async openInfo() {
       if (!QWAS.State.current) return;
-      if (QWAS.Modals) QWAS.Modals.openChatInfo(QWAS.State.current);
+      const chatId = QWAS.State.current;
+      // На десктопе (>900px) — открываем правую панель
+      if (window.innerWidth > 900) {
+        const panel = document.getElementById('rightPanel');
+        const content = document.getElementById('rightPanelContent');
+        if (panel && content) {
+          // Переключатель
+          if (panel.classList.contains('open') && panel.dataset.chatId === String(chatId)) {
+            panel.classList.remove('open');
+            delete panel.dataset.chatId;
+            return;
+          }
+          panel.dataset.chatId = String(chatId);
+          // Пока скелетон, потом загрузка
+          content.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-secondary);font-size:13px">Загрузка…</div>';
+          panel.classList.add('open');
+          // Заполняем панель через модал (он умеет рендерить в #modalContainer или прямо в элемент)
+          if (QWAS.Modals && QWAS.Modals.renderChatInfoPanel) {
+            await QWAS.Modals.renderChatInfoPanel(content, chatId);
+          } else if (QWAS.Modals && QWAS.Modals.openChatInfo) {
+            // fallback: открыть модал, скопировать контент
+            const m = QWAS.Modals.openChatInfo(chatId);
+            setTimeout(() => {
+              const mc = document.querySelector('#modalContainer .modal .modal-content') || document.querySelector('#modalContainer .modal-body');
+              if (mc && content) content.innerHTML = mc.innerHTML;
+            }, 100);
+          }
+        }
+        return;
+      }
+      // На мобиле — модал как обычно
+      if (QWAS.Modals) QWAS.Modals.openChatInfo(chatId);
     },
 
     closePinned() {

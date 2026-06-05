@@ -109,7 +109,7 @@
         { id: 'reply', label: 'Ответить', icon: QWAS.Util.icon('reply', { size: 18 }), onclick: () => QWAS.Messages?.replyTo?.(messageId) },
         { id: 'copy', label: 'Копировать', icon: QWAS.Util.icon('copy', { size: 18 }), onclick: () => QWAS.Messages?.copyMessage?.(messageId), disabled: !m.text },
         { id: 'forward', label: 'Переслать', icon: QWAS.Util.icon('forward', { size: 18 }), onclick: () => QWAS.Messages?.forwardMessage?.(messageId) },
-        { id: 'pin', label: m.isPinned ? 'Открепить' : 'Закрепить', icon: QWAS.Util.icon('pin', { size: 18 }), onclick: () => QWAS.Messages?.togglePin?.(messageId) },
+        { id: 'pin', label: m.isPinned ? 'Открепить' : 'Закрепить', icon: QWAS.Util.icon('pin', { size: 18 }), onclick: () => m.isPinned ? QWAS.Messages?.unpinMessage?.() : QWAS.Messages?.pinMessage?.(messageId) },
         { id: 'select', label: 'Выбрать', icon: QWAS.Util.icon('checkCircle', { size: 18 }), onclick: () => QWAS.Messages?.enterSelectMode?.(messageId) }
       ];
       if (isMine) {

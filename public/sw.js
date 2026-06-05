@@ -1,13 +1,24 @@
 // QWAS Service Worker — кеширование для PWA + offline
-const CACHE_NAME = 'qwas-v11';
-const RUNTIME_CACHE = 'qwas-runtime-v11';
+const CACHE_NAME = 'qwas-v12';
+const RUNTIME_CACHE = 'qwas-runtime-v12';
 
 const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/favicon.svg',
+  '/favicon-32.png',
+  '/favicon-16.png',
+  '/icon-180.png',
+  '/icon-167.png',
+  '/icon-152.png',
+  '/icon-120.png',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon-192-maskable.png',
+  '/icon-512-maskable.png',
   '/icons/icon.svg',
+  '/icons/icon-maskable.svg',
   '/css/vars.css',
   '/css/base.css',
   '/css/auth.css',
@@ -45,7 +56,8 @@ const PRECACHE_URLS = [
   '/js/mainmenu.js',
   '/js/app.js',
   '/js/auth.js',
-  '/js/boot.js'
+  '/js/boot.js',
+  '/js/mobileNav.js'
 ];
 
 self.addEventListener('install', event => {

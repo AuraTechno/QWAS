@@ -579,16 +579,18 @@
 
     _bindActionButtons() {
       if (!this.overlay) return;
-      const acceptBtn = this.overlay.querySelector('#callAcceptBtn');
-      const rejectBtn = this.overlay.querySelector('#callRejectBtn');
-      const endBtn = this.overlay.querySelector('#callEndBtn');
-      const muteBtn = this.overlay.querySelector('#callMuteBtn');
-      const camBtn = this.overlay.querySelector('#callCameraBtn');
-      const flipBtn = this.overlay.querySelector('#callFlipBtn');
-      if (acceptBtn) acceptBtn.addEventListener('click', () => this.accept());
-      if (rejectBtn) rejectBtn.addEventListener('click', () => this.reject());
-      if (endBtn) endBtn.addEventListener('click', () => this.end());
+      const overlayRef = this.overlay;
+      const acceptBtn = overlayRef.querySelector('#callAcceptBtn');
+      const rejectBtn = overlayRef.querySelector('#callRejectBtn');
+      const endBtn = overlayRef.querySelector('#callEndBtn');
+      const muteBtn = overlayRef.querySelector('#callMuteBtn');
+      const camBtn = overlayRef.querySelector('#callCameraBtn');
+      const flipBtn = overlayRef.querySelector('#callFlipBtn');
+      if (acceptBtn) acceptBtn.addEventListener('click', () => { if (overlayRef.isConnected) this.accept(); });
+      if (rejectBtn) rejectBtn.addEventListener('click', () => { if (overlayRef.isConnected) this.reject(); });
+      if (endBtn) endBtn.addEventListener('click', () => { if (overlayRef.isConnected) this.end(); });
       if (muteBtn) muteBtn.addEventListener('click', () => {
+        if (!overlayRef.isConnected) return;
         const t = this.localStream?.getAudioTracks()[0];
         if (!t) return;
         t.enabled = !t.enabled;
@@ -596,32 +598,34 @@
         muteBtn.innerHTML = !t.enabled ? I('micOff') : I('mic');
       });
       if (camBtn) camBtn.addEventListener('click', () => {
+        if (!overlayRef.isConnected) return;
         const t = this.localStream?.getVideoTracks()[0];
         if (!t) return;
         t.enabled = !t.enabled;
         camBtn.classList.toggle('active', !t.enabled);
         camBtn.innerHTML = !t.enabled ? I('videoOff') : I('video');
       });
-      if (flipBtn) flipBtn.addEventListener('click', () => this._flipCamera());
+      if (flipBtn) flipBtn.addEventListener('click', () => { if (overlayRef.isConnected) this._flipCamera(); });
     },
 
     /**
      * Drag & drop для плавающей локальной камеры
      */
     _bindDragAndDrop() {
-      const wrap = this.overlay?.querySelector('#callLocalWrap');
+      const overlayRef = this.overlay;
+      const wrap = overlayRef?.querySelector('#callLocalWrap');
       if (!wrap) return;
       const onStart = (clientX, clientY) => {
+        if (!overlayRef?.isConnected) return;
         this._dragging = true;
         wrap.classList.add('dragging');
         const rect = wrap.getBoundingClientRect();
         this._dragOffset.x = clientX - rect.left;
         this._dragOffset.y = clientY - rect.top;
-        // Снять transition на время drag
         wrap.style.transition = 'none';
       };
       const onMove = (clientX, clientY) => {
-        if (!this._dragging) return;
+        if (!this._dragging || !overlayRef?.isConnected) return;
         const x = Math.max(0, Math.min(window.innerWidth - wrap.offsetWidth, clientX - this._dragOffset.x));
         const y = Math.max(60, Math.min(window.innerHeight - wrap.offsetHeight - 100, clientY - this._dragOffset.y));
         wrap.style.left = x + 'px';
@@ -631,14 +635,14 @@
       };
       const onEnd = () => {
         this._dragging = false;
-        wrap.classList.remove('dragging');
-        wrap.style.transition = '';
+        if (wrap?.isConnected) {
+          wrap.classList.remove('dragging');
+          wrap.style.transition = '';
+        }
       };
-      // Mouse
       wrap.addEventListener('mousedown', e => { e.preventDefault(); onStart(e.clientX, e.clientY); });
       document.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
       document.addEventListener('mouseup', onEnd);
-      // Touch
       wrap.addEventListener('touchstart', e => { const t = e.touches[0]; onStart(t.clientX, t.clientY); }, { passive: true });
       document.addEventListener('touchmove', e => { const t = e.touches[0]; onMove(t.clientX, t.clientY); }, { passive: true });
       document.addEventListener('touchend', onEnd);
@@ -649,18 +653,20 @@
      */
     _bindAutoHideControls() {
       if (!this.overlay) return;
+      const overlayRef = this.overlay;
       const show = () => {
-        this.overlay.classList.remove('controls-hidden');
+        if (!overlayRef.isConnected) return;
+        overlayRef.classList.remove('controls-hidden');
         clearTimeout(this._hideControlsTimer);
         this._hideControlsTimer = setTimeout(() => {
-          if (this.overlay && this.currentCall && this.pc?.connectionState === 'connected') {
-            this.overlay.classList.add('controls-hidden');
+          if (overlayRef.isConnected && this.currentCall && this.pc?.connectionState === 'connected') {
+            overlayRef.classList.add('controls-hidden');
           }
         }, 3000);
       };
-      this.overlay.addEventListener('click', show);
-      this.overlay.addEventListener('touchstart', show, { passive: true });
-      this.overlay.addEventListener('mousemove', show);
+      overlayRef.addEventListener('click', show);
+      overlayRef.addEventListener('touchstart', show, { passive: true });
+      overlayRef.addEventListener('mousemove', show);
       show();
     },
 
