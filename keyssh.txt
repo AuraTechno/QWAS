@@ -1,0 +1,7 @@
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBsmEic7NzIBI9Y1bmkRw9Y7j/TZHMUzuJUoXUjCdyLf qwas-deploy
+
+ip:45.10.41.65
+логин:root
+
+username:AuraTechno
+ssh port: по умолчанию.
